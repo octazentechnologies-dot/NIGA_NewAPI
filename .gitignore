@@ -372,6 +372,9 @@ paket-files/
 
 # OpenCover UI analysis results
 OpenCover/
+**/appsettings.json
+**/appsettings.*.json
+Niga-Web/appsettings.json
 
 # Azure Stream Analytics local run output
 ASALocalRun/
