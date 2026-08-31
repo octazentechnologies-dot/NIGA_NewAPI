@@ -1,0 +1,24 @@
+[
+  {
+    "category": "Epilepsy",
+    "sourceLanguage": "mr",
+    "transcript": "Patient reports vibration in hands about 10 seconds before a fit. Fits occur mostly at night. Fear before attack.",
+    "doctorSelectedRubrics": [
+      {
+        "subSectionId": 0,
+        "subSectionName": "GENERALITIES - CONVULSIONS - aura",
+        "tier": "Primary"
+      },
+      {
+        "subSectionId": 0,
+        "subSectionName": "MIND - FEAR - convulsions, of",
+        "tier": "Secondary"
+      }
+    ],
+    "primaryRubricIds": [0, 0],
+    "finalRemedy": "Belladonna 1M",
+    "followUpOutcome": "Reduced attack frequency at 3-month follow-up",
+    "reviewedBy": "Senior Homeopath",
+    "reviewDate": "2026-06-01"
+  }
+]

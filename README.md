@@ -1,1 +1,1 @@
-# NIGA_NewAPI
+# NigaHomeopathy-API

@@ -1,0 +1,36 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Text;
+using API.Helpers;
+
+namespace Niga_Domain.DTOs
+{
+    public class DoctorDashBoardModel :PaginationParams
+    {
+        public int PatientAppId { get; set; }
+        public DateTime? AppointmentDate { get; set; }
+        public string? Status { get; set; }
+        public long UserId { get; set; }
+        public int DoctorId { get; set; }
+        public int patientApp { get; set; }
+        public int walkInpatientApp { get; set; }
+        public int patientAppComplated { get; set; }
+        public int patientAppWaiting { get; set; }
+        public int patientAppNotArrived { get; set; }
+        public int patientAppEConsult { get; set; }
+        public int patientAppRemaining { get; set; }
+
+        public int patientAppWalkIn { get; set; }
+
+        /// <summary>Total distinct patients registered for this doctor (all time).</summary>
+        public int totalPatients { get; set; }
+    }
+
+    public class PatientAppModel
+    {
+        public int PatientAppId { get; set; }
+        public DateTime? AppointmentDate { get; set; }
+        public string? Status { get; set; }
+      
+    }
+}

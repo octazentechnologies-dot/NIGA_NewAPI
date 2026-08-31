@@ -1,0 +1,26 @@
+using Niga_Domain.Model;
+using System.Collections.Generic;
+
+namespace Niga_Domain.Business.Interface
+{
+    /// <summary>
+    /// Interface for OptPatientAppointment operations
+    /// </summary>
+    public interface IOptPatientAppointmentService
+    {
+        /// <summary>
+        /// Gets an OptPatientAppointment by its ID.
+        /// </summary>
+        OptPatientAppointmentModel GetOptPatientAppById(long optPatientAppId, ref ErrorResponseModel errorResponseModel);
+
+        /// <summary>
+        /// Saves or updates an OptPatientAppointment.
+        /// </summary>
+        string SaveOptPatientApp(OptPatientAppointmentModel optPatientAppointmentModel, ref ErrorResponseModel errorResponseModel);
+
+        /// <summary>
+        /// Gets all cases for a user.
+        /// </summary>
+        List<OptPatientModel> GetOptCasesByUser(long userId, ref ErrorResponseModel errorResponseModel);
+    }
+}

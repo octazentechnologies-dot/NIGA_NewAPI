@@ -1,0 +1,6 @@
+@Niga_Domain_HostAddress = http://localhost:5057
+
+GET {{Niga_Domain_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
