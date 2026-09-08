@@ -4,6 +4,7 @@ using Niga_Domain.Business.Interface;
 using Niga_Domain.DTOs;
 using System;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     [Route("api/[controller]")]

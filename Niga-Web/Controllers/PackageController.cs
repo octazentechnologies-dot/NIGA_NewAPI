@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Niga_Domain.Business.Interface;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -59,6 +60,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("Save")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> SavePackage([FromBody] Niga_Domain.DTOs.PackageModel packageModel)
         {
             try
@@ -73,6 +75,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("Delete/{packageId}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> DeletePackage(long packageId, [FromQuery] string changedBy)
         {
             try
@@ -104,6 +107,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("SavePackageTopup")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> SavePackageTopup([FromBody] Niga_Domain.DTOs.PackageTopupModel packageTopupModel)
         {
             try

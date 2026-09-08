@@ -9,6 +9,7 @@ using Niga_Domain.DTOs;
 using Niga_Domain.Helpers;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
+using Niga_Domain.Security;
 using Niga_Domain.Services;
 
 namespace Niga_Domain.Repositories
@@ -51,7 +52,7 @@ namespace Niga_Domain.Repositories
             var userEntity = new UserMaster
             {
                 UserName = model.UserName.Trim(),
-                UserPassword = model.UserPassword,
+                UserPassword = UserPasswordHasher.Hash(model.UserPassword),
                 MobileNo = model.MobileNo?.Trim() ?? string.Empty,
                 EmailId = model.EmailId.Trim(),
                 CountryId = model.CountryId,
@@ -113,7 +114,7 @@ namespace Niga_Domain.Repositories
                 var userEntity = new UserMaster
                 {
                     UserName = model.UserName,
-                    UserPassword = model.UserPassword,
+                    UserPassword = UserPasswordHasher.Hash(model.UserPassword),
                     MobileNo = model.MobileNo ?? string.Empty,
                     EmailId = model.EmailId,
                     CountryId = model.CountryId > 0 ? model.CountryId : null,
@@ -158,7 +159,8 @@ namespace Niga_Domain.Repositories
                 if (userEntity != null)
                 {
                     userEntity.UserName = model.UserName;
-                    userEntity.UserPassword = model.UserPassword;
+                    if (!string.IsNullOrWhiteSpace(model.UserPassword))
+                        userEntity.UserPassword = UserPasswordHasher.Hash(model.UserPassword);
                     userEntity.FirstName = model.FirstName;
                     userEntity.LastName = model.LastName;
                     userEntity.RoleId = model.RoleId;
@@ -196,7 +198,8 @@ namespace Niga_Domain.Repositories
                 UserStatus = userEntity.UserStatus,
                 FirstName = userEntity.FirstName,
                 LastName = userEntity.LastName,
-                UserPassword = userEntity.UserPassword,
+                // SEC-01 — never return password hash/plaintext in API responses
+                UserPassword = null!,
                 RoleId = userEntity.RoleId ?? 0,
                 CompanyName = userEntity.CompanyName,
                 CountryId = userEntity.CountryId ?? 0,
@@ -272,42 +275,12 @@ namespace Niga_Domain.Repositories
 
         public string ForgetPassword(string email, SmtpSettingsModel smtpSettingsModel, ref ErrorResponseModel errorResponseModel)
         {
+            // SEC-02.02 — Do not email plaintext passwords. Use POST /api/Account/ForgotPassword (reset-link flow).
             errorResponseModel ??= new ErrorResponseModel();
-            var userEntity = _context.UserMasters.FirstOrDefault(x => x.EmailId == email);
-            if (userEntity == null)
-            {
-                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
-                return "Email Not Found";
-            }
-
-            try
-            {
-                var strBody = new StringBuilder();
-                strBody.Append("<body>");
-                strBody.Append("Hello " + userEntity.UserName);
-                strBody.Append("<p>Your password for Homeocentrum portal is:</p>");
-                strBody.Append("<p><b>" + userEntity.UserPassword + "</b></p>");
-                strBody.Append("</body>");
-
-                var emailModel = new EmailSenderModel
-                {
-                    ToAddress = email,
-                    Body = strBody.ToString(),
-                    isHtml = true,
-                    Subject = "Homeocentrum - Forgot Password"
-                };
-
-                if (!string.IsNullOrEmpty(emailModel.ToAddress))
-                {
-                    _emailSenderService.SendMail(emailModel, smtpSettingsModel);
-                }
-
-                return "Email Send Successfully";
-            }
-            catch (Exception)
-            {
-                return "Email Send Successfully";
-            }
+            errorResponseModel.StatusCode = HttpStatusCode.Gone;
+            errorResponseModel.Message =
+                "This endpoint no longer emails passwords. Use POST /api/Account/ForgotPassword for the secure reset-link flow.";
+            return "Deprecated: use POST /api/Account/ForgotPassword (reset link). Passwords are never emailed in plaintext.";
         }
 
         private void TrySendWelcomeEmail(UserMaster userEntity, SmtpSettingsModel smtpSettingsModel)

@@ -210,6 +210,7 @@ namespace Niga_Domain.API.Controllers
         [AllowAnonymous]
         public IActionResult ForgetPassword([FromQuery] string email)
         {
+            // SEC-02.02 — plaintext password email removed; redirect clients to Account/ForgotPassword
             if (string.IsNullOrWhiteSpace(email))
             {
                 return BadRequest("Invalid request, please verify details");
@@ -221,7 +222,13 @@ namespace Niga_Domain.API.Controllers
                 var result = _userService.ForgetPassword(email, _mailSettings.Value, ref errorMessage);
                 if (!string.IsNullOrEmpty(result))
                 {
-                    return Ok(result);
+                    return Ok(new
+                    {
+                        success = false,
+                        deprecated = true,
+                        message = result,
+                        useInstead = "POST /api/Account/ForgotPassword"
+                    });
                 }
 
                 return ReturnErrorResponse(errorMessage);

@@ -215,7 +215,9 @@ namespace Niga_Domain.Repositories
                 entity.UserId,
                 entity.DoctorId,
                 entity.FullName,
-                7 * 24 * 60);
+                7 * 24 * 60,
+                roleId: null,
+                roleName: "Reception");
 
             _logger.LogInformation(
                 "Reception staff login successful. ReceptionStaffID={ReceptionStaffId}",
@@ -225,7 +227,7 @@ namespace Niga_Domain.Repositories
             {
                 UserId = entity.ReceptionStaffId,
                 UserName = entity.FullName,
-                Role = "ReceptionStaff",
+                Role = "Reception",
                 RoleId = null,
                 FirmIds = string.Empty,
                 IsSuperUser = false,

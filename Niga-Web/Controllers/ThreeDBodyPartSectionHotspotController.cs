@@ -6,6 +6,7 @@ using Niga_Domain.DTOs;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -30,6 +31,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(object), 400)]
         [ProducesResponseType(typeof(object), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddThreeDBodyPartSectionHotspot([FromBody] AddThreeDBodyPartSectionHotspotRequest request)
         {
             try
@@ -85,6 +87,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(object), 400)]
         [ProducesResponseType(typeof(object), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateThreeDBodyPartSectionHotspot([FromBody] UpdateThreeDBodyPartSectionHotspotRequest request)
         {
             try
@@ -140,6 +143,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(object), 400)]
         [ProducesResponseType(typeof(object), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteThreeDBodyPartSectionHotspot([FromBody] DeleteThreeDBodyPartSectionHotspotRequest request)
         {
             try

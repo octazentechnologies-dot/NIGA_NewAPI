@@ -5,6 +5,7 @@ using Niga_Domain.Business.Interface;
 using Niga_Domain.DTOs;
 using Niga_Domain.Helpers;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     [Route("api/[controller]")]
@@ -96,6 +97,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> SaveAllopathicDrug([FromBody] AllopathicDrugModel model)
         {
             try
@@ -110,6 +112,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("DeleteAllopathicDrug")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> DeleteAllopathicDrug([FromBody] long allopathicDrugId)
         {
             try

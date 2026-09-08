@@ -2,6 +2,8 @@ using System.Security.Claims;
 using Newtonsoft.Json.Linq;
 using System.Security.Cryptography;
 using System.Xml;
+using Niga_Domain.Authorization;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.Extensions
 {
@@ -38,6 +40,14 @@ namespace Niga_Domain.Extensions
             return int.Parse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value);
             
         }
+
+        /// <summary>SEC-01.02 — DoctorID claim from JWT (doctors / reception).</summary>
+        public static int? GetDoctorId(this ClaimsPrincipal user)
+            => DoctorOwnership.GetDoctorId(user);
+
+        /// <summary>M02 / SEC-04 — Admin or Management portal principal.</summary>
+        public static bool IsAdminPortalUser(this ClaimsPrincipal user)
+            => AdminAuthorizationPolicies.IsAdminPortalUser(user);
      
         private static string DecryptDataWithAes(string cipherText, string keyBase64, string vectorBase64)
             {

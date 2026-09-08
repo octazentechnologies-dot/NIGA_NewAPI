@@ -56,6 +56,8 @@ namespace Niga_Domain.Extensions
 
             services.AddAutoMapper(typeof(AutoMapperProfiles).Assembly);
             services.AddScoped<ITokenService, TokenService>();
+            services.AddSingleton<IJwtDenylistService, JwtDenylistService>();
+            services.AddScoped<IAuditEventWriter, AuditEventWriter>();
             services.Configure<Niga_Domain.DTOs.SmtpSettingsModel>(config.GetSection("smtp"));
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<ISectionRepository, SectionService>();

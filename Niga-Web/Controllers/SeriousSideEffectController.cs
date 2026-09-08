@@ -5,6 +5,7 @@ using Niga_Domain.DTOs;
 using Niga_Domain.Interface;
 using System;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     [Route("api/[controller]")]
@@ -32,6 +33,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public IActionResult DeleteSeriousSideEffect(SeriousSideEffectModel seriousSideEffectModel)
         {
             ErrorResponseModel errorResponseModel = null;

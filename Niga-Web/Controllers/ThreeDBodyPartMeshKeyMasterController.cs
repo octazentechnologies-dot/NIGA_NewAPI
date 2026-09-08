@@ -6,6 +6,7 @@ using Niga_Domain.DTOs;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -30,6 +31,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(object), 400)]
         [ProducesResponseType(typeof(object), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddThreeDBodyPartMeshKeyMaster([FromBody] AddThreeDBodyPartMeshKeyMasterRequest request)
         {
             try
@@ -79,6 +81,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(object), 400)]
         [ProducesResponseType(typeof(object), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateThreeDBodyPartMeshKeyMaster([FromBody] UpdateThreeDBodyPartMeshKeyMasterRequest request)
         {
             try
@@ -127,6 +130,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(object), 400)]
         [ProducesResponseType(typeof(object), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteThreeDBodyPartMeshKeyMaster([FromBody] DeleteThreeDBodyPartMeshKeyMasterRequest request)
         {
             try

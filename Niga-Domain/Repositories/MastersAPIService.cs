@@ -885,32 +885,67 @@ namespace Niga_Domain.Business.Implementation
             throw new NotImplementedException();
         }
 
-        ///// <summary>
-        ///// Method to get menu by roles
-        ///// </summary>
-        ///// <param name="errorResponseModel"></param>
-        ///// <returns></returns>
-        //public List<MenuMasterModel> GetMenuByRole(long userId, ref ErrorResponseModel errorResponseModel)
-        //{
-        //    List<MenuMasterModel> menuModelList = new List<MenuMasterModel>();
-        //    errorResponseModel = new ErrorResponseModel();
-        //    int roleid = context.UserMaster.FirstOrDefault(x => x.UserId == userId).RoleId;
-        //    var menuEntityList = context.RoleDetails.Where(x => x.RoleId == roleid).Include(x => x.Menu).ToList();
-        //    if (menuEntityList.Count == 0)
-        //    {
-        //        errorResponseModel.StatusCode = HttpStatusCode.NotFound;
-        //        errorResponseModel.Message = "menu not found";
-        //    }
-        //    menuEntityList.ForEach(item =>
-        //    {
-        //        menuModelList.Add(new MenuMasterModel
-        //        {
-        //            MenuId = item.MenuId,
-        //            MenuName = item.Menu.MenuName,
-        //        });
-        //    });
-        //    return menuModelList;
-        //}
+        /// <summary>
+        /// M02 W7 ADM-B04 — Restore GetMenuByRole: menus for the role assigned to userId.
+        /// Does not seed Account/Pharmacy menus (see Database/Scripts/M02_W7_MenuMaster_Account_Pharmacy_Seed.sql).
+        /// </summary>
+        public List<MenuMasterModel> GetMenuByRole(long userId, ref ErrorResponseModel errorResponseModel)
+        {
+            var menuModelList = new List<MenuMasterModel>();
+            errorResponseModel = new ErrorResponseModel();
+
+            var user = context.UserMasters.AsNoTracking()
+                .FirstOrDefault(x => x.UserId == userId && !x.DeleteStatus);
+
+            if (user == null || user.RoleId == null)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "User or role not found";
+                return menuModelList;
+            }
+
+            var roleId = user.RoleId.Value;
+            var menuEntityList = context.RoleDetails
+                .AsNoTracking()
+                .Where(x => x.RoleId == roleId && x.IsView)
+                .Include(x => x.Menu)
+                .Where(x => x.Menu != null && !x.Menu.DeleteStatus)
+                .OrderBy(x => x.Menu.SeqNo)
+                .ToList();
+
+            if (menuEntityList.Count == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "menu not found";
+                return menuModelList;
+            }
+
+            foreach (var item in menuEntityList)
+            {
+                var menu = item.Menu;
+                menuModelList.Add(new MenuMasterModel
+                {
+                    MenuId = menu.MenuId,
+                    ModuleId = menu.ModuleId,
+                    MenuName = menu.MenuName,
+                    MenuNameMarathi = menu.MenuNameMarathi,
+                    MenuType = menu.MenuType,
+                    ParentMenuId = menu.ParentMenuId,
+                    MenuUrl = menu.MenuUrl,
+                    Description = menu.Description,
+                    MenuIcon = menu.MenuIcon,
+                    ActionName = menu.ActionName,
+                    ControllerName = menu.ControllerName,
+                    IsLeaf = menu.IsLeaf,
+                    ShowInMainMenu = menu.ShowInMainMenu,
+                    SeqNo = menu.SeqNo,
+                    FirmIds = menu.FirmIds,
+                    DeleteStatus = menu.DeleteStatus
+                });
+            }
+
+            return menuModelList;
+        }
 
         /// <summary>
         /// Method is used for get all the subsection by bodypartId

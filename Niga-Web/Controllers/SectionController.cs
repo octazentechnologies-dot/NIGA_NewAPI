@@ -7,6 +7,7 @@ using Niga_Domain.Helpers;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -79,6 +80,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("AddSection")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddNewSection(SectionMasterDto SectionMasterDto)
         {
             try
@@ -116,6 +118,7 @@ namespace Niga_Domain.API.Controllers
 
 
         [HttpPost("UpdateSectionDetails")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateSectionDetails(SectionMasterDto updateSectionDto)
         {
             try
@@ -153,6 +156,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("DeleteSectionDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteSectionDetails(int Id)
         {
             var data = await _sectionService.GetSectionById(Id);

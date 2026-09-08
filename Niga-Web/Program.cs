@@ -12,6 +12,7 @@ using Niga_Domain.Data;
 using API.Entities;
 using Niga_Domain.Configuration.CorsPolicyConfig;
 using Microsoft.Extensions.FileProviders;
+using Niga_Domain.Authorization;
 
 
 
@@ -24,6 +25,14 @@ IWebHostEnvironment environment = builder.Environment;
 builder.Services.Configure<HostOptions>(options =>
 {
     options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+});
+
+// Development validates DI scopes on build. Several singleton caches still take scoped
+// repositories (same as production, where this check is off). Allow local startup.
+builder.Host.UseDefaultServiceProvider(options =>
+{
+    options.ValidateScopes = false;
+    options.ValidateOnBuild = false;
 });
 
 // Add services to the container.
@@ -103,6 +112,14 @@ builder.Services.AddAuthentication(options =>
 
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["TokenKey"])),
     };
+});
+
+// M02 W0 — Admin Portal policy for clinical masters mutate APIs (apply in W1+)
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AdminAuthorizationPolicies.AdminPortal, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx => AdminAuthorizationPolicies.IsAdminPortalUser(ctx.User)));
 });
 
 var app = builder.Build();

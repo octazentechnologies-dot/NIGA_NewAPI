@@ -8,6 +8,7 @@ using Niga_Domain.Interface;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -80,6 +81,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("AddRemedy")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddNewRemedy(RemedyMaster RemedyMaster)
         {
             try
@@ -117,6 +119,7 @@ namespace Niga_Domain.API.Controllers
 
 
         [HttpPost("UpdateRemedyDetails")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateRemedyDetails(RemedyMaster updateRemedyDto)
         {
             try
@@ -154,6 +157,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("DeleteRemedyDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteRemedyDetails(int Id)
         {
             var data = await _remedyService.GetRemedyById(Id);
@@ -221,6 +225,7 @@ namespace Niga_Domain.API.Controllers
         /// <param name="file">Excel file containing remedy data</param>
         /// <returns>Import results</returns>
         [HttpPost("import")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> ImportRemedies(IFormFile file)
         {
             try

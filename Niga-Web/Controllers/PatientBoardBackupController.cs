@@ -7,11 +7,14 @@ using Niga_Domain.API.Helpers;
 using Niga_Domain.DTOs;
 using Niga_Domain.Extensions;
 using Niga_Domain.Interfaces;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers;
 
 /// <summary>
 /// Save and restore in-progress Patient Board work for doctors and reception staff.
+/// SEC-05.01 — Backups are JWT-bound via GetUserId() (DoctorUserId). Use <see cref="DoctorOwnership"/>
+/// when checking resource DoctorID claims on other patient APIs.
 /// </summary>
 [Route("api/PatientBoardBackup")]
 [ApiController]
@@ -40,7 +43,7 @@ public class PatientBoardBackupController : ControllerBase
                 return ThreeDBodyPartApiResponseHelper.Failure(GetValidationMessage());
             }
 
-            var userId = User.GetUserId();
+            var userId = ResolveDoctorUserId();
             var (success, message, result) = await _patientBoardBackupService.SaveLatestBackupAsync(userId, request);
             if (!success || result == null)
             {
@@ -62,7 +65,7 @@ public class PatientBoardBackupController : ControllerBase
     {
         try
         {
-            var userId = User.GetUserId();
+            var userId = ResolveDoctorUserId();
             var (success, message, result) = await _patientBoardBackupService.GetBackupSummaryAsync(userId);
             if (!success || result == null)
             {
@@ -84,7 +87,7 @@ public class PatientBoardBackupController : ControllerBase
     {
         try
         {
-            var userId = User.GetUserId();
+            var userId = ResolveDoctorUserId();
             var (success, message, result) = await _patientBoardBackupService.GetLatestBackupAsync(userId);
             if (!success || result == null)
             {
@@ -106,7 +109,7 @@ public class PatientBoardBackupController : ControllerBase
     {
         try
         {
-            var userId = User.GetUserId();
+            var userId = ResolveDoctorUserId();
             var (success, message) = await _patientBoardBackupService.DeleteLatestBackupAsync(userId);
             if (!success)
             {
@@ -120,6 +123,17 @@ public class PatientBoardBackupController : ControllerBase
             _logger.LogError(ex, "Delete PatientBoardBackup failed for UserId={UserId}", User.GetUserId());
             return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// JWT-bound: doctors use NameIdentifier (UserId). Reception with DoctorID claim still keys
+    /// backup by their staff id unless DoctorUserId claim is present — never accept client doctorUserId.
+    /// </summary>
+    private int ResolveDoctorUserId()
+    {
+        // Always bind to JWT — never accept query/body doctor user ids (SEC-05.01 IDOR).
+        _ = DoctorOwnership.GetDoctorId(User); // documented helper for cross-controller ownership checks
+        return User.GetUserId();
     }
 
     private string GetValidationMessage()

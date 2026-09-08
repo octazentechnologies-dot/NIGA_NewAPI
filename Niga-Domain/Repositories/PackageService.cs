@@ -1,4 +1,4 @@
-﻿using Niga_Domain.Business.Interface;
+using Niga_Domain.Business.Interface;
 using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Master;
@@ -13,7 +13,9 @@ using System.Threading.Tasks;
 namespace Niga_Domain.Business.Implementation
 {
     /// <summary>
-    /// This is implementation  for the package operations 
+    /// Package / subscription plan operations.
+    /// M02 W7 ADM-B03: PackageMaster + PackageEntryDetail are S1 SaaS subscription only —
+    /// never reuse PackageEntryDetail for S2 consult or S5 medicine billing.
     /// </summary>
     public class PackageService : IPackageService
     {

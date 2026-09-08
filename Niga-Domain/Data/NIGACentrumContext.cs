@@ -396,6 +396,21 @@ namespace Niga_Domain.Data
 
     public virtual DbSet<UserMaster> UserMasters { get; set; }
 
+    // M01 Foundation Security (SEC-02 … SEC-09) — tables via M01_Foundation_Security_CreateTables.sql
+    public virtual DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
+
+    public virtual DbSet<ConsentType> ConsentTypes { get; set; }
+
+    public virtual DbSet<ConsentRecord> ConsentRecords { get; set; }
+
+    public virtual DbSet<OtpChallenge> OtpChallenges { get; set; }
+
+    public virtual DbSet<OtpAuditLog> OtpAuditLogs { get; set; }
+
+    public virtual DbSet<AuditEvent> AuditEvents { get; set; }
+
+    public virtual DbSet<SecureDocument> SecureDocuments { get; set; }
+
     public virtual DbSet<WhatsAppMessageLog> WhatsAppMessageLogs { get; set; }
 
     public virtual DbSet<WhatsAppTemplateMaster> WhatsAppTemplateMasters { get; set; }
@@ -412,7 +427,7 @@ namespace Niga_Domain.Data
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 #warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Server=localhost;Database=HomeoCentrum_Production;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;");
+        => optionsBuilder.UseSqlServer("Server=103.196.187.99,1433;Database=HomeoCentrum_Dev;User Id=sa;Password=nik@123JAM;TrustServerCertificate=True;");
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -3028,9 +3043,104 @@ namespace Niga_Domain.Data
             entity.Property(e => e.OldPassword).HasMaxLength(50);
             entity.Property(e => e.PasswordRenewDate).HasColumnType("datetime");
             entity.Property(e => e.UserName).HasMaxLength(50);
-            entity.Property(e => e.UserPassword).HasMaxLength(50);
+            // SEC-01.01 — widened for PBKDF2$v1$… hashes (run SQL alter before bulk migrate)
+            entity.Property(e => e.UserPassword).HasMaxLength(500);
             entity.Property(e => e.UserPhoto).HasMaxLength(250);
             entity.Property(e => e.UserStatus).HasDefaultValue(true);
+        });
+
+        modelBuilder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.HasKey(e => e.PasswordResetTokenId);
+            entity.ToTable("PasswordResetToken");
+            entity.Property(e => e.TokenHash).HasMaxLength(128);
+            entity.Property(e => e.ExpiresAt).HasColumnType("datetime");
+            entity.Property(e => e.UsedAt).HasColumnType("datetime");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.HasIndex(e => e.TokenHash);
+            entity.HasIndex(e => e.UserId);
+        });
+
+        modelBuilder.Entity<ConsentType>(entity =>
+        {
+            entity.HasKey(e => e.ConsentTypeId);
+            entity.ToTable("ConsentType");
+            entity.Property(e => e.Code).HasMaxLength(50);
+            entity.Property(e => e.Name).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.HasIndex(e => e.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<ConsentRecord>(entity =>
+        {
+            entity.HasKey(e => e.ConsentRecordId);
+            entity.ToTable("ConsentRecord");
+            entity.Property(e => e.SubjectType).HasMaxLength(50);
+            entity.Property(e => e.IpAddress).HasMaxLength(64);
+            entity.Property(e => e.UserAgent).HasMaxLength(500);
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.GrantedAt).HasColumnType("datetime");
+            entity.Property(e => e.WithdrawnAt).HasColumnType("datetime");
+            entity.HasOne(d => d.ConsentType).WithMany(p => p.ConsentRecords)
+                .HasForeignKey(d => d.ConsentTypeId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ConsentRecord_ConsentType");
+            entity.HasIndex(e => new { e.SubjectType, e.SubjectId });
+        });
+
+        modelBuilder.Entity<OtpChallenge>(entity =>
+        {
+            entity.HasKey(e => e.OtpChallengeId);
+            entity.ToTable("OtpChallenge");
+            entity.Property(e => e.Action).HasMaxLength(50);
+            entity.Property(e => e.EntityType).HasMaxLength(50);
+            entity.Property(e => e.EntityId).HasMaxLength(100);
+            entity.Property(e => e.DestinationMasked).HasMaxLength(100);
+            entity.Property(e => e.OtpHash).HasMaxLength(128);
+            entity.Property(e => e.ExpiresAt).HasColumnType("datetime");
+            entity.Property(e => e.LockedUntil).HasColumnType("datetime");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.VerifiedAt).HasColumnType("datetime");
+            entity.HasIndex(e => new { e.EntityType, e.EntityId, e.Action });
+        });
+
+        modelBuilder.Entity<OtpAuditLog>(entity =>
+        {
+            entity.HasKey(e => e.OtpAuditLogId);
+            entity.ToTable("OtpAuditLog");
+            entity.Property(e => e.Action).HasMaxLength(50);
+            entity.Property(e => e.EntityType).HasMaxLength(50);
+            entity.Property(e => e.EntityId).HasMaxLength(100);
+            entity.Property(e => e.ToMasked).HasMaxLength(100);
+            entity.Property(e => e.At).HasColumnType("datetime");
+            entity.HasIndex(e => e.At);
+        });
+
+        modelBuilder.Entity<AuditEvent>(entity =>
+        {
+            entity.HasKey(e => e.AuditEventId);
+            entity.ToTable("AuditEvent");
+            entity.Property(e => e.Role).HasMaxLength(50);
+            entity.Property(e => e.Action).HasMaxLength(100);
+            entity.Property(e => e.Entity).HasMaxLength(100);
+            entity.Property(e => e.CorrelationId).HasMaxLength(64);
+            entity.Property(e => e.At).HasColumnType("datetime");
+            entity.HasIndex(e => e.At);
+            entity.HasIndex(e => e.ActorUserId);
+        });
+
+        modelBuilder.Entity<SecureDocument>(entity =>
+        {
+            entity.HasKey(e => e.SecureDocumentId);
+            entity.ToTable("SecureDocument");
+            entity.Property(e => e.OwnerType).HasMaxLength(50);
+            entity.Property(e => e.BlobPath).HasMaxLength(1000);
+            entity.Property(e => e.FileName).HasMaxLength(255);
+            entity.Property(e => e.Mime).HasMaxLength(100);
+            entity.Property(e => e.Hash).HasMaxLength(128);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.HasIndex(e => new { e.OwnerType, e.OwnerId });
         });
 
         modelBuilder.Entity<YearMaster>(entity =>

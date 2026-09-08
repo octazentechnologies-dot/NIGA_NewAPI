@@ -13,6 +13,7 @@ using Niga_Domain.Helpers;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
+using Niga_Domain.Authorization;
 namespace NIGA.Centrum.API.Controllers
 {
     /// <summary>
@@ -93,6 +94,7 @@ namespace NIGA.Centrum.API.Controllers
             return subsection;
         }
         [HttpPost("AddSubSection")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddNewSection(AddSubSectionModel subSection)
         {
             try
@@ -155,6 +157,7 @@ namespace NIGA.Centrum.API.Controllers
 
 
         [HttpPost("UpdateSectionDetails")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateSectionDetails(AddSubSectionModel updatesubsection)
         {
             try
@@ -216,6 +219,7 @@ namespace NIGA.Centrum.API.Controllers
         }
 
         [HttpPost("DeleteSubSectionDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteSectionDetails(int Id)
         {
             var data = await _subSectionService.GetSubSectionById(Id);
@@ -254,6 +258,7 @@ namespace NIGA.Centrum.API.Controllers
         }
 
         [HttpPost("DeleteReferenceRubricDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteReferenceRubricDetails(int Id)
         {
             var data = await _subSectionService.GetReferenceRubricById(Id);
@@ -292,6 +297,7 @@ namespace NIGA.Centrum.API.Controllers
         }
 
         [HttpPost("DeleteSubLanguageDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteSubLanguageDetails(int Id)
         {
             var data = await _subSectionService.GetSubLanguageById(Id);
@@ -385,6 +391,7 @@ namespace NIGA.Centrum.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> ImportFromExcel(IFormFile file)
         {
             try
@@ -413,6 +420,7 @@ namespace NIGA.Centrum.API.Controllers
         }
 
         [HttpGet("ExportSubSectionsToExcel/{sectionId}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> ExportSubSectionsToExcel(int sectionId)
         {
             var fileContent = await _subSectionService.ExportSubSectionsToExcel(sectionId);
@@ -421,6 +429,7 @@ namespace NIGA.Centrum.API.Controllers
         }
 
         [HttpPost("UpdateSubSectionsFromExcel")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> UpdateSubSectionsFromExcel(IFormFile file)
         {
             if (file == null || file.Length == 0)
@@ -439,6 +448,7 @@ namespace NIGA.Centrum.API.Controllers
         }
 
         [HttpPost("ImportSubSectionsFromExcel")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> ImportSubSectionsFromExcelForPC(IFormFile file)
         {
             if (file == null || file.Length == 0)
@@ -458,6 +468,7 @@ namespace NIGA.Centrum.API.Controllers
 
         [HttpGet("DownloadReferenceRubricsTemplate")]
         [ProducesResponseType(typeof(FileContentResult), 200)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public IActionResult DownloadReferenceRubricsTemplate([FromQuery] string format = "excel")
         {
             var normalizedFormat = (format ?? "excel").Trim().ToLowerInvariant();
@@ -477,6 +488,7 @@ namespace NIGA.Centrum.API.Controllers
         [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
         [ProducesResponseType(typeof(ReferenceRubricImportResultModel), 200)]
         [ProducesResponseType(typeof(string), 400)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> ImportReferenceRubrics(IFormFile file)
         {
             if (file == null || file.Length == 0)
