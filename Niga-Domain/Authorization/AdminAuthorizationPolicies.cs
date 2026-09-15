@@ -10,6 +10,9 @@ namespace Niga_Domain.Authorization
     {
         public const string AdminPortal = "AdminPortal";
 
+        /// <summary>SEC-04.01 — future money APIs (M08). Account role only.</summary>
+        public const string AccountPortal = "AccountPortal";
+
         /// <summary>RoleId 1 = SuperUser / Admin in HomeoCentrum RoleMaster.</summary>
         public const int SuperUserRoleId = 1;
 
@@ -17,6 +20,11 @@ namespace Niga_Domain.Authorization
         {
             "Admin",
             "Management"
+        };
+
+        public static readonly string[] AccountPortalRoleNames =
+        {
+            "Account"
         };
 
         public static bool IsAdminPortalUser(ClaimsPrincipal? user)
@@ -46,6 +54,34 @@ namespace Niga_Domain.Authorization
                 return false;
 
             foreach (var allowed in AdminPortalRoleNames)
+            {
+                if (string.Equals(allowed, roleName.Trim(), StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        public static bool IsAccountPortalUser(ClaimsPrincipal? user)
+        {
+            if (user?.Identity?.IsAuthenticated != true)
+                return false;
+
+            foreach (var claim in user.FindAll(ClaimTypes.Role))
+            {
+                if (IsAccountPortalRoleName(claim.Value))
+                    return true;
+            }
+
+            return IsAccountPortalRoleName(GetRoleName(user));
+        }
+
+        public static bool IsAccountPortalRoleName(string? roleName)
+        {
+            if (string.IsNullOrWhiteSpace(roleName))
+                return false;
+
+            foreach (var allowed in AccountPortalRoleNames)
             {
                 if (string.Equals(allowed, roleName.Trim(), StringComparison.OrdinalIgnoreCase))
                     return true;

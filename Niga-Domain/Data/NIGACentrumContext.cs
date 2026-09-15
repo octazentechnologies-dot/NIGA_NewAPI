@@ -411,6 +411,12 @@ namespace Niga_Domain.Data
 
     public virtual DbSet<SecureDocument> SecureDocuments { get; set; }
 
+    public virtual DbSet<PatientUserMap> PatientUserMaps { get; set; }
+
+    public virtual DbSet<PatientFamilyMember> PatientFamilyMembers { get; set; }
+
+    public virtual DbSet<CaregiverAuthorization> CaregiverAuthorizations { get; set; }
+
     public virtual DbSet<WhatsAppMessageLog> WhatsAppMessageLogs { get; set; }
 
     public virtual DbSet<WhatsAppTemplateMaster> WhatsAppTemplateMasters { get; set; }
@@ -3141,6 +3147,39 @@ namespace Niga_Domain.Data
             entity.Property(e => e.Hash).HasMaxLength(128);
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.HasIndex(e => new { e.OwnerType, e.OwnerId });
+        });
+
+        modelBuilder.Entity<PatientUserMap>(entity =>
+        {
+            entity.HasKey(e => e.PatientUserMapId);
+            entity.ToTable("PatientUserMap");
+            entity.Property(e => e.EnteredBy).HasMaxLength(100);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            entity.HasIndex(e => e.PatientId);
+        });
+
+        modelBuilder.Entity<PatientFamilyMember>(entity =>
+        {
+            entity.HasKey(e => e.FamilyMemberId);
+            entity.ToTable("PatientFamilyMember");
+            entity.Property(e => e.Relation).HasMaxLength(50);
+            entity.Property(e => e.EnteredBy).HasMaxLength(100);
+            entity.Property(e => e.ChangedBy).HasMaxLength(100);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            entity.Property(e => e.ChangedDate).HasColumnType("datetime");
+            entity.HasIndex(e => new { e.OwnerUserId, e.OwnerPatientId });
+            entity.HasIndex(e => e.MemberPatientId);
+        });
+
+        modelBuilder.Entity<CaregiverAuthorization>(entity =>
+        {
+            entity.HasKey(e => e.CaregiverAuthorizationId);
+            entity.ToTable("CaregiverAuthorization");
+            entity.Property(e => e.Scope).HasMaxLength(100);
+            entity.Property(e => e.GrantedAt).HasColumnType("datetime");
+            entity.Property(e => e.RevokedAt).HasColumnType("datetime");
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => e.CaregiverUserId);
         });
 
         modelBuilder.Entity<YearMaster>(entity =>

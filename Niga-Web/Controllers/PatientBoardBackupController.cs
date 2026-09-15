@@ -128,11 +128,12 @@ public class PatientBoardBackupController : ControllerBase
     /// <summary>
     /// JWT-bound: doctors use NameIdentifier (UserId). Reception with DoctorID claim still keys
     /// backup by their staff id unless DoctorUserId claim is present — never accept client doctorUserId.
+    /// SEC-05.01 satisfied for backup via JWT userId binding (no client doctorUserId accepted).
     /// </summary>
     private int ResolveDoctorUserId()
     {
         // Always bind to JWT — never accept query/body doctor user ids (SEC-05.01 IDOR).
-        _ = DoctorOwnership.GetDoctorId(User); // documented helper for cross-controller ownership checks
+        _ = DoctorOwnership.GetDoctorId(User);
         return User.GetUserId();
     }
 

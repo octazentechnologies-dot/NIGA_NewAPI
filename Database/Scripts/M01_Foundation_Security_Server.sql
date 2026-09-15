@@ -208,13 +208,8 @@ GO
 
 -- =============================================================================
 -- SEC-04.03 — Separation of duties (Account vs Admin)
--- Menu/RoleDetails seed is environment-specific (ModuleId / MenuId differ).
--- After Account role exists, link money menus to Account and clinical/platform to Admin
--- using your live MenuMaster IDs. Template (commented):
---
--- DECLARE @AccountRoleId INT = (SELECT TOP 1 RoleId FROM RoleMaster WHERE RoleName = N'Account' AND ISNULL(DeleteStatus,0)=0);
--- DECLARE @AdminRoleId INT = (SELECT TOP 1 RoleId FROM RoleMaster WHERE RoleId = 1 OR RoleName = N'Admin');
--- -- INSERT RoleDetails for Account money menus / Admin clinical menus as needed.
+-- Applied by Database/Scripts/M02_W7_MenuMaster_Account_Pharmacy_Seed.sql
+-- (Account money stub menus → Account role only; Admin clinical menus unchanged).
 -- =============================================================================
 
 PRINT 'M01_Foundation_Security_Server.sql completed. Next: deploy APIs, then login once per user OR run MigratePlaintextPasswords.';
