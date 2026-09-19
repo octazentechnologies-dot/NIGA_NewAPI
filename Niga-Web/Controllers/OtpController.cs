@@ -31,6 +31,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("RequestOtp")]
+        [AllowAnonymous]
         public async Task<IActionResult> RequestOtp([FromBody] RequestOtpModel request)
         {
             if (request == null
@@ -40,6 +41,20 @@ namespace Niga_Domain.API.Controllers
                 || string.IsNullOrWhiteSpace(request.Destination))
             {
                 return BadRequest(new { success = false, message = "Action, EntityType, EntityId, and Destination are required." });
+            }
+
+            var isLogin = request.Action.Equals("Login", StringComparison.OrdinalIgnoreCase);
+            if (!isLogin && User?.Identity?.IsAuthenticated != true)
+                return Unauthorized(new { success = false, message = "Sign in required to request this OTP." });
+
+            if (isLogin)
+            {
+                var digits = Niga_Domain.Security.PhoneNormalizer.Digits(request.Destination);
+                if (digits.Length < 8)
+                    return BadRequest(new { success = false, message = "Destination must be a valid mobile number for Login OTP." });
+                request.EntityType = "Mobile";
+                request.EntityId = digits;
+                request.Destination = digits;
             }
 
             var since = DateTime.UtcNow.Subtract(RateLimitWindow);
@@ -76,7 +91,7 @@ namespace Niga_Domain.API.Controllers
                 ToMasked = masked,
                 Success = true,
                 At = DateTime.UtcNow,
-                ActorUserId = User.GetUserId()
+                ActorUserId = User?.Identity?.IsAuthenticated == true ? User.GetUserId() : null
             });
             await _context.SaveChangesAsync();
 
@@ -96,6 +111,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("VerifyOtp")]
+        [AllowAnonymous]
         public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpModel request)
         {
             if (request == null || request.OtpChallengeId <= 0 || string.IsNullOrWhiteSpace(request.Code))
@@ -182,7 +198,7 @@ namespace Niga_Domain.API.Controllers
                 ToMasked = challenge.DestinationMasked,
                 Success = success,
                 At = DateTime.UtcNow,
-                ActorUserId = User.GetUserId()
+                ActorUserId = User?.Identity?.IsAuthenticated == true ? User.GetUserId() : null
             });
             await _context.SaveChangesAsync();
         }

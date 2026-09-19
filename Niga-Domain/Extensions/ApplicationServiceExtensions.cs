@@ -58,6 +58,7 @@ namespace Niga_Domain.Extensions
             services.AddScoped<ITokenService, TokenService>();
             services.AddSingleton<IJwtDenylistService, JwtDenylistService>();
             services.AddScoped<IAuditEventWriter, AuditEventWriter>();
+            services.AddSingleton<ISignedFileUrlService, SignedFileUrlService>();
             services.Configure<Niga_Domain.DTOs.SmtpSettingsModel>(config.GetSection("smtp"));
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<ISectionRepository, SectionService>();

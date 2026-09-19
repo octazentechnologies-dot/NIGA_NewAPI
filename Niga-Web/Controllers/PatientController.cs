@@ -1,9 +1,13 @@
 ﻿using API.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Helpers;
 using Niga_Domain.Interface;
+using Niga_Domain.Security;
+using Niga_Domain.Extensions;
 using System.Net;
 
 namespace Niga_Domain.API.Controllers
@@ -21,14 +25,12 @@ namespace Niga_Domain.API.Controllers
     public class PatientController : BaseAPIController
     {
         IPatientService _patientService;
+        private readonly NIGACentrumContext _context;
 
-        /// <summary>
-        /// Used to initialize controller and inject patient Service
-        /// </summary>
-        /// <param name="patientService"></param>
-        public PatientController(IPatientService patientService)
+        public PatientController(IPatientService patientService, NIGACentrumContext context)
         {
             _patientService = patientService;
+            _context = context;
         }
 
         /// <summary>
@@ -40,13 +42,15 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public async Task<List<PatientModel>> GetCases([FromQuery] ParameterParams parameterParams)
+        public async Task<IActionResult> GetCases(long UserId, [FromQuery] ParameterParams parameterParams)
         {
-           
-                var patientList = await _patientService.GetCases(parameterParams);
-                Response.AddPaginationHeader(patientList.CurrentPage, patientList.PageSize,
-                    patientList.TotalCount, patientList.TotalPages);
-                return patientList;
+            if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, UserId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+
+            var patientList = await _patientService.GetCases(parameterParams);
+            Response.AddPaginationHeader(patientList.CurrentPage, patientList.PageSize,
+                patientList.TotalCount, patientList.TotalPages);
+            return Ok(patientList);
         }
 
        
@@ -65,6 +69,16 @@ namespace Niga_Domain.API.Controllers
             }
             try
             {
+                if (!DoctorOwnership.IsAdminPortalUser(User))
+                {
+                    var jwtDoctor = DoctorOwnership.GetDoctorId(User);
+                    if (jwtDoctor.HasValue && model.DoctorID <= 0)
+                        model.DoctorID = jwtDoctor.Value;
+                    var forbid = DoctorOwnership.ForbidIfNotOwner(User, model.DoctorID);
+                    if (forbid != null)
+                        return forbid;
+                }
+
                 var userModel = await _patientService.SavePatient(model);
                 if (
                     !string.IsNullOrEmpty(userModel.Message)
@@ -99,7 +113,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetPatientDetails(long PatientID,long caseId)
+        public async Task<IActionResult> GetPatientDetails(long PatientID,long caseId)
         {
             ErrorResponseModel errorResponseModel = null;
             try
@@ -108,6 +122,8 @@ namespace Niga_Domain.API.Controllers
 
                 if (patientModelList != null)
                 {
+                    if (!await CanAccessPatientAsync((int)PatientID, patientModelList.DoctorID))
+                        return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
                     return Ok(patientModelList);
                 }
                 return ReturnErrorResponse(errorResponseModel);
@@ -362,6 +378,9 @@ namespace Niga_Domain.API.Controllers
                 return BadRequest("userId is required.");
             }
 
+            if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+
             var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (extension is not (".xlsx" or ".xls" or ".csv"))
             {
@@ -380,6 +399,32 @@ namespace Niga_Domain.API.Controllers
             catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
+
+        private async Task<bool> CanAccessPatientAsync(int patientId, int resourceDoctorId)
+        {
+            if (DoctorOwnership.EnsureDoctorOwns(User, resourceDoctorId))
+                return true;
+
+            var jwtDoctor = DoctorOwnership.GetDoctorId(User);
+            if (jwtDoctor.HasValue)
+            {
+                return await _context.PatientAppointments.AsNoTracking().AnyAsync(a =>
+                    a.PatientId == patientId && a.DoctorId == jwtDoctor.Value && a.DeleteStatus != true);
+            }
+
+            try
+            {
+                var userId = (long)User.GetUserId();
+                return await _context.PatientUserMaps.AsNoTracking().AnyAsync(m =>
+                        m.UserId == userId && m.PatientId == patientId && !m.DeleteStatus)
+                    || await _context.PatientFamilyMembers.AsNoTracking().AnyAsync(f =>
+                        f.OwnerUserId == userId && f.MemberPatientId == patientId && !f.DeleteStatus);
+            }
+            catch
+            {
+                return false;
             }
         }
 

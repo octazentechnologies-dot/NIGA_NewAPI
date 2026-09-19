@@ -11,7 +11,6 @@ using Microsoft.OpenApi.Models;
 using Niga_Domain.Data;
 using API.Entities;
 using Niga_Domain.Configuration.CorsPolicyConfig;
-using Microsoft.Extensions.FileProviders;
 using Niga_Domain.Authorization;
 
 
@@ -120,6 +119,9 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AdminAuthorizationPolicies.AdminPortal, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx => AdminAuthorizationPolicies.IsAdminPortalUser(ctx.User)));
+    options.AddPolicy(AdminAuthorizationPolicies.AccountPortal, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx => AdminAuthorizationPolicies.IsAccountPortalUser(ctx.User)));
 });
 
 var app = builder.Build();
@@ -140,42 +142,14 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<Niga_Domain.Services.MutatingAuditMiddleware>();
 app.UseCorsPolicy()
     .UseResponseCaching()
     .UseDefaultFiles()
     .UseStaticFiles();
 
-
-
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(
-                 Path.Combine(Directory.GetCurrentDirectory(), @"Data/attachments")),
-    RequestPath = "/attachments"
-});
-
-app.UseDirectoryBrowser(new DirectoryBrowserOptions
-{
-    FileProvider = new PhysicalFileProvider(
-            Path.Combine(Directory.GetCurrentDirectory(), @"Data/attachments")),
-    RequestPath = "/attachments"
-});
-
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(
-                 Path.Combine(Directory.GetCurrentDirectory(), @"Data/Blogs")),
-    RequestPath = "/Blogs"
-});
-
-app.UseDirectoryBrowser(new DirectoryBrowserOptions
-{
-    FileProvider = new PhysicalFileProvider(
-            Path.Combine(Directory.GetCurrentDirectory(), @"Data/Blogs")),
-    RequestPath = "/Blogs"
-});
-
-
+// SEC-05.02 — do not serve /attachments or /Blogs anonymously.
+// Use GET /api/SecureFile/{root}/{*path} (JWT) or signed /api/SecureFile/Download.
 
 app.MapControllers();
 

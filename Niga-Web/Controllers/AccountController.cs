@@ -519,6 +519,144 @@ namespace Niga_Domain.API.Controllers
             }
         }
 
+        /// <summary>PAT-03.02 — Phone + OTP → JWT (web login stays classic password).</summary>
+        [HttpPost("LoginWithOtp")]
+        [AllowAnonymous]
+        public async Task<IActionResult> LoginWithOtp([FromBody] LoginWithOtpRequest request)
+        {
+            try
+            {
+                if (request == null
+                    || request.OtpChallengeId <= 0
+                    || string.IsNullOrWhiteSpace(request.Code)
+                    || string.IsNullOrWhiteSpace(request.MobileNo))
+                {
+                    return BadRequest(new { success = false, message = "OtpChallengeId, Code, and MobileNo are required." });
+                }
+
+                var mobile = PhoneNormalizer.Digits(request.MobileNo);
+                if (mobile.Length < 8)
+                    return BadRequest(new { success = false, message = "MobileNo is invalid." });
+
+                var challenge = await _context.OtpChallenges
+                    .FirstOrDefaultAsync(c => c.OtpChallengeId == request.OtpChallengeId);
+                if (challenge == null)
+                    return NotFound(new { success = false, message = "OTP challenge not found." });
+
+                if (!string.Equals(challenge.Action, "Login", StringComparison.OrdinalIgnoreCase))
+                    return BadRequest(new { success = false, message = "OTP is not a login challenge." });
+
+                if (challenge.LockedUntil.HasValue && challenge.LockedUntil > DateTime.UtcNow)
+                    return StatusCode(StatusCodes.Status423Locked, new { success = false, message = "OTP locked due to too many attempts." });
+
+                if (challenge.VerifiedAt != null || challenge.ExpiresAt < DateTime.UtcNow)
+                    return BadRequest(new { success = false, message = "OTP expired or already used." });
+
+                var destDigits = PhoneNormalizer.Digits(challenge.EntityId);
+                if (string.IsNullOrEmpty(destDigits))
+                    destDigits = PhoneNormalizer.Digits(challenge.DestinationMasked);
+                if (!PhoneNormalizer.EqualsNormalized(mobile, challenge.EntityId)
+                    && !string.Equals(challenge.EntityId, mobile, StringComparison.Ordinal))
+                {
+                    // EntityId should be the mobile digits from RequestOtp.
+                    if (!string.Equals(challenge.EntityId, request.MobileNo.Trim(), StringComparison.OrdinalIgnoreCase)
+                        && destDigits != mobile)
+                    {
+                        return BadRequest(new { success = false, message = "OTP does not match this mobile number." });
+                    }
+                }
+
+                challenge.AttemptCount++;
+                var ok = string.Equals(
+                    SecurityTokenHash.Sha256Hex(request.Code.Trim()),
+                    challenge.OtpHash,
+                    StringComparison.OrdinalIgnoreCase);
+                if (!ok)
+                {
+                    if (challenge.AttemptCount >= 5)
+                        challenge.LockedUntil = DateTime.UtcNow.AddMinutes(15);
+                    await _context.SaveChangesAsync();
+                    return BadRequest(new { success = false, message = "Invalid OTP." });
+                }
+
+                challenge.VerifiedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                var users = await _context.UserMasters
+                    .Where(u => !u.DeleteStatus && u.MobileNo != null)
+                    .ToListAsync();
+                var userEntity = users.FirstOrDefault(u => PhoneNormalizer.EqualsNormalized(u.MobileNo, mobile));
+                if (userEntity == null)
+                    return Unauthorized(new { success = false, message = "No account for this mobile number." });
+
+                if (userEntity.IsUserActivated != true)
+                    return Unauthorized(new { success = false, message = "Account is deactivated. Please contact administrator." });
+
+                var roleEntity = await _context.RoleMasters
+                    .FirstOrDefaultAsync(x => x.RoleId == userEntity.RoleId);
+                if (roleEntity == null)
+                    return BadRequest(new { success = false, message = "User role not found." });
+
+                int? doctorId = null;
+                var doctorEntity = await _context.Doctors.AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.UserId == userEntity.UserId && d.DeleteStatus == false);
+                if (doctorEntity != null)
+                    doctorId = doctorEntity.DoctorId;
+
+                var token = await _tokenService.CreateToken(userEntity, 7 * 24 * 60, roleEntity.RoleName, doctorId);
+                var userData = new AuthModel
+                {
+                    IsSuperUser = roleEntity.RoleId == 1,
+                    UserId = userEntity.UserId,
+                    UserName = $"{userEntity.FirstName} {userEntity.LastName}".Trim(),
+                    Role = roleEntity.RoleName,
+                    RoleId = userEntity.RoleId,
+                    FirmIds = userEntity.FirmIds,
+                    Token = token,
+                    DoctorId = doctorId
+                };
+
+                return Ok(new { success = true, message = "Login successful", data = userData });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>DMO-02.02 — Confirm entered number matches UserMaster / Doctor profile.</summary>
+        [HttpPost("ConfirmMobile")]
+        [Authorize]
+        public async Task<IActionResult> ConfirmMobile([FromBody] ConfirmMobileRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.MobileNo))
+                return BadRequest(new { success = false, message = "MobileNo is required." });
+
+            var userId = User.GetUserId();
+            var user = await _context.UserMasters.AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UserId == userId && !u.DeleteStatus);
+            if (user == null)
+                return NotFound(new { success = false, message = "User not found." });
+
+            var doctor = await _context.Doctors.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.UserId == userId && d.DeleteStatus == false);
+
+            var entered = PhoneNormalizer.Digits(request.MobileNo);
+            var matched = PhoneNormalizer.EqualsNormalized(entered, user.MobileNo)
+                || PhoneNormalizer.EqualsNormalized(entered, doctor?.MobileNo);
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    matched,
+                    profileMasked = PhoneNormalizer.Mask(user.MobileNo ?? doctor?.MobileNo),
+                    role = AdminAuthorizationPolicies.GetRoleName(User)
+                }
+            });
+        }
+
         [HttpGet("SubscriptionStatus")]
         [Authorize]
         public async Task<IActionResult> GetSubscriptionStatus()
