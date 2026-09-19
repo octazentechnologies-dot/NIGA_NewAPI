@@ -1,0 +1,16 @@
+S1 WEEK 1 — MOBILE APP API DOCUMENT
+Date       : 17-Sep-2026
+--------------------------------------------------------------------------------
+SUGGESTED PATIENT APP FLOW
+--------------------------------------------------------------------------------
+  1. GET  /Welcome/Patient                         (no token)
+  2. POST /Otp/RequestOtp          Action=Login    (no token)
+  3. POST /Account/LoginWithOtp                    (no token) -> save data.token
+  4. GET  /Consent/PrivacyStatus
+     if data.granted == false -> POST /Consent/GrantPrivacy
+  5. GET  /PatientProfile/Me
+     PUT  /PatientProfile/Me   (name, language, etc.)
+     GET  /mastersAPI/GetLanguages
+  6. POST /Device/Register     (FCM / APNs)
+  7. Family / caregiver APIs below
+  8. POST /Account/Logout      (must call server; do not only delete local token)

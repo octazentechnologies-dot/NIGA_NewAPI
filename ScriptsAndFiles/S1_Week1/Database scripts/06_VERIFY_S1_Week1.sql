@@ -99,5 +99,19 @@ ELSE
     WHERE um.UserName = N'tufanpowar001@gmail.com'
       AND ISNULL(um.DeleteStatus, 0) = 0;
 
+PRINT '--- S1-TESTED sample rows in new tables (script 08) ---';
+SELECT N'ConsentRecord' AS SampleTable, COUNT(*) AS TestedRows FROM dbo.ConsentRecord WHERE Notes LIKE N'S1-TESTED%'
+UNION ALL SELECT N'PatientFamilyMember', COUNT(*) FROM dbo.PatientFamilyMember WHERE EnteredBy = N'S1-TESTED'
+UNION ALL SELECT N'UserAppPreference', COUNT(*) FROM dbo.UserAppPreference um
+    INNER JOIN dbo.UserMaster u ON u.UserId = um.UserId WHERE u.UserName = N'tufanpowar001@gmail.com'
+UNION ALL SELECT N'DevicePushToken', COUNT(*) FROM dbo.DevicePushToken WHERE Token = N'S1-TESTED-FCM-TOKEN'
+UNION ALL SELECT N'OtpChallenge', COUNT(*) FROM dbo.OtpChallenge WHERE DestinationMasked LIKE N'S1-TESTED%'
+UNION ALL SELECT N'OtpAuditLog', COUNT(*) FROM dbo.OtpAuditLog WHERE ToMasked = N'S1-TESTED ****6064'
+UNION ALL SELECT N'AuditEvent', COUNT(*) FROM dbo.AuditEvent WHERE CorrelationId = N'S1-TESTED'
+UNION ALL SELECT N'SecureDocument', COUNT(*) FROM dbo.SecureDocument WHERE BlobPath = N'attachments/s1-tested/sample.pdf'
+UNION ALL SELECT N'PasswordResetToken', COUNT(*) FROM dbo.PasswordResetToken pr
+    INNER JOIN dbo.UserMaster um ON um.UserId = pr.UserId
+    WHERE um.UserName = N'tufanpowar001@gmail.com';
+
 PRINT '06_VERIFY_S1_Week1.sql completed.';
 GO
