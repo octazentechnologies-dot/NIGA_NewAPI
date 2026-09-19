@@ -50,6 +50,9 @@ namespace Niga_Domain.API.Controllers
                 var PatientAppModel = _PatientAppointmentService.GetPatientAppById(PatientAppId, ref errorResponseModel);
                 if (PatientAppModel != null)
                 {
+                    var forbid = DoctorOwnership.ForbidIfNotOwner(User, PatientAppModel.DoctorId);
+                    if (forbid != null)
+                        return forbid;
                     return Ok(PatientAppModel);
                 }
                 return ReturnErrorResponse(errorResponseModel);
@@ -202,6 +205,10 @@ namespace Niga_Domain.API.Controllers
             ErrorResponseModel errorResponseModel = new ErrorResponseModel();
             try
             {
+                if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { success = false, message = "Access denied for this doctor resource." });
+
                 var PatientModelList = _PatientAppointmentService.GetCasesByUser(userId, ref errorResponseModel);
                 if (PatientModelList != null)
                 {

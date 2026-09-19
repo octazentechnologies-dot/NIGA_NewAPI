@@ -6,6 +6,7 @@ using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Extensions;
 using Niga_Domain.Master;
+using Niga_Domain.Services;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -25,6 +26,8 @@ namespace Niga_Domain.API.Controllers
             _context = context;
         }
 
+        public const string GrantOtpAction = "GrantCaregiver";
+
         [HttpPost("Grant")]
         public async Task<IActionResult> Grant([FromBody] CaregiverGrantRequest request)
         {
@@ -39,6 +42,11 @@ namespace Niga_Domain.API.Controllers
                 if (!owns)
                     return StatusCode(StatusCodes.Status403Forbidden,
                         new { success = false, message = "Only the patient account linked to this PatientId may grant caregiver access." });
+
+                // CON-02.04 — OTP required on grant (SMS stub via /api/Otp/RequestOtp).
+                var otpError = await VerifyGrantOtpAsync(request);
+                if (otpError != null)
+                    return otpError;
             }
 
             var active = await _context.CaregiverAuthorizations.FirstOrDefaultAsync(c =>
@@ -139,6 +147,60 @@ namespace Niga_Domain.API.Controllers
                 .ToListAsync();
 
             return Ok(new { success = true, data = rows.Select(ToDto).ToList() });
+        }
+
+        /// <summary>CON-02.04 — consume OtpChallenge for Action=GrantCaregiver / Patient / PatientId.</summary>
+        private async Task<IActionResult?> VerifyGrantOtpAsync(CaregiverGrantRequest request)
+        {
+            if (request.OtpChallengeId <= 0 || string.IsNullOrWhiteSpace(request.OtpCode))
+                return BadRequest(new { success = false, message = "OTP is required to grant caregiver access. Request OTP first (Action=GrantCaregiver)." });
+
+            var challenge = await _context.OtpChallenges
+                .FirstOrDefaultAsync(c => c.OtpChallengeId == request.OtpChallengeId);
+            if (challenge == null)
+                return NotFound(new { success = false, message = "OTP challenge not found." });
+
+            if (!string.Equals(challenge.Action, GrantOtpAction, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(challenge.EntityType, "Patient", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(challenge.EntityId, request.PatientId.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { success = false, message = "OTP does not match this caregiver grant." });
+            }
+
+            if (challenge.LockedUntil.HasValue && challenge.LockedUntil > DateTime.UtcNow)
+                return StatusCode(StatusCodes.Status423Locked, new { success = false, message = "OTP locked due to too many attempts." });
+
+            if (challenge.VerifiedAt != null || challenge.ExpiresAt < DateTime.UtcNow)
+                return BadRequest(new { success = false, message = "OTP expired or already used." });
+
+            challenge.AttemptCount++;
+            var ok = string.Equals(
+                SecurityTokenHash.Sha256Hex(request.OtpCode.Trim()),
+                challenge.OtpHash,
+                StringComparison.OrdinalIgnoreCase);
+
+            _context.OtpAuditLogs.Add(new OtpAuditLog
+            {
+                Action = "VerifyOtp",
+                EntityType = challenge.EntityType,
+                EntityId = challenge.EntityId,
+                ToMasked = challenge.DestinationMasked,
+                Success = ok,
+                At = DateTime.UtcNow,
+                ActorUserId = User.GetUserId()
+            });
+
+            if (!ok)
+            {
+                if (challenge.AttemptCount >= 5)
+                    challenge.LockedUntil = DateTime.UtcNow.AddMinutes(15);
+                await _context.SaveChangesAsync();
+                return BadRequest(new { success = false, message = "Invalid OTP." });
+            }
+
+            challenge.VerifiedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return null;
         }
 
         private static CaregiverAuthorizationDto ToDto(CaregiverAuthorization c) => new()

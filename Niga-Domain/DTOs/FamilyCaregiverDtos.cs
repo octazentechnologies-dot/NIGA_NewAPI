@@ -62,6 +62,13 @@ namespace Niga_Domain.DTOs
 
         [MaxLength(100)]
         public string Scope { get; set; } = "booking";
+
+        /// <summary>CON-02.04 — OTP challenge from POST /api/Otp/RequestOtp (Action=GrantCaregiver). AdminPortal may omit.</summary>
+        public long OtpChallengeId { get; set; }
+
+        /// <summary>CON-02.04 — 6-digit code. AdminPortal may omit.</summary>
+        [MaxLength(12)]
+        public string? OtpCode { get; set; }
     }
 
     public class CaregiverRevokeRequest

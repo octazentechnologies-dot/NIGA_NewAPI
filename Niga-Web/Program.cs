@@ -147,6 +147,7 @@ app.UseCorsPolicy()
 
 
 
+// SEC-05.02 — static files only; directory browsing disabled on /attachments and /Blogs.
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(
@@ -154,24 +155,10 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/attachments"
 });
 
-app.UseDirectoryBrowser(new DirectoryBrowserOptions
-{
-    FileProvider = new PhysicalFileProvider(
-            Path.Combine(Directory.GetCurrentDirectory(), @"Data/attachments")),
-    RequestPath = "/attachments"
-});
-
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(
                  Path.Combine(Directory.GetCurrentDirectory(), @"Data/Blogs")),
-    RequestPath = "/Blogs"
-});
-
-app.UseDirectoryBrowser(new DirectoryBrowserOptions
-{
-    FileProvider = new PhysicalFileProvider(
-            Path.Combine(Directory.GetCurrentDirectory(), @"Data/Blogs")),
     RequestPath = "/Blogs"
 });
 
