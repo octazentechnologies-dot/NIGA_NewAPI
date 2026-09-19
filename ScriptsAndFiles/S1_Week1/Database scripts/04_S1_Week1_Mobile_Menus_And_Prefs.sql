@@ -1,6 +1,27 @@
--- S1 remaining: Patient menus (ADM-B04.01), welcome slides, user language pref, device tokens.
--- Idempotent. Run after 01 + 02 on HomeoCentrum_*.
+/*
+================================================================================
+Author       : Tufan Powar
+Created      : 17-09-2026
+Script       : 04_S1_Week1_Mobile_Menus_And_Prefs.sql
+Purpose      : Patient Family/Caregiver menus plus UserAppPreference, WelcomeSlide, DevicePushToken.
+Use          : Run after scripts 01 and 02.
+Prerequisites: RoleMaster Patient; ModuleMaster, MenuMaster, RoleDetails.
+Idempotent   : Yes. Creates missing tables/columns; inserts menus/slides only when absent.
+================================================================================
+*/
+
 SET NOCOUNT ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+
+IF OBJECT_ID(N'dbo.RoleMaster', N'U') IS NULL
+   OR OBJECT_ID(N'dbo.ModuleMaster', N'U') IS NULL
+   OR OBJECT_ID(N'dbo.MenuMaster', N'U') IS NULL
+   OR OBJECT_ID(N'dbo.RoleDetails', N'U') IS NULL
+BEGIN
+    RAISERROR('Required tables missing (RoleMaster / ModuleMaster / MenuMaster / RoleDetails).', 16, 1);
+    RETURN;
+END
 
 DECLARE @PatientRoleId INT = (
     SELECT TOP 1 RoleId FROM dbo.RoleMaster
@@ -26,6 +47,12 @@ END
 DECLARE @PatientModuleId INT = (
     SELECT TOP 1 ModuleId FROM dbo.ModuleMaster WHERE ModuleName = N'PatientApp' AND ISNULL(DeleteStatus, 0) = 0
 );
+
+IF @PatientModuleId IS NULL
+BEGIN
+    RAISERROR('PatientApp ModuleMaster row could not be resolved.', 16, 1);
+    RETURN;
+END
 
 IF OBJECT_ID('tempdb..#PatientMenus') IS NOT NULL DROP TABLE #PatientMenus;
 SELECT * INTO #PatientMenus FROM (VALUES
@@ -64,8 +91,9 @@ END
 CLOSE patient_cursor;
 DEALLOCATE patient_cursor;
 DROP TABLE #PatientMenus;
+GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'UserAppPreference' AND schema_id = SCHEMA_ID(N'dbo'))
+IF OBJECT_ID(N'dbo.UserAppPreference', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.UserAppPreference
     (
@@ -76,8 +104,15 @@ BEGIN
         CONSTRAINT PK_UserAppPreference PRIMARY KEY CLUSTERED (UserId)
     );
 END
+GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'WelcomeSlide' AND schema_id = SCHEMA_ID(N'dbo'))
+IF OBJECT_ID(N'dbo.UserAppPreference', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.UserAppPreference', N'PreferredLanguageId') IS NULL
+    ALTER TABLE dbo.UserAppPreference ADD PreferredLanguageId INT NULL;
+IF OBJECT_ID(N'dbo.UserAppPreference', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.UserAppPreference', N'WelcomeVersionSeen') IS NULL
+    ALTER TABLE dbo.UserAppPreference ADD WelcomeVersionSeen NVARCHAR(20) NULL;
+GO
+
+IF OBJECT_ID(N'dbo.WelcomeSlide', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.WelcomeSlide
     (
@@ -92,17 +127,29 @@ BEGIN
         CONSTRAINT PK_WelcomeSlide PRIMARY KEY CLUSTERED (WelcomeSlideId)
     );
 END
+GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.WelcomeSlide WHERE Audience = N'Patient' AND Title = N'Welcome to Homeocentrum')
+IF OBJECT_ID(N'dbo.WelcomeSlide', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WelcomeSlide', N'IsActive') IS NULL
+    ALTER TABLE dbo.WelcomeSlide ADD IsActive BIT NOT NULL CONSTRAINT DF_WelcomeSlide_IsActive DEFAULT (1);
+GO
+
+IF OBJECT_ID(N'dbo.WelcomeSlide', N'U') IS NOT NULL
 BEGIN
     INSERT INTO dbo.WelcomeSlide (Audience, SortOrder, Title, Body, Version, IsActive)
-    VALUES
+    SELECT v.Audience, v.SortOrder, v.Title, v.Body, v.Version, v.IsActive
+    FROM (VALUES
         (N'Patient', 1, N'Welcome to Homeocentrum', N'Your homeopathy care in one place — appointments, family, and prescriptions.', N'1', 1),
         (N'Patient', 2, N'Family first', N'Add family members and book for them with one account.', N'1', 1),
-        (N'Patient', 3, N'Your privacy', N'We ask for consent before sharing or recording. You can withdraw anytime.', N'1', 1);
+        (N'Patient', 3, N'Your privacy', N'We ask for consent before sharing or recording. You can withdraw anytime.', N'1', 1)
+    ) v(Audience, SortOrder, Title, Body, Version, IsActive)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.WelcomeSlide s
+        WHERE s.Audience = v.Audience AND s.Title = v.Title
+    );
 END
+GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'DevicePushToken' AND schema_id = SCHEMA_ID(N'dbo'))
+IF OBJECT_ID(N'dbo.DevicePushToken', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.DevicePushToken
     (
@@ -116,8 +163,17 @@ BEGIN
         DeleteStatus BIT NOT NULL CONSTRAINT DF_DevicePushToken_DeleteStatus DEFAULT (0),
         CONSTRAINT PK_DevicePushToken PRIMARY KEY CLUSTERED (DevicePushTokenId)
     );
-    CREATE INDEX IX_DevicePushToken_UserId_Token ON dbo.DevicePushToken (UserId, Token);
 END
+GO
 
-PRINT '05_S1_Week1_Mobile_Menus_And_Prefs.sql completed.';
+IF OBJECT_ID(N'dbo.DevicePushToken', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.DevicePushToken', N'DeviceId') IS NULL
+    ALTER TABLE dbo.DevicePushToken ADD DeviceId NVARCHAR(100) NULL;
+IF OBJECT_ID(N'dbo.DevicePushToken', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.DevicePushToken', N'DeleteStatus') IS NULL
+    ALTER TABLE dbo.DevicePushToken ADD DeleteStatus BIT NOT NULL CONSTRAINT DF_DevicePushToken_DeleteStatus DEFAULT (0);
+IF OBJECT_ID(N'dbo.DevicePushToken', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_DevicePushToken_UserId_Token' AND object_id = OBJECT_ID(N'dbo.DevicePushToken'))
+    CREATE INDEX IX_DevicePushToken_UserId_Token ON dbo.DevicePushToken (UserId, Token);
+GO
+
+PRINT '04_S1_Week1_Mobile_Menus_And_Prefs.sql completed.';
 GO
