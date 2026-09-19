@@ -10,6 +10,8 @@ public partial class ThreeDBodyPartSectionHotspot
 
     public string HotspotName { get; set; } = null!;
 
+    public int? SubSectionId { get; set; }
+
     public int? EnteredBy { get; set; }
 
     public DateTime? EnteredDate { get; set; }

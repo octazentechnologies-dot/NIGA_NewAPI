@@ -9,6 +9,7 @@ using Niga_Domain.Business.Interface;
 using Niga_Domain.API.Controllers;
 using Niga_Domain.Business.Interface;
 using Niga_Domain.DTOs;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -18,6 +19,7 @@ namespace Niga_Domain.API.Controllers
     [Route("api/PatientLab")]
     [ApiController]
     [Authorize]
+    [DoctorOnly]
     public class PatientLabController : BaseAPIController
     {
         IPatientLabOrderServices _patientLabOrderServices;

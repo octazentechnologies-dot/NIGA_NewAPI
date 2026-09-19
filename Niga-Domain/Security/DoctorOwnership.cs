@@ -64,6 +64,25 @@ namespace Niga_Domain.Security
             };
         }
 
+        public static IActionResult? ForbidIfReception(ClaimsPrincipal? user)
+        {
+            if (IsAdminPortalUser(user))
+                return null;
+
+            var role = user?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+                ?? user?.FindFirst("RoleName")?.Value;
+            if (!string.IsNullOrWhiteSpace(role)
+                && role.Equals("Reception", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ObjectResult(new { success = false, message = "Only the treating doctor can run case taking." })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// For JWT-bound endpoints that key by user id: reception/doctor must match GetUserId unless AdminPortal.
         /// </summary>

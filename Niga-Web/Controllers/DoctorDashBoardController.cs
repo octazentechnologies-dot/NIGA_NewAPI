@@ -10,6 +10,7 @@ using Niga_Domain.DTOs;
 using Niga_Domain.Enums;
 using Niga_Domain.Helpers;
 using Niga_Domain.Interface;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -46,6 +47,8 @@ namespace Niga_Domain.API.Controllers
             ErrorResponseModel errorResponseModel = null;
             try
             {
+                if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, patientAppmodel.UserId))
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
                 var patientAppModel = _doctorDashBoardService.GetPatientAppCount(patientAppmodel.UserId, patientAppmodel.AppointmentDate, ref errorResponseModel);
 
                 if (patientAppModel != null)
@@ -189,6 +192,9 @@ namespace Niga_Domain.API.Controllers
             {
                 return BadRequest("userId is required.");
             }
+
+            if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
 
             var normalizedScope = (scope ?? "all").Trim().ToLowerInvariant();
             var normalizedFormat = (format ?? "excel").Trim().ToLowerInvariant();

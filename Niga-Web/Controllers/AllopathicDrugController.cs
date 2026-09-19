@@ -6,11 +6,13 @@ using Niga_Domain.DTOs;
 using Niga_Domain.Helpers;
 
 using Niga_Domain.Authorization;
+using Niga_Domain.Security;
 namespace Niga_Domain.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
+    [DoctorOnly]
     public class AllopathicDrugController : ControllerBase
     {
         private readonly IAllopathicDrugService _allopathicDrugService;

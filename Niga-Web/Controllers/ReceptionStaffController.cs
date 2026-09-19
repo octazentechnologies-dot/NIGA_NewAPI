@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Niga_Domain.API.Helpers;
 using Niga_Domain.DTOs;
+using Niga_Domain.Extensions;
 using Niga_Domain.Interfaces;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -43,6 +45,8 @@ namespace Niga_Domain.API.Controllers
                 {
                     return ThreeDBodyPartApiResponseHelper.Failure(GetValidationMessage());
                 }
+
+                BindDoctorUserId(request);
 
                 var (success, message, result) = await _receptionStaffService.AddReceptionStaffAsync(request);
                 if (!success)
@@ -169,6 +173,8 @@ namespace Niga_Domain.API.Controllers
                     return ThreeDBodyPartApiResponseHelper.PaginatedFailure(GetValidationMessage());
                 }
 
+                BindDoctorUserId(request);
+
                 var (success, message, result) = await _receptionStaffService.GetReceptionStaffListAsync(request);
                 if (!success || result == null)
                 {
@@ -182,6 +188,20 @@ namespace Niga_Domain.API.Controllers
                 _logger.LogError(ex, "GetReceptionStaffList failed for DoctorUserID={DoctorUserId}", request.DoctorUserID);
                 return ThreeDBodyPartApiResponseHelper.PaginatedError(ex.Message);
             }
+        }
+
+        private void BindDoctorUserId(AddReceptionStaffRequest request)
+        {
+            if (DoctorOwnership.IsAdminPortalUser(User))
+                return;
+            request.DoctorUserID = User.GetUserId();
+        }
+
+        private void BindDoctorUserId(GetReceptionStaffListRequest request)
+        {
+            if (DoctorOwnership.IsAdminPortalUser(User))
+                return;
+            request.DoctorUserID = User.GetUserId();
         }
 
         private string GetValidationMessage()

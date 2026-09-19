@@ -132,8 +132,10 @@ public class PatientBoardBackupController : ControllerBase
     /// </summary>
     private int ResolveDoctorUserId()
     {
-        // Always bind to JWT — never accept query/body doctor user ids (SEC-05.01 IDOR).
-        _ = DoctorOwnership.GetDoctorId(User);
+        var doctorUserClaim = User.FindFirst("DoctorUserID")?.Value
+            ?? User.FindFirst("DoctorUserId")?.Value;
+        if (int.TryParse(doctorUserClaim, out var doctorUserId) && doctorUserId > 0)
+            return doctorUserId;
         return User.GetUserId();
     }
 

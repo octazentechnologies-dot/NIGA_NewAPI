@@ -18,4 +18,8 @@ public partial class EnquiryDetail
     public string? EnquiryDetails { get; set; }
 
     public bool? EnquiryStatus { get; set; }
+
+    public string? TicketStatus { get; set; }
+
+    public long? AssignedTo { get; set; }
 }

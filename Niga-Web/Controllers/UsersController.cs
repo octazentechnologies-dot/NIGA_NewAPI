@@ -147,6 +147,46 @@ namespace Niga_Domain.API.Controllers
             }
         }
 
+        [HttpPost("ActivateByToken")]
+        [AllowAnonymous]
+        public IActionResult ActivateByToken([FromBody] ActivateByTokenRequest model)
+        {
+            if (model == null || string.IsNullOrWhiteSpace(model.Token))
+                return BadRequest("Token is required");
+
+            try
+            {
+                var errorMessage = new ErrorResponseModel();
+                var result = _userService.ActivateByToken(model.Token, ref errorMessage);
+                if (result != null)
+                    return Ok(result);
+                return ReturnErrorResponse(errorMessage);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
+
+        [HttpPost("ResendActivation")]
+        [AllowAnonymous]
+        public IActionResult ResendActivation([FromBody] ResendActivationRequest model)
+        {
+            if (model == null || string.IsNullOrWhiteSpace(model.EmailId))
+                return BadRequest("EmailId is required");
+
+            try
+            {
+                var errorMessage = new ErrorResponseModel();
+                var result = _userService.ResendActivation(model.EmailId.Trim(), _mailSettings.Value, ref errorMessage);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
+
         [HttpGet("GetCount")]
         [Authorize]
         public IActionResult GetCount()

@@ -40,7 +40,8 @@ namespace Niga_Domain.Repositories
                     EnteredDate = h.EnteredDate,
                     ChangedBy = h.ChangedBy,
                     ChangedDate = h.ChangedDate,
-                    DeleteStatus = h.DeleteStatus
+                    DeleteStatus = h.DeleteStatus,
+                    SubSectionId = h.SubSectionId
                 }).FirstOrDefaultAsync();
         }
 
@@ -110,7 +111,8 @@ namespace Niga_Domain.Repositories
                        SectionHotspotId = h.SectionHotspotId,
                        SectionId = h.SectionId,
                        SectionName = sec != null ? sec.SectionName : null,
-                       HotspotName = h.HotspotName
+                       HotspotName = h.HotspotName,
+                       SubSectionId = h.SubSectionId
                    };
         }
     }

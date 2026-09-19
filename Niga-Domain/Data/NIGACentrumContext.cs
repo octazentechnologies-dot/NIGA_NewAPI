@@ -126,6 +126,12 @@ namespace Niga_Domain.Data
 
     public virtual DbSet<DoctorDailySchedule> DoctorDailySchedules { get; set; }
 
+    public virtual DbSet<DoctorPayeeKyc> DoctorPayeeKycs { get; set; }
+
+    public virtual DbSet<CogRun> CogRuns { get; set; }
+
+    public virtual DbSet<PolicyVersion> PolicyVersions { get; set; }
+
     public virtual DbSet<AudioCaseSession> AudioCaseSessions { get; set; }
 
     public virtual DbSet<AudioCaseSessionEventLog> AudioCaseSessionEventLogs { get; set; }
@@ -441,7 +447,7 @@ namespace Niga_Domain.Data
 #warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
         => optionsBuilder.UseSqlServer("Server=103.196.187.99,1433;Database=HomeoCentrum_Dev;User Id=sa;Password=nik@123JAM;TrustServerCertificate=True;");
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AccompaniedDetail>(entity =>
         {
@@ -1003,6 +1009,12 @@ namespace Niga_Domain.Data
             entity.Property(e => e.PassingUniversity).HasMaxLength(500);
             entity.Property(e => e.PermanantAddress).HasMaxLength(500);
             entity.Property(e => e.QualificationId).HasColumnName("QualificationID");
+            entity.Property(e => e.ClinicName).HasMaxLength(200);
+            entity.Property(e => e.ConsultFeeInClinic).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.ConsultFeeTele).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.PhotoPath).HasMaxLength(500);
+            entity.Property(e => e.WorkingHoursNote).HasMaxLength(500);
+            entity.Property(e => e.VerificationStatus).HasMaxLength(30);
 
             entity.HasOne(d => d.Package).WithMany(p => p.Doctors)
                 .HasForeignKey(d => d.PackageId)
@@ -1878,10 +1890,12 @@ namespace Niga_Domain.Data
         {
             entity.HasKey(e => e.EnquiryId);
 
+            entity.ToTable("EnquiryDetails");
             entity.Property(e => e.EmailId).HasMaxLength(100);
             entity.Property(e => e.EnquiryDate).HasColumnType("datetime");
             entity.Property(e => e.EnquiryName).HasMaxLength(100);
             entity.Property(e => e.MobileNo).HasMaxLength(15);
+            entity.Property(e => e.TicketStatus).HasMaxLength(30);
         });
 
         modelBuilder.Entity<FirmDetail>(entity =>
@@ -2344,6 +2358,11 @@ namespace Niga_Domain.Data
 
             entity.Property(e => e.AppointmentDate).HasMaxLength(50);
             entity.Property(e => e.Status).HasMaxLength(50);
+            entity.Property(e => e.BookingToken).HasMaxLength(64);
+            entity.Property(e => e.VisitType).HasMaxLength(50);
+            entity.Property(e => e.ConsultMode).HasMaxLength(50);
+            entity.Property(e => e.PaymentStatus).HasMaxLength(30);
+            entity.Property(e => e.ConsentPolicyVersion).HasMaxLength(20);
 
             entity.HasOne(d => d.Doctor).WithMany(p => p.PatientAppointments)
                 .HasForeignKey(d => d.DoctorId)
@@ -2883,8 +2902,41 @@ namespace Niga_Domain.Data
             entity.Property(e => e.SectionHotspotId).HasColumnName("SectionHotspotID");
             entity.Property(e => e.SectionId).HasColumnName("SectionID");
             entity.Property(e => e.HotspotName).HasMaxLength(200);
+            entity.Property(e => e.SubSectionId).HasColumnName("SubSectionId");
             entity.Property(e => e.EnteredDate).HasColumnType("datetime");
             entity.Property(e => e.ChangedDate).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<DoctorPayeeKyc>(entity =>
+        {
+            entity.HasKey(e => e.DoctorPayeeKycId);
+            entity.ToTable("DoctorPayeeKyc");
+            entity.Property(e => e.AccountHolder).HasMaxLength(200);
+            entity.Property(e => e.BankName).HasMaxLength(200);
+            entity.Property(e => e.AccountNumber).HasMaxLength(50);
+            entity.Property(e => e.Ifsc).HasMaxLength(20);
+            entity.Property(e => e.Pan).HasMaxLength(20);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<CogRun>(entity =>
+        {
+            entity.HasKey(e => e.CogRunId);
+            entity.ToTable("CogRun");
+            entity.Property(e => e.InputJson).HasColumnType("nvarchar(max)");
+            entity.Property(e => e.OutputJson).HasColumnType("nvarchar(max)");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<PolicyVersion>(entity =>
+        {
+            entity.HasKey(e => e.PolicyVersionId);
+            entity.ToTable("PolicyVersion");
+            entity.Property(e => e.PolicyType).HasMaxLength(30);
+            entity.Property(e => e.Version).HasMaxLength(20);
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.EffectiveAt).HasColumnType("datetime");
         });
 
         modelBuilder.Entity<TypeofSymptomsGroupMaster>(entity =>
@@ -3059,6 +3111,8 @@ namespace Niga_Domain.Data
             entity.Property(e => e.UserPassword).HasMaxLength(500);
             entity.Property(e => e.UserPhoto).HasMaxLength(250);
             entity.Property(e => e.UserStatus).HasDefaultValue(true);
+            entity.Property(e => e.ActivationTokenHash).HasMaxLength(128);
+            entity.Property(e => e.ActivationExpiresAt).HasColumnType("datetime");
         });
 
         modelBuilder.Entity<PasswordResetToken>(entity =>

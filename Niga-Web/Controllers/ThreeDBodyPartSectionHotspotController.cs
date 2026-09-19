@@ -57,7 +57,8 @@ namespace Niga_Domain.API.Controllers
                     HotspotName = request.HotspotName.Trim(),
                     EnteredBy = request.EnteredBy,
                     EnteredDate = DateTime.Now,
-                    DeleteStatus = false
+                    DeleteStatus = false,
+                    SubSectionId = request.SubSectionId
                 };
 
                 _hotspotService.SaveHotspot(hotspot);
@@ -118,6 +119,7 @@ namespace Niga_Domain.API.Controllers
 
                 entity.SectionId = request.SectionId;
                 entity.HotspotName = request.HotspotName.Trim();
+                entity.SubSectionId = request.SubSectionId;
                 entity.ChangedBy = request.ChangedBy;
                 entity.ChangedDate = DateTime.Now;
 

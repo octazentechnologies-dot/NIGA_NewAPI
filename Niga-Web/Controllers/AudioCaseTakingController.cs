@@ -8,12 +8,14 @@ using Niga_Domain.API.Helpers;
 using Niga_Domain.DTOs;
 using Niga_Domain.Extensions;
 using Niga_Domain.Interfaces;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers;
 
 [Route("api/AudioCaseTaking")]
 [ApiController]
 [Authorize]
+[DoctorOnly]
 public class AudioCaseTakingController : ControllerBase
 {
     private readonly IAudioCaseTakingService _audioCaseTakingService;

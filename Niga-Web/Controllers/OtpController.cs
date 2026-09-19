@@ -43,11 +43,13 @@ namespace Niga_Domain.API.Controllers
                 return BadRequest(new { success = false, message = "Action, EntityType, EntityId, and Destination are required." });
             }
 
-            var isLogin = request.Action.Equals("Login", StringComparison.OrdinalIgnoreCase);
-            if (!isLogin && User?.Identity?.IsAuthenticated != true)
+            var isAnonymousAction =
+                request.Action.Equals("Login", StringComparison.OrdinalIgnoreCase)
+                || request.Action.Equals("PatientAuth", StringComparison.OrdinalIgnoreCase);
+            if (!isAnonymousAction && User?.Identity?.IsAuthenticated != true)
                 return Unauthorized(new { success = false, message = "Sign in required to request this OTP." });
 
-            if (isLogin)
+            if (isAnonymousAction)
             {
                 var digits = Niga_Domain.Security.PhoneNormalizer.Digits(request.Destination);
                 if (digits.Length < 8)

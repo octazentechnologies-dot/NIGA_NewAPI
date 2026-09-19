@@ -16,6 +16,7 @@ namespace Niga_Domain.API.Controllers
     [Route("api/Prescription")]
     [ApiController]
     [Authorize]
+    [DoctorOnly]
     public class PrescriptionController : ControllerBase
     {
         private readonly IPrescriptionService _prescriptionService;
