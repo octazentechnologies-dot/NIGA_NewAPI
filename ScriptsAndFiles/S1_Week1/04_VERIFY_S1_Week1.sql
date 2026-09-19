@@ -13,9 +13,24 @@ WHERE schema_id = SCHEMA_ID(N'dbo')
   AND name IN (
     N'PasswordResetToken', N'ConsentType', N'ConsentRecord',
     N'OtpChallenge', N'OtpAuditLog', N'AuditEvent', N'SecureDocument',
-    N'PatientUserMap', N'PatientFamilyMember', N'CaregiverAuthorization'
+    N'PatientUserMap', N'PatientFamilyMember', N'CaregiverAuthorization',
+    N'UserAppPreference', N'WelcomeSlide', N'DevicePushToken'
   )
 ORDER BY name;
+
+PRINT '--- Patient menus ---';
+IF OBJECT_ID(N'dbo.MenuMaster', N'U') IS NOT NULL
+    SELECT MenuId, MenuName, MenuUrl
+    FROM dbo.MenuMaster
+    WHERE ISNULL(DeleteStatus, 0) = 0
+      AND MenuUrl IN (N'/family', N'/caregiver');
+
+PRINT '--- SEC-01.01 remaining plaintext passwords (UserPassword not like PBKDF2%) ---';
+IF COL_LENGTH('dbo.UserMaster', 'UserPassword') IS NOT NULL
+    SELECT COUNT(*) AS PlainOrUnknownCount
+    FROM dbo.UserMaster
+    WHERE ISNULL(DeleteStatus, 0) = 0
+      AND UserPassword NOT LIKE N'PBKDF2$%';
 
 PRINT '--- ConsentType codes (expect Privacy, Booking, TeleRecording, PharmacyShare, Marketing, Caregiver) ---';
 IF OBJECT_ID(N'dbo.ConsentType', N'U') IS NOT NULL

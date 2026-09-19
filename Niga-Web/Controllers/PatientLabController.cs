@@ -17,7 +17,7 @@ namespace Niga_Domain.API.Controllers
     /// </summary>
     [Route("api/PatientLab")]
     [ApiController]
-    //[Authorize]
+    [Authorize]
     public class PatientLabController : BaseAPIController
     {
         IPatientLabOrderServices _patientLabOrderServices;

@@ -417,6 +417,12 @@ namespace Niga_Domain.Data
 
     public virtual DbSet<CaregiverAuthorization> CaregiverAuthorizations { get; set; }
 
+    public virtual DbSet<UserAppPreference> UserAppPreferences { get; set; }
+
+    public virtual DbSet<WelcomeSlide> WelcomeSlides { get; set; }
+
+    public virtual DbSet<DevicePushToken> DevicePushTokens { get; set; }
+
     public virtual DbSet<WhatsAppMessageLog> WhatsAppMessageLogs { get; set; }
 
     public virtual DbSet<WhatsAppTemplateMaster> WhatsAppTemplateMasters { get; set; }
@@ -3180,6 +3186,38 @@ namespace Niga_Domain.Data
             entity.Property(e => e.RevokedAt).HasColumnType("datetime");
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.CaregiverUserId);
+        });
+
+        modelBuilder.Entity<UserAppPreference>(entity =>
+        {
+            entity.HasKey(e => e.UserId);
+            entity.ToTable("UserAppPreference");
+            entity.Property(e => e.UserId).ValueGeneratedNever();
+            entity.Property(e => e.WelcomeVersionSeen).HasMaxLength(20);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<WelcomeSlide>(entity =>
+        {
+            entity.HasKey(e => e.WelcomeSlideId);
+            entity.ToTable("WelcomeSlide");
+            entity.Property(e => e.Audience).HasMaxLength(30);
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.Body).HasMaxLength(2000);
+            entity.Property(e => e.Version).HasMaxLength(20);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<DevicePushToken>(entity =>
+        {
+            entity.HasKey(e => e.DevicePushTokenId);
+            entity.ToTable("DevicePushToken");
+            entity.Property(e => e.Platform).HasMaxLength(20);
+            entity.Property(e => e.Token).HasMaxLength(512);
+            entity.Property(e => e.DeviceId).HasMaxLength(100);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+            entity.HasIndex(e => new { e.UserId, e.Token });
         });
 
         modelBuilder.Entity<YearMaster>(entity =>

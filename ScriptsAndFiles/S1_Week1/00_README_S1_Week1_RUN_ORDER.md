@@ -10,14 +10,15 @@ Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 | 1 | `01_SEC_M01_Foundation_Security_Server.sql` | FND-01.02 RoleMaster (Patient / Account / PharmacyPartner). SEC-01 UserPassword NVARCHAR(500). ConsentType/ConsentRecord, OTP, AuditEvent, SecureDocument, PasswordResetToken. |
 | 2 | `02_ADM_M02_W7_MenuMaster_Account_Pharmacy_Seed.sql` | ADM-B04.01 / SEC-04.03 Account + Pharmacy MenuMaster + RoleDetails. Fails if step 1 roles are missing. |
 | 3 | `03_CON_M16_Family_Caregiver.sql` | CON-01 / CON-02 PatientUserMap, PatientFamilyMember, CaregiverAuthorization. |
-| 4 | `04_VERIFY_S1_Week1.sql` | Read-only proof queries. |
+| 4 | `05_S1_Week1_Mobile_Menus_And_Prefs.sql` | Patient menus, WelcomeSlide, UserAppPreference, DevicePushToken. |
+| 5 | `04_VERIFY_S1_Week1.sql` | Read-only proof queries. |
 
-No extra OTP table script: caregiver grant OTP reuses `OtpChallenge` from step 1 (`Action = GrantCaregiver`).
+No extra OTP table script: caregiver grant OTP reuses `OtpChallenge` from step 1 (`Action = GrantCaregiver`). Login OTP uses `Action = Login` (anonymous).
 
 ## After SQL
 
 1. Restart **NIGA_NewAPI** and **NIGA_OldAPI**.
-2. Login once per user so plaintext passwords lazy-migrate to `PBKDF2$v1$…` (or Admin `POST /api/Account/MigratePlaintextPasswords` on New-API).
+2. **SEC-01.01 bulk hash:** Admin `POST /api/Account/MigratePlaintextPasswords` on New-API (hashes remaining plaintext `UserMaster` passwords). Login also lazy-migrates one user at a time.
 3. Follow `S1_Week1_STATUS_REPORT.md` test/proof section.
 
 Login / Rx-write / Razorpay stay on classic (Old-API) paths. New HTTP for S1 security/family/OTP/menu is New-API.

@@ -146,5 +146,48 @@ namespace Niga_Domain.API.Controllers
 
             return Ok(new { success = true, data = rows });
         }
+
+        /// <summary>PAT-05.02 — First-run privacy consent status for the JWT user.</summary>
+        [HttpGet("PrivacyStatus")]
+        public async Task<IActionResult> PrivacyStatus()
+        {
+            var userId = User.GetUserId();
+            var type = await _context.ConsentTypes.AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Code == "Privacy" && t.IsActive);
+            if (type == null)
+                return Ok(new { success = true, data = new { required = true, granted = false, missingType = true } });
+
+            var latest = await _context.ConsentRecords.AsNoTracking()
+                .Where(r => r.ConsentTypeId == type.ConsentTypeId
+                    && r.SubjectType == "User"
+                    && r.SubjectId == userId)
+                .OrderByDescending(r => r.GrantedAt)
+                .FirstOrDefaultAsync();
+
+            var granted = latest != null && latest.WithdrawnAt == null;
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    required = true,
+                    granted,
+                    consentRecordId = latest?.ConsentRecordId,
+                    grantedAt = latest?.GrantedAt,
+                    withdrawnAt = latest?.WithdrawnAt
+                }
+            });
+        }
+
+        /// <summary>PAT-05.02 — Grant Privacy consent for the caller.</summary>
+        [HttpPost("GrantPrivacy")]
+        public async Task<IActionResult> GrantPrivacy([FromBody] ConsentGrantRequest? request)
+        {
+            request ??= new ConsentGrantRequest();
+            request.ConsentTypeCode = "Privacy";
+            request.SubjectType = "User";
+            request.SubjectId = User.GetUserId();
+            return await Grant(request);
+        }
     }
 }
