@@ -1,10 +1,12 @@
 S2 WEEK 2 — API DOCUMENT
 Date       : 18-Sep-2026
 Database   : HomeoCentrum_Dev
-Auth       : Bearer JWT unless TOKEN = no. Reception JWT cannot run case-taking (DoctorOnly).
+Auth       : Bearer JWT unless TOKEN = no. DoctorOnly = treating doctor only.
+             Reception and Patient JWTs get 403 on clipboard / COG / audio / clinical mutate.
 Host rule  : New HTTP -> New-API (nigahomeoAPI). Existing URL stays on the host the UI already calls.
              Login / Rx-write / Razorpay stay Old-API. Do not silently switch hosts.
-Sample data: Script 07_TEST_Sample_Data_Insert.sql (10 enquiry, 10 CogRun, 10 bookings S2TESTED01-10).
+Sample data: 07_TEST_Sample_Data_Insert.sql + 08_CARE_CATEGORIES_RECEPTION_ARTICLES.sql
+             (care categories, Dev reception s2.reception, article body).
 Every API below has USE (what the screen/app uses it for), plus HOST, TOKEN, SAMPLE, INPUTS, OUTPUT.
 --------------------------------------------------------------------------------
 SUGGESTED FLOWS
@@ -25,6 +27,7 @@ PATIENT APP (reuses website URLs, New-API)
   GET /api/Public/Doctors  (search + filters)
   GET /api/Public/Doctors/{id} + /Ranking
   GET /api/Public/Articles
+  GET /api/Public/Articles/{id}
   GET/POST /api/Family
   POST /api/Caregiver/Grant
   POST /api/Device/Register
@@ -152,7 +155,18 @@ TOKEN      : no
 SAMPLE     : GET /api/Public/Articles?pageNumber=1&pageSize=20
 INPUTS     : pageNumber, pageSize
 OUTPUT     : { success, pageNumber, pageSize, totalRecords,
-             data: [ { blogId, blogHead, blogSubHead, blogDate, blogImage1 } ] }
+             data: [ { blogId, blogHead, blogSubHead, blogDate, blogImage1, bodyUrl } ] }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Public/Articles/{id}
+USE        : Health article body for website and patient app (WEB-12, PAT-15).
+             Active BlogDetails row; 404 if missing or inactive.
+HOST       : New-API
+TOKEN      : no
+SAMPLE     : GET /api/Public/Articles/1
+INPUTS     : id = BlogId
+OUTPUT     : { success, data: { blogId, blogHead, blogSubHead, blogDate,
+             blogImage1, blogImage2, body } }
 
 --------------------------------------------------------------------------------
 URL        : POST /api/PatientAuth/RequestOtp
@@ -211,20 +225,45 @@ INPUTS     : form-data file
 OUTPUT     : { success, data: { photoPath } }
 
 --------------------------------------------------------------------------------
+URL        : GET /api/Profile/Me/Credentials
+USE        : Doctor credential review status + uploaded files (WEB-09.01 / TRU-01).
+HOST       : New-API
+TOKEN      : doctor JWT (reception 403)
+OUTPUT     : { success, data: { doctorId, doctorVerificationId, status, documents[] } }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Profile/Me/CredentialDocuments
+USE        : Upload qualification / registration / other file into DoctorCredentialDocument.
+HOST       : New-API
+TOKEN      : doctor JWT (reception 403)
+INPUTS     : form-data file, documentType=Qualification|Registration|Other
+OUTPUT     : { success, data: { doctorCredentialDocumentId, documentType, fileName, filePath } }
+
+--------------------------------------------------------------------------------
 URL        : GET /api/Availability/Me
-USE        : Doctor-app online toggle + working-hours note + today's schedule (DMO-05).
-             Hours CRUD still uses existing daily-schedule APIs.
+USE        : Doctor-app online toggle + hours note + today's slot hours (DMO-05).
+             Also readable via GET /api/PatientAppointment/GetDailySchedule.
 HOST       : New-API
 TOKEN      : doctor / reception JWT (DoctorID claim)
 OUTPUT     : { success, data: { doctorId, isOnline, workingHoursNote, todaySchedule } }
 
 --------------------------------------------------------------------------------
 URL        : PUT /api/Availability/Me
-USE        : Set IsOnline and WorkingHoursNote (DMO-05). Reception 403.
+USE        : Set IsOnline, WorkingHoursNote, and optional today's slot hours (DMO-05).
+             Hours upsert DoctorDailySchedule. Reception 403. Patient 403.
+             POST /api/PatientAppointment/SaveDailySchedule remains the locked
+             first-insert appointment-slot API.
 HOST       : New-API
 TOKEN      : doctor JWT only
-SAMPLE PAYLOAD: { "isOnline": true, "workingHoursNote": "Mon-Sat 10-18" }
-INPUTS     : isOnline, workingHoursNote
+SAMPLE PAYLOAD:
+{
+  "isOnline": true,
+  "workingHoursNote": "Mon-Sat 10-18",
+  "workStartTime": "10:00:00",
+  "workEndTime": "18:00:00",
+  "slotIntervalMinutes": 15
+}
+INPUTS     : isOnline, workingHoursNote; workStartTime+workEndTime+slotIntervalMinutes together
 OUTPUT     : same as GET Me
 
 --------------------------------------------------------------------------------
@@ -270,7 +309,7 @@ USE        : Center of Gravity ranking from selected rubric ids + intensities (C
              Score = intensity × GradeNo. Writes optional CogRun log. Empty clipboard
              returns data [] and message "Empty clipboard." Doctor mobile must NOT call this.
 HOST       : New-API  (new HTTP — not Old-API)
-TOKEN      : doctor JWT (reception 403)
+TOKEN      : doctor JWT (reception 403, patient 403)
 SAMPLE PAYLOAD:
 {
   "patientId": 2,
@@ -518,7 +557,7 @@ URL        : GET /api/clipboardRubrics
              POST /api/clipboardRubrics/GetEliminationData
              GET  /api/clipboardRubrics/GetCommanUnCommanRubricsDetails
 USE        : Classic clipboard + repertorize elimination. Host unchanged (CLN-02/12).
-             DoctorOnly — reception 403. Doctor mobile must NOT call these.
+             DoctorOnly — reception 403, patient 403. Doctor mobile must NOT call these.
 HOST       : Old-API
 TOKEN      : doctor JWT
 OUTPUT     : existing clipboard / elimination payloads
@@ -526,9 +565,9 @@ OUTPUT     : existing clipboard / elimination payloads
 --------------------------------------------------------------------------------
 URL        : GET/POST /api/clinicalquestions
              /api/questionSection /api/questionGroup /api/questionsubgroup
-             /api/intensity /api/subsection
-USE        : Classic questions, intensity, subsection search. Host unchanged (CLN-03/04/06).
-             DoctorOnly — reception 403.
+             /api/intensity /api/subsection /api/bodypart /api/diagnosis
+USE        : Classic questions, intensity, subsection, body part, diagnosis search.
+             Host unchanged (CLN-03/04/05/06). DoctorOnly — reception 403, patient 403.
 HOST       : Old-API
 TOKEN      : doctor JWT
 OUTPUT     : existing question / subsection payloads
@@ -604,9 +643,9 @@ URL        : POST /api/PatientBoardBackup/Save
              GET  /api/PatientBoardBackup/Summary|Latest
              POST /api/PatientBoardBackup/Delete
 USE        : Session restore (CLN-19). Intensity-on-clipboard is merged into the
-             backup payload (CLN-07). Reception uses DoctorUserID claim from Old-API login.
+             backup payload (CLN-07). DoctorOnly — reception 403, patient 403.
 HOST       : New-API
-TOKEN      : doctor JWT (reception keyed by DoctorUserID)
+TOKEN      : doctor JWT
 OUTPUT     : existing backup DTOs
 
 --------------------------------------------------------------------------------
@@ -620,8 +659,10 @@ OUTPUT     : hotspot rows including subSectionId (sample maps Cervical/Dorsal/Lu
 URL        : POST /api/AudioCaseTaking/upload
              GET  /api/AudioCaseTaking/{sessionId}/status|result
              GET  /api/AudioCaseIntelligence/health
-USE        : Audio case-taking engine (CLN-08). Consent dual-writes AudioCaseConsentLog
-             and ConsentRecord. Confirm worker via health. DoctorOnly. Doctor mobile must
+USE        : Existing audio case-taking engine (CLN-08, CLN-09.01). Keep this engine —
+             no new HTTP. Accuracy / aliases / metaphors / benchmark stay in-process.
+             Consent dual-writes AudioCaseConsentLog and ConsentRecord. Confirm worker
+             via health. DoctorOnly (reception 403, patient 403). Doctor mobile must
              NOT call these.
 HOST       : New-API
 TOKEN      : doctor JWT
@@ -656,12 +697,25 @@ PAT-13  URL  same profile DTO fields Verified + VerificationStatus
         USE  Patient-app verified badge
 PAT-14  URL  GET /api/Public/Doctors/{id}/Ranking
         USE  Patient-app ranking explanation
-PAT-15  URL  GET /api/Public/Articles
-        USE  Patient-app health articles
+PAT-15  URL  GET /api/Public/Articles  + GET /api/Public/Articles/{id}
+        USE  Patient-app health articles list + body
 DMO-04  URL  POST /api/doctorDashBoard/GetCountApp  + existing appointment list
-        USE  Doctor-app today’s queue / counts
+        USE  Doctor-app today’s queue / counts (ACL: doctor or reception DoctorUserID)
 DMO-05  URL  GET/PUT /api/Availability/Me
-        USE  Doctor-app online toggle and working-hours note
+        USE  Doctor-app online toggle, hours note, and slot hours (upsert DailySchedule)
 DMO-06  URL  POST /api/Device/Register
         USE  Doctor-app push device token
+CLN-09  URL  existing POST /api/AudioCaseTaking/upload + status/result + health
+        USE  Keep the audio engine (accuracy/aliases/metaphors/benchmark). No new API.
+DOC-04  URL  POST /api/patient  (existing SavePatient)
+        USE  Add patient — ACL doctor/reception of that clinic (DoctorID). No new HTTP.
+DOC-05  URL  POST /api/patient/ImportPatients  (existing)
+        USE  Import patients — ACL caller userId or reception DoctorUserID. No new HTTP.
+DOC-07  URL  POST /api/doctorDashBoard  (Old-API list) / GET api/doctorDashBoard (New-API)
+        USE  Recent activity — ACL same as GetCountApp. No new HTTP.
+DOC-08  URL  GET /api/doctorDashBoard/GetPatientStats  (existing)
+        USE  Stats — doctor JWT only (reception 403). No new HTTP.
+WEB-09  URL  GET/POST /api/Profile/Me/Credentials + CredentialDocuments
+        USE  TRU-01 DoctorVerification + DoctorCredentialDocument
 Doctor mobile must NOT call case-taking (clipboard / CenterOfGravity / audio).
+Dev reception login (script 08): UserID s2.reception  (Old-API or New-API /api/Account/Login)

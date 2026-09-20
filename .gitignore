@@ -372,9 +372,8 @@ paket-files/
 
 # OpenCover UI analysis results
 OpenCover/
-**/appsettings.json
+# Keep environment overlays local. appsettings.json is the publish/runtime config.
 **/appsettings.*.json
-Niga-Web/appsettings.json
 
 # Azure Stream Analytics local run output
 ASALocalRun/

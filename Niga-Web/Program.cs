@@ -83,7 +83,9 @@ opt.AddSecurityRequirement(new OpenApiSecurityRequirement
 builder.Services.AddApplicationServices(configuration) 
     .AddCorsPolicy(builder.Environment);   
 
-builder.Services.AddDbContext<NIGACentrumContext>(options => options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+var defaultConnection = configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found in appsettings.json.");
+builder.Services.AddDbContext<NIGACentrumContext>(options => options.UseSqlServer(defaultConnection));
 builder.Services.AddScoped<NIGACentrumContext>();
 
 builder.Services.AddIdentity<AppUser, AppRole>()

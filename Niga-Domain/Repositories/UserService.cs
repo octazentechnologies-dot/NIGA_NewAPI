@@ -103,6 +103,15 @@ namespace Niga_Domain.Repositories
             _context.Doctors.Add(doctorEntity);
             _context.SaveChanges();
 
+            _context.DoctorVerifications.Add(new DoctorVerification
+            {
+                DoctorId = doctorEntity.DoctorId,
+                Status = "Pending",
+                EnteredDate = DateTime.UtcNow,
+                DeleteStatus = false
+            });
+            _context.SaveChanges();
+
             TrySendActivationEmail(userEntity, rawToken, smtpSettingsModel);
 
             return "Registration successful. Check your email to activate the account. Directory listing stays pending until verification.";

@@ -96,6 +96,23 @@ namespace Niga_Domain.DTOs
         public DoctorPayeeKycDto? Kyc { get; set; }
     }
 
+    public class DoctorCredentialDocumentDto
+    {
+        public int DoctorCredentialDocumentId { get; set; }
+        public string DocumentType { get; set; } = string.Empty;
+        public string FileName { get; set; } = string.Empty;
+        public string FilePath { get; set; } = string.Empty;
+        public DateTime EnteredDate { get; set; }
+    }
+
+    public class DoctorCredentialsMeDto
+    {
+        public int DoctorId { get; set; }
+        public int? DoctorVerificationId { get; set; }
+        public string Status { get; set; } = "Pending";
+        public List<DoctorCredentialDocumentDto> Documents { get; set; } = new();
+    }
+
     public class DoctorProfileUpdateRequest
     {
         public string? FirstName { get; set; }
@@ -135,6 +152,11 @@ namespace Niga_Domain.DTOs
     {
         public bool IsOnline { get; set; }
         public string? WorkingHoursNote { get; set; }
+        /// <summary>Optional daily slot hours for ScheduleDate (default today). All three required together.</summary>
+        public DateTime? ScheduleDate { get; set; }
+        public TimeOnly? WorkStartTime { get; set; }
+        public TimeOnly? WorkEndTime { get; set; }
+        public int? SlotIntervalMinutes { get; set; }
     }
 
     public class CogRubricInput

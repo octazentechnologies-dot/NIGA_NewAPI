@@ -69,6 +69,7 @@ namespace Niga_Domain.API.Controllers
             }
             try
             {
+                // DOC-04.02 — doctor or reception of this clinic only (JWT DoctorID).
                 if (!DoctorOwnership.IsAdminPortalUser(User))
                 {
                     var jwtDoctor = DoctorOwnership.GetDoctorId(User);
@@ -454,7 +455,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         /// <summary>
-        /// Bulk import patients from Excel or CSV file.
+        /// DOC-05.02 — bulk import. ACL: caller userId or reception DoctorUserID must match.
         /// </summary>
         [HttpPost("ImportPatients")]
         [DisableRequestSizeLimit]

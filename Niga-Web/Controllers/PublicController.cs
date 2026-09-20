@@ -365,10 +365,35 @@ namespace Niga_Domain.API.Controllers
                     b.BlogHead,
                     b.BlogSubHead,
                     b.BlogDate,
-                    b.BlogImage1
+                    b.BlogImage1,
+                    BodyUrl = "/api/Public/Articles/" + b.BlogId
                 })
                 .ToListAsync();
             return Ok(new { success = true, pageNumber, pageSize, totalRecords = total, data = rows });
+        }
+
+        [HttpGet("Articles/{id:int}")]
+        public async Task<IActionResult> ArticleById(int id)
+        {
+            var row = await _context.BlogDetails.AsNoTracking()
+                .FirstOrDefaultAsync(b => b.BlogId == id && b.IsActive == true);
+            if (row == null)
+                return NotFound(new { success = false, message = "Article not found." });
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    row.BlogId,
+                    row.BlogHead,
+                    row.BlogSubHead,
+                    row.BlogDate,
+                    row.BlogImage1,
+                    row.BlogImage2,
+                    body = row.BlogDetails
+                }
+            });
         }
 
         private PublicDoctorCardDto MapCard(Doctor d, string? qualification)

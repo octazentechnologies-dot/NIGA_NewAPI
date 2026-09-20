@@ -4,11 +4,13 @@ using Microsoft.EntityFrameworkCore;
 using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Extensions;
+using Niga_Domain.Helpers;
+using Niga_Domain.Master;
 using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers
 {
-    /// <summary>DMO-05 — doctor online toggle + working-hours note. Hours CRUD stays on PatientAppointment daily schedule APIs.</summary>
+    /// <summary>DMO-05 — doctor online toggle, hours note, and today's slot hours (upsert DoctorDailySchedule).</summary>
     [Route("api/Availability")]
     [ApiController]
     [Authorize]
@@ -68,8 +70,89 @@ namespace Niga_Domain.API.Controllers
             if (request?.WorkingHoursNote != null)
                 doctor.WorkingHoursNote = request.WorkingHoursNote.Trim();
             doctor.ChangedDate = DateTime.UtcNow;
+
+            var hoursError = await UpsertTodayHoursAsync(doctor, request);
+            if (hoursError != null)
+                return hoursError;
+
             await _context.SaveChangesAsync();
             return await Me();
+        }
+
+        private async Task<IActionResult?> UpsertTodayHoursAsync(Master.Doctor doctor, AvailabilityUpdateRequest? request)
+        {
+            var hasAnyHour =
+                request?.WorkStartTime != null
+                || request?.WorkEndTime != null
+                || request?.SlotIntervalMinutes != null;
+
+            if (!hasAnyHour)
+                return null;
+
+            if (request!.WorkStartTime == null || request.WorkEndTime == null || request.SlotIntervalMinutes == null)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "WorkStartTime, WorkEndTime and SlotIntervalMinutes are required together."
+                });
+            }
+
+            var interval = request.SlotIntervalMinutes.Value;
+            if (!AppointmentSlotHelper.IsAllowedInterval(interval))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = $"Invalid slot interval. Enter a whole number between {AppointmentSlotHelper.MinIntervalMinutes} and {AppointmentSlotHelper.MaxIntervalMinutes} minutes."
+                });
+            }
+
+            if (request.WorkEndTime.Value <= request.WorkStartTime.Value)
+            {
+                return BadRequest(new { success = false, message = "Work end time must be after work start time." });
+            }
+
+            var scheduleDate = (request.ScheduleDate ?? DateTime.Today).Date;
+            if (scheduleDate < DateTime.Today)
+            {
+                return BadRequest(new { success = false, message = "Schedule can only be created for today or future dates." });
+            }
+
+            long createdBy = doctor.UserId ?? 0;
+            try
+            {
+                createdBy = User.GetUserId();
+            }
+            catch
+            {
+                // keep doctor.UserId
+            }
+
+            var existing = await _context.DoctorDailySchedules
+                .FirstOrDefaultAsync(s => s.DoctorId == doctor.DoctorId && s.ScheduleDate == scheduleDate);
+
+            if (existing == null)
+            {
+                _context.DoctorDailySchedules.Add(new DoctorDailySchedule
+                {
+                    DoctorId = doctor.DoctorId,
+                    ScheduleDate = scheduleDate,
+                    SlotIntervalMinutes = interval,
+                    WorkStartTime = request.WorkStartTime.Value,
+                    WorkEndTime = request.WorkEndTime.Value,
+                    CreatedByUserId = createdBy,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                existing.SlotIntervalMinutes = interval;
+                existing.WorkStartTime = request.WorkStartTime.Value;
+                existing.WorkEndTime = request.WorkEndTime.Value;
+            }
+
+            return null;
         }
 
         private async Task<Master.Doctor?> ResolveDoctorAsync()

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Niga_Domain.Entities;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
@@ -127,6 +129,10 @@ namespace Niga_Domain.Data
     public virtual DbSet<DoctorDailySchedule> DoctorDailySchedules { get; set; }
 
     public virtual DbSet<DoctorPayeeKyc> DoctorPayeeKycs { get; set; }
+
+    public virtual DbSet<DoctorVerification> DoctorVerifications { get; set; }
+
+    public virtual DbSet<DoctorCredentialDocument> DoctorCredentialDocuments { get; set; }
 
     public virtual DbSet<CogRun> CogRuns { get; set; }
 
@@ -437,15 +443,55 @@ namespace Niga_Domain.Data
 
     public virtual DbSet<YearMaster> YearMasters { get; set; }
 
-//    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-//#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-//        => optionsBuilder.UseSqlServer("Server=103.154.184.104;Database=HomeoCentrum_Production;User Id=sa;Password=Homeo@niga19;TrustServerCertificate=true;");
-
-
-
+        /// <summary>
+        /// Uses ConnectionStrings:DefaultConnection from appsettings.json when this context
+        /// is constructed without DI options (design-time / parameterless ctor).
+        /// Runtime already sets the same key in Program.cs — do not override it here.
+        /// </summary>
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Server=103.196.187.99,1433;Database=HomeoCentrum_Dev;User Id=sa;Password=nik@123JAM;TrustServerCertificate=True;");
+        {
+            if (optionsBuilder.IsConfigured)
+                return;
+
+            var connectionString = ResolveDefaultConnectionString();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException(
+                    "Connection string 'DefaultConnection' was not found. Set ConnectionStrings:DefaultConnection in appsettings.json.");
+            }
+
+            optionsBuilder.UseSqlServer(connectionString);
+        }
+
+        private static string? ResolveDefaultConnectionString()
+        {
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(ResolveContentRoot())
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+                .Build();
+
+            return configuration.GetConnectionString("DefaultConnection");
+        }
+
+        private static string ResolveContentRoot()
+        {
+            var candidates = new[]
+            {
+                Directory.GetCurrentDirectory(),
+                AppContext.BaseDirectory
+            };
+
+            foreach (var candidate in candidates)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate)
+                    && File.Exists(Path.Combine(candidate, "appsettings.json")))
+                {
+                    return candidate;
+                }
+            }
+
+            return Directory.GetCurrentDirectory();
+        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -2918,6 +2964,28 @@ namespace Niga_Domain.Data
             entity.Property(e => e.Pan).HasMaxLength(20);
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<DoctorVerification>(entity =>
+        {
+            entity.HasKey(e => e.DoctorVerificationId);
+            entity.ToTable("DoctorVerification");
+            entity.Property(e => e.Status).HasMaxLength(30);
+            entity.Property(e => e.ReviewerNote).HasMaxLength(1000);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            entity.Property(e => e.ChangedDate).HasColumnType("datetime");
+            entity.Property(e => e.ReviewedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<DoctorCredentialDocument>(entity =>
+        {
+            entity.HasKey(e => e.DoctorCredentialDocumentId);
+            entity.ToTable("DoctorCredentialDocument");
+            entity.Property(e => e.DocumentType).HasMaxLength(50);
+            entity.Property(e => e.FileName).HasMaxLength(260);
+            entity.Property(e => e.FilePath).HasMaxLength(500);
+            entity.Property(e => e.ContentType).HasMaxLength(100);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
         });
 
         modelBuilder.Entity<CogRun>(entity =>

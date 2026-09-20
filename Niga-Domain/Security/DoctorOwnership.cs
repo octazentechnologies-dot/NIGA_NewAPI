@@ -29,6 +29,17 @@ namespace Niga_Domain.Security
         public static bool IsAdminPortalUser(ClaimsPrincipal? user)
             => AdminAuthorizationPolicies.IsAdminPortalUser(user);
 
+        public static int? GetDoctorUserId(ClaimsPrincipal? user)
+        {
+            var value = user?.FindFirst("DoctorUserID")?.Value
+                ?? user?.FindFirst("DoctorUserId")?.Value;
+            return int.TryParse(value, out var doctorUserId) && doctorUserId > 0 ? doctorUserId : null;
+        }
+
+        public static string? GetRoleName(ClaimsPrincipal? user)
+            => user?.FindFirst(ClaimTypes.Role)?.Value
+               ?? user?.FindFirst("RoleName")?.Value;
+
         /// <summary>
         /// Returns true when the caller may access a resource owned by <paramref name="resourceDoctorId"/>.
         /// AdminPortal always allowed. Otherwise JWT DoctorID must match.
@@ -64,15 +75,22 @@ namespace Niga_Domain.Security
             };
         }
 
+        /// <summary>
+        /// CLN-02.02 — Only the treating doctor (or AdminPortal) may run case-taking.
+        /// Reception and Patient JWTs are 403 even when DoctorID is present (reception staff).
+        /// </summary>
         public static IActionResult? ForbidIfReception(ClaimsPrincipal? user)
+            => ForbidIfNotTreatingDoctor(user);
+
+        public static IActionResult? ForbidIfNotTreatingDoctor(ClaimsPrincipal? user)
         {
             if (IsAdminPortalUser(user))
                 return null;
 
-            var role = user?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
-                ?? user?.FindFirst("RoleName")?.Value;
+            var role = GetRoleName(user);
             if (!string.IsNullOrWhiteSpace(role)
-                && role.Equals("Reception", StringComparison.OrdinalIgnoreCase))
+                && (role.Equals("Reception", StringComparison.OrdinalIgnoreCase)
+                    || role.Equals("Patient", StringComparison.OrdinalIgnoreCase)))
             {
                 return new ObjectResult(new { success = false, message = "Only the treating doctor can run case taking." })
                 {
@@ -80,11 +98,21 @@ namespace Niga_Domain.Security
                 };
             }
 
-            return null;
+            if (!string.IsNullOrWhiteSpace(role)
+                && role.Equals("Doctor", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (GetDoctorId(user).HasValue)
+                return null;
+
+            return new ObjectResult(new { success = false, message = "Only the treating doctor can run case taking." })
+            {
+                StatusCode = StatusCodes.Status403Forbidden
+            };
         }
 
         /// <summary>
-        /// For JWT-bound endpoints that key by user id: reception/doctor must match GetUserId unless AdminPortal.
+        /// JWT user id or reception DoctorUserID must match the doctor UserMaster id. AdminPortal bypass.
         /// </summary>
         public static bool EnsureCallerIsUserOrAdmin(ClaimsPrincipal? user, long targetUserId)
         {
@@ -93,12 +121,16 @@ namespace Niga_Domain.Security
 
             try
             {
-                return user != null && user.GetUserId() == (int)targetUserId;
+                if (user != null && user.GetUserId() == (int)targetUserId)
+                    return true;
             }
             catch
             {
-                return false;
+                // reception NameIdentifier is staff id
             }
+
+            var doctorUserId = GetDoctorUserId(user);
+            return doctorUserId.HasValue && doctorUserId.Value == (int)targetUserId;
         }
     }
 }

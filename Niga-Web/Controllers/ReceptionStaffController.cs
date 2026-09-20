@@ -79,6 +79,10 @@ namespace Niga_Domain.API.Controllers
                     return ThreeDBodyPartApiResponseHelper.Failure(GetValidationMessage());
                 }
 
+                var deny = await ForbidIfNotOwnStaffAsync(request.ReceptionStaffID);
+                if (deny != null)
+                    return deny;
+
                 var (success, message) = await _receptionStaffService.UpdateReceptionStaffAsync(request);
                 if (!success)
                 {
@@ -109,6 +113,10 @@ namespace Niga_Domain.API.Controllers
                 {
                     return ThreeDBodyPartApiResponseHelper.Failure(GetValidationMessage());
                 }
+
+                var deny = await ForbidIfNotOwnStaffAsync(request.ReceptionStaffID);
+                if (deny != null)
+                    return deny;
 
                 var (success, message) = await _receptionStaffService.DeleteReceptionStaffAsync(request);
                 if (!success)
@@ -147,6 +155,10 @@ namespace Niga_Domain.API.Controllers
                 {
                     return ThreeDBodyPartApiResponseHelper.Failure("Reception staff not found or has been deleted.");
                 }
+
+                var deny = DoctorOwnership.ForbidIfNotOwner(User, result.DoctorID);
+                if (deny != null)
+                    return deny;
 
                 return ThreeDBodyPartApiResponseHelper.Success(result, "Reception staff retrieved successfully.");
             }
@@ -202,6 +214,18 @@ namespace Niga_Domain.API.Controllers
             if (DoctorOwnership.IsAdminPortalUser(User))
                 return;
             request.DoctorUserID = User.GetUserId();
+        }
+
+        private async Task<IActionResult?> ForbidIfNotOwnStaffAsync(int receptionStaffId)
+        {
+            if (DoctorOwnership.IsAdminPortalUser(User))
+                return null;
+
+            var row = await _receptionStaffService.GetReceptionStaffByIdAsync(receptionStaffId);
+            if (row == null)
+                return null;
+
+            return DoctorOwnership.ForbidIfNotOwner(User, row.DoctorID);
         }
 
         private string GetValidationMessage()
