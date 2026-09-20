@@ -24,10 +24,12 @@ namespace Niga_Domain.API.Controllers
         private const int MaxPerWindow = 3;
 
         private readonly NIGACentrumContext _context;
+        private readonly ISmsSender _smsSender;
 
-        public OtpController(NIGACentrumContext context)
+        public OtpController(NIGACentrumContext context, ISmsSender smsSender)
         {
             _context = context;
+            _smsSender = smsSender;
         }
 
         [HttpPost("RequestOtp")]
@@ -97,8 +99,11 @@ namespace Niga_Domain.API.Controllers
             });
             await _context.SaveChangesAsync();
 
-            // SMS provider adapter stub until wired — do not return raw code in production responses.
-            // Development hint only when ASPNETCORE_ENVIRONMENT is Development:
+            await _smsSender.SendAsync(
+                request.Destination,
+                "Your Homeocentrum verification code is valid for 10 minutes.");
+
+            // SMS provider adapter stub until PRE-03 vendor is live — do not return raw code in production.
             var payload = new Dictionary<string, object?>
             {
                 ["otpChallengeId"] = challenge.OtpChallengeId,
@@ -160,15 +165,9 @@ namespace Niga_Domain.API.Controllers
 
         /// <summary>SEC-07.03 — Account and Admin roles (masked destination).</summary>
         [HttpGet("Audit")]
-        [Authorize]
+        [Authorize(Policy = AdminAuthorizationPolicies.AccountOrAdmin)]
         public async Task<IActionResult> Audit([FromQuery] int take = 100)
         {
-            var roleName = AdminAuthorizationPolicies.GetRoleName(User);
-            var isAccount = string.Equals(roleName, "Account", StringComparison.OrdinalIgnoreCase)
-                || User.IsInRole("Account");
-            if (!isAccount && !AdminAuthorizationPolicies.IsAdminPortalUser(User))
-                return Forbid();
-
             take = Math.Clamp(take, 1, 500);
             var rows = await _context.OtpAuditLogs
                 .AsNoTracking()

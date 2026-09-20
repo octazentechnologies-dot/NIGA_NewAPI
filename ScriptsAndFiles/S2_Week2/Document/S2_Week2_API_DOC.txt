@@ -387,17 +387,47 @@ INPUTS     : emailId
 OUTPUT     : { success, message }
 
 --------------------------------------------------------------------------------
+URL        : GET /api/Family/Me
+USE        : Logged-in patient's own PatientId. UI must not ask them to type it.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: { ownerPatientId, ownerPatientName, linked } }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Family/Relations
+USE        : Relation dropdown for family add/edit.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: [ { relationId, relationName, sortOrder } ] }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Family/Relations
+USE        : Add a missing relation (last dropdown option).
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "relationName": "Guardian" }
+OUTPUT     : { success, data: { relationId, relationName, sortOrder } }
+
+--------------------------------------------------------------------------------
 URL        : GET /api/Family
 USE        : Patient-app family members list (PAT-06). S1 URL reused.
 HOST       : New-API
 TOKEN      : patient JWT
-OUTPUT     : { success, data: [ FamilyMemberDto ] }
+OUTPUT     : { success, ownerPatientId, ownerPatientName, data: [ FamilyMemberDto ] }
 
 --------------------------------------------------------------------------------
 URL        : POST /api/Family
-USE        : Add a family member under the logged-in patient (PAT-06).
+USE        : Add a family member under the logged-in patient (PAT-06). Omit ownerPatientId.
 HOST       : New-API
 TOKEN      : patient JWT
+OUTPUT     : { success, data: FamilyMemberDto }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Family/{id}
+USE        : Read one family member (CON-01.02).
+HOST       : New-API
+TOKEN      : patient JWT
+INPUTS     : id = FamilyMemberId
 OUTPUT     : { success, data: FamilyMemberDto }
 
 --------------------------------------------------------------------------------
@@ -409,17 +439,47 @@ INPUTS     : id = FamilyMemberId
 OUTPUT     : { success, data: FamilyMemberDto }
 
 --------------------------------------------------------------------------------
+URL        : GET /api/Family/CanBookAs/{patientId}
+USE        : Authorisation check before booking as a family member.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, allowed, reason }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Family/BookAs
+USE        : Create an appointment for a family member / self / caregiver patient (CON-01.02).
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "memberPatientId": 3034, "doctorId": 1, "appointmentDate": "2026-09-21", "appointmentTime": "10:30" }
+OUTPUT     : { success, reason, data: { patientAppId, patientId, bookingToken, status } }
+
+--------------------------------------------------------------------------------
 URL        : POST /api/Family/LinkPrimary
-USE        : Link the JWT user to their primary Patient row before family CRUD.
+USE        : Optional manual link. GET /Family/Me and POST /Family already auto-link.
 HOST       : New-API
 TOKEN      : patient JWT
 OUTPUT     : { success, data: { patientId } }
 
 --------------------------------------------------------------------------------
-URL        : POST /api/Caregiver/Grant
-USE        : Grant caregiver access with OTP Action=GrantCaregiver (PAT-07).
+URL        : GET /api/Caregiver/Me
+USE        : Logged-in patient's PatientId + OTP destination. UI must not ask for PatientId or UserId.
 HOST       : New-API
 TOKEN      : patient JWT
+OUTPUT     : { success, data: { ownerPatientId, ownerPatientName, otpDestination, linked } }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Caregiver/Lookup?contact=
+USE        : Resolve caregiver by registered mobile or email.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: { caregiverUserId, displayName, contact } }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Caregiver/Grant
+USE        : Grant caregiver access with OTP Action=GrantCaregiver (PAT-07). Send caregiverContact; omit ids.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "caregiverContact": "s1.caregiver.tested@homeocentrum.dev", "otpChallengeId": 1, "otpCode": "123456", "scope": "booking" }
 OUTPUT     : { success, data: CaregiverAuthorizationDto }
 
 --------------------------------------------------------------------------------
@@ -678,10 +738,12 @@ OUTPUT     : existing reception-staff DTO
 
 ================================================================================
 MOBILE API MAP (no new app screens this sprint — APIs only)
+Full contracts: S2_Week2_MOBILE_API_DOC.txt  (PAT-01–15, DMO-01–06, public booking)
+Week 1 login/welcome/consent: S1_Week1/S1_Week1_MOBILE_API_DOC.txt
 ================================================================================
-PAT-06  URL  GET/POST /api/Family  PUT /api/Family/{id}  POST /api/Family/LinkPrimary
+PAT-06  URL  GET /api/Family/Me  GET/POST /api/Family/Relations  GET/POST /api/Family  PUT /api/Family/{id}
         USE  Patient-app family members under one account
-PAT-07  URL  POST /api/Caregiver/Grant  POST /api/Caregiver/Revoke  GET ListMine / ListActingFor
+PAT-07  URL  GET /api/Caregiver/Me  GET /api/Caregiver/Lookup  POST /api/Caregiver/Grant  GET ListMine / ListActingFor
         USE  Patient-app caregiver grant / revoke / list
 PAT-08  URL  GET /api/PatientPortal/Home
         USE  Patient-app home dashboard (counts + next visits)

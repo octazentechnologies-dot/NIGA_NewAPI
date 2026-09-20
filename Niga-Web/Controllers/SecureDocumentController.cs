@@ -14,6 +14,7 @@ namespace Niga_Domain.API.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
+    [ForbidMoneyRoles]
     public class SecureDocumentController : ControllerBase
     {
         private readonly NIGACentrumContext _context;

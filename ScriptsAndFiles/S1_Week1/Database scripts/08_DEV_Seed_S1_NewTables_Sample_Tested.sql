@@ -1,7 +1,7 @@
 /*
 ================================================================================
 Author       : Tufan Powar
-Created      : 19-09-2026
+Created      : 18-09-2026
 Script       : 08_DEV_Seed_S1_NewTables_Sample_Tested.sql
 Purpose      : Sample TESTED rows in every S1 Week 1 NEW table so APIs can be listed/queried.
 Use          : Dev/test data only. Run after 01–05. Notes / tokens tagged S1-TESTED.
@@ -22,7 +22,7 @@ DECLARE @SpouseEmail NVARCHAR(200) = N's1.family.spouse.tested@homeocentrum.dev'
 DECLARE @Pwd NVARCHAR(500) = N'PBKDF2$v1$100000$uszumO1aPL3it0x1tm/FcA==$hvFLmFwfXrC7i3Id07HFiH9ah4WiIAdjzYPyQnArLxQ='; -- 123456
 DECLARE @OtpHash NVARCHAR(128) = CONVERT(VARCHAR(64), HASHBYTES(N'SHA2_256', CONVERT(VARBINARY(32), N'123456')), 2);
 DECLARE @ResetHash NVARCHAR(128) = CONVERT(VARCHAR(64), HASHBYTES(N'SHA2_256', CONVERT(VARBINARY(64), N'S1-TESTED-RESET-TOKEN')), 2);
-DECLARE @Now DATETIME = GETUTCDATE();
+DECLARE @Now DATETIME = '2026-09-18T12:00:00';
 
 IF OBJECT_ID(N'dbo.UserMaster', N'U') IS NULL
    OR OBJECT_ID(N'dbo.Patient', N'U') IS NULL

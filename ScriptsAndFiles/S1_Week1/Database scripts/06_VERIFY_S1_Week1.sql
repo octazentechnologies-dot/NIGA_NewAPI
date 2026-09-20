@@ -30,6 +30,7 @@ WHERE schema_id = SCHEMA_ID(N'dbo')
     N'PasswordResetToken', N'ConsentType', N'ConsentRecord',
     N'OtpChallenge', N'OtpAuditLog', N'AuditEvent', N'SecureDocument',
     N'PatientUserMap', N'PatientFamilyMember', N'CaregiverAuthorization',
+    N'FamilyRelationMaster',
     N'UserAppPreference', N'WelcomeSlide', N'DevicePushToken'
   )
 ORDER BY name;

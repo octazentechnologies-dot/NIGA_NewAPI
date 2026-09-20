@@ -1,7 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -28,6 +31,7 @@ namespace Niga_Domain.API.Controllers
         private readonly IJwtDenylistService _jwtDenylist;
         private readonly IOptions<SmtpSettingsModel> _mailSettings;
         private readonly IConfiguration _configuration;
+        private readonly IWebHostEnvironment _env;
         private readonly EmailSenderService _emailSender = new();
 
         public AccountController(
@@ -38,7 +42,8 @@ namespace Niga_Domain.API.Controllers
             IAuditEventWriter auditEventWriter,
             IJwtDenylistService jwtDenylist,
             IOptions<SmtpSettingsModel> mailSettings,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IWebHostEnvironment env)
         {
             _tokenService = tokenService;
             _context = context;
@@ -48,6 +53,7 @@ namespace Niga_Domain.API.Controllers
             _jwtDenylist = jwtDenylist;
             _mailSettings = mailSettings;
             _configuration = configuration;
+            _env = env;
         }
 
         [HttpPost("Login")]
@@ -258,8 +264,14 @@ namespace Niga_Domain.API.Controllers
                 if (request == null || string.IsNullOrWhiteSpace(request.Email))
                     return BadRequest(new { success = false, message = "Email is required." });
 
-                var user = await _context.UserMasters
-                    .FirstOrDefaultAsync(x => x.EmailId == request.Email.Trim() && !x.DeleteStatus);
+                var email = request.Email.Trim();
+                var user = await _context.UserMasters.FirstOrDefaultAsync(x =>
+                    !x.DeleteStatus
+                    && ((x.EmailId != null && x.EmailId.ToLower() == email.ToLower())
+                        || x.UserName.ToLower() == email.ToLower()));
+
+                string? resetLink = null;
+                var mailSent = false;
 
                 if (user != null)
                 {
@@ -277,36 +289,43 @@ namespace Niga_Domain.API.Controllers
                     });
                     await _context.SaveChangesAsync();
 
-                    var siteUrl = _configuration["ConfigurationModel:SiteUrl"]
-                        ?? _configuration["AppSettings:UiBaseUrl"]
-                        ?? "https://homeocentrum.com";
-                    var resetLink = $"{siteUrl.TrimEnd('/')}/reset-password?token={Uri.EscapeDataString(rawToken)}";
+                    var siteUrl = GetUiSiteUrl();
+                    // Path-style href survives Gmail's google.com/url?q= wrap (no ?token= inside q).
+                    var pathLink = $"{siteUrl}/reset-password/{Uri.EscapeDataString(rawToken)}";
+                    var queryLink = $"{siteUrl}/reset-password?token={Uri.EscapeDataString(rawToken)}";
+                    resetLink = pathLink;
 
-                    try
+                    var greeting = WebUtility.HtmlEncode(user.FirstName ?? user.UserName ?? "there");
+                    var body = new StringBuilder();
+                    body.Append("<body style='font-family:Arial,sans-serif;color:#1f2937;'>");
+                    body.Append("<p>Hello " + greeting + ",</p>");
+                    body.Append("<p>Use the button below to reset your Homeocentrum password. This link expires in 2 hours.</p>");
+                    body.Append($"<p><a href=\"{WebUtility.HtmlEncode(pathLink)}\" style='display:inline-block;padding:10px 18px;background:#1e88e5;color:#fff;text-decoration:none;border-radius:6px;'>Reset password</a></p>");
+                    body.Append("<p>If the button does not open, copy this address into your browser:</p>");
+                    body.Append($"<p style='word-break:break-all;'>{WebUtility.HtmlEncode(pathLink)}</p>");
+                    body.Append($"<p style='color:#6b7280;font-size:12px;'>Alternate link: {WebUtility.HtmlEncode(queryLink)}</p>");
+                    body.Append("<p>If you did not request this, ignore this email.</p>");
+                    body.Append("</body>");
+
+                    if (!string.IsNullOrWhiteSpace(user.EmailId))
                     {
-                        var body = new StringBuilder();
-                        body.Append("<body>");
-                        body.Append("Hello " + (user.FirstName ?? user.UserName));
-                        body.Append("<p>Use the link below to reset your Homeocentrum password. This link expires in 2 hours.</p>");
-                        body.Append($"<p><a href=\"{resetLink}\">Reset password</a></p>");
-                        body.Append("<p>If you did not request this, ignore this email.</p>");
-                        body.Append("</body>");
-
-                        _emailSender.SendMail(new EmailSenderModel
+                        mailSent = _emailSender.SendMail(new EmailSenderModel
                         {
-                            ToAddress = user.EmailId!,
+                            ToAddress = user.EmailId,
                             Subject = "Homeocentrum - Password Reset",
                             Body = body.ToString(),
                             isHtml = true
                         }, _mailSettings.Value);
                     }
-                    catch
-                    {
-                        // Do not leak mail failures.
-                    }
                 }
 
-                return Ok(new { success = true, message = genericMessage });
+                return Ok(new
+                {
+                    success = true,
+                    message = genericMessage,
+                    resetLink = _env.IsDevelopment() ? resetLink : null,
+                    mailSent = _env.IsDevelopment() ? mailSent : (bool?)null
+                });
             }
             catch (Exception)
             {
@@ -327,7 +346,11 @@ namespace Niga_Domain.API.Controllers
                     return BadRequest(new { success = false, message = "Token and newPassword are required." });
                 }
 
-                var tokenHash = SecurityTokenHash.Sha256Hex(request.Token.Trim());
+                var token = NormalizeResetToken(request.Token);
+                if (string.IsNullOrWhiteSpace(token))
+                    return BadRequest(new { success = false, message = "Token and newPassword are required." });
+
+                var tokenHash = SecurityTokenHash.Sha256Hex(token);
                 var reset = await _context.PasswordResetTokens
                     .Where(x => x.TokenHash == tokenHash && x.UsedAt == null && x.ExpiresAt > DateTime.UtcNow)
                     .OrderByDescending(x => x.CreatedAt)
@@ -641,9 +664,19 @@ namespace Niga_Domain.API.Controllers
             var doctor = await _context.Doctors.AsNoTracking()
                 .FirstOrDefaultAsync(d => d.UserId == userId && d.DeleteStatus == false);
 
+            var patientMobile = await (
+                from m in _context.PatientUserMaps.AsNoTracking()
+                join p in _context.Patients.AsNoTracking() on m.PatientId equals p.PatientId
+                where m.UserId == userId && !m.DeleteStatus && p.DeleteStatus != true
+                orderby m.IsPrimary descending
+                select p.MobileNo).FirstOrDefaultAsync();
+
             var entered = PhoneNormalizer.Digits(request.MobileNo);
             var matched = PhoneNormalizer.EqualsNormalized(entered, user.MobileNo)
-                || PhoneNormalizer.EqualsNormalized(entered, doctor?.MobileNo);
+                || PhoneNormalizer.EqualsNormalized(entered, doctor?.MobileNo)
+                || PhoneNormalizer.EqualsNormalized(entered, patientMobile);
+
+            var profileSource = user.MobileNo ?? doctor?.MobileNo ?? patientMobile;
 
             return Ok(new
             {
@@ -651,7 +684,7 @@ namespace Niga_Domain.API.Controllers
                 data = new
                 {
                     matched,
-                    profileMasked = PhoneNormalizer.Mask(user.MobileNo ?? doctor?.MobileNo),
+                    profileMasked = PhoneNormalizer.Mask(profileSource),
                     role = AdminAuthorizationPolicies.GetRoleName(User)
                 }
             });
@@ -758,6 +791,82 @@ namespace Niga_Domain.API.Controllers
                 .Select(x => (int?)x.LoginId)
                 .MaxAsync();
             return (max ?? 0) + 1;
+        }
+
+        private string GetUiSiteUrl()
+        {
+            var url = _configuration["ConfigurationModel:SiteUrl"]
+                ?? _configuration["AppSettings:UiBaseUrl"]
+                ?? _mailSettings.Value?.SiteUrl;
+            if (string.IsNullOrWhiteSpace(url))
+                url = _env.IsDevelopment() ? "http://localhost:3000" : "https://homeocentrum.com";
+            return url.TrimEnd('/');
+        }
+
+        /// <summary>
+        /// Accepts a raw token, a /reset-password/:token path, ?token=, or a Gmail google.com/url?q= wrap.
+        /// </summary>
+        internal static string NormalizeResetToken(string? raw)
+        {
+            var token = (raw ?? string.Empty).Trim().Trim('"');
+            if (string.IsNullOrEmpty(token))
+                return token;
+
+            for (var i = 0; i < 3; i++)
+            {
+                try
+                {
+                    var decoded = Uri.UnescapeDataString(token.Replace("+", "%2B"));
+                    if (decoded == token)
+                        break;
+                    token = decoded;
+                }
+                catch
+                {
+                    break;
+                }
+            }
+
+            var qMatch = Regex.Match(token, @"[?&]q=([^&]+)", RegexOptions.IgnoreCase);
+            if (qMatch.Success)
+            {
+                try
+                {
+                    token = Uri.UnescapeDataString(qMatch.Groups[1].Value);
+                }
+                catch
+                {
+                    token = qMatch.Groups[1].Value;
+                }
+            }
+
+            var tokenMatch = Regex.Match(token, @"[?&]token=([^&]+)", RegexOptions.IgnoreCase);
+            if (tokenMatch.Success)
+            {
+                try
+                {
+                    return Uri.UnescapeDataString(tokenMatch.Groups[1].Value).Trim();
+                }
+                catch
+                {
+                    return tokenMatch.Groups[1].Value.Trim();
+                }
+            }
+
+            var pathMatch = Regex.Match(token, @"reset-password/([^/?#]+)", RegexOptions.IgnoreCase);
+            if (pathMatch.Success)
+            {
+                try
+                {
+                    return Uri.UnescapeDataString(pathMatch.Groups[1].Value).Trim();
+                }
+                catch
+                {
+                    return pathMatch.Groups[1].Value.Trim();
+                }
+            }
+
+            return token.Split('&', '#')[0].Trim();
         }
     }
 }

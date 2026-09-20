@@ -6,6 +6,7 @@ using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Extensions;
 using Niga_Domain.Master;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -13,6 +14,7 @@ namespace Niga_Domain.API.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
+    [ForbidMoneyRoles]
     public class ConsentController : ControllerBase
     {
         private readonly NIGACentrumContext _context;

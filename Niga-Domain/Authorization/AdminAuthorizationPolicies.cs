@@ -10,8 +10,11 @@ namespace Niga_Domain.Authorization
     {
         public const string AdminPortal = "AdminPortal";
 
-        /// <summary>SEC-04.01 — future money APIs (M08). Account role only.</summary>
+        /// <summary>SEC-04.01 — money APIs (M08 + OTP audit). Account role only.</summary>
         public const string AccountPortal = "AccountPortal";
+
+        /// <summary>SEC-07.03 — OTP audit for Account and Admin (not Doctor/Patient).</summary>
+        public const string AccountOrAdmin = "AccountOrAdmin";
 
         /// <summary>RoleId 1 = SuperUser / Admin in HomeoCentrum RoleMaster.</summary>
         public const int SuperUserRoleId = 1;
@@ -25,6 +28,11 @@ namespace Niga_Domain.Authorization
         public static readonly string[] AccountPortalRoleNames =
         {
             "Account"
+        };
+
+        public static readonly string[] PharmacyPartnerRoleNames =
+        {
+            "PharmacyPartner"
         };
 
         public static bool IsAdminPortalUser(ClaimsPrincipal? user)
@@ -103,5 +111,49 @@ namespace Niga_Domain.Authorization
                 ?? user?.FindFirst(ClaimTypes.Role)?.Value
                 ?? user?.FindFirst("role")?.Value;
         }
+
+        public static bool IsPharmacyPartnerUser(ClaimsPrincipal? user)
+        {
+            if (user?.Identity?.IsAuthenticated != true)
+                return false;
+
+            foreach (var claim in user.FindAll(ClaimTypes.Role))
+            {
+                if (IsPharmacyPartnerRoleName(claim.Value))
+                    return true;
+            }
+
+            return IsPharmacyPartnerRoleName(GetRoleName(user));
+        }
+
+        public static bool IsPharmacyPartnerRoleName(string? roleName)
+        {
+            if (string.IsNullOrWhiteSpace(roleName))
+                return false;
+
+            foreach (var allowed in PharmacyPartnerRoleNames)
+            {
+                if (string.Equals(allowed, roleName.Trim(), StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// SEC-04.03 — Account/Pharmacy money roles cannot use patient PII APIs.
+        /// Admin portal still can (support).
+        /// </summary>
+        public static bool IsMoneyOnlyRole(ClaimsPrincipal? user)
+        {
+            if (user?.Identity?.IsAuthenticated != true)
+                return false;
+            if (IsAdminPortalUser(user))
+                return false;
+            return IsAccountPortalUser(user) || IsPharmacyPartnerUser(user);
+        }
+
+        public static bool IsAccountOrAdminUser(ClaimsPrincipal? user)
+            => IsAccountPortalUser(user) || IsAdminPortalUser(user);
     }
 }

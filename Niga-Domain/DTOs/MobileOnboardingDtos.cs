@@ -40,6 +40,9 @@ namespace Niga_Domain.DTOs
 
         public int? PreferredLanguageId { get; set; }
 
+        [MaxLength(20)]
+        public string? WelcomeVersionSeen { get; set; }
+
         /// <summary>Optional existing PatientId to link as primary (same as Family/LinkPrimary).</summary>
         public int? PatientId { get; set; }
     }
@@ -56,6 +59,14 @@ namespace Niga_Domain.DTOs
 
         [MaxLength(100)]
         public string? DeviceId { get; set; }
+    }
+
+    public class DeviceUnregisterRequest
+    {
+        [MaxLength(512)]
+        public string? Token { get; set; }
+
+        public long? DevicePushTokenId { get; set; }
     }
 
     public class SecureFileSignRequest

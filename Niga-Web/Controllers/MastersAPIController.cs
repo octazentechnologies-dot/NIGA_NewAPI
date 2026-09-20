@@ -98,7 +98,11 @@ namespace Niga_Domain.API.Controllers
         /// <summary>
         /// To get all active languages (e.g. English, Marathi for WhatsApp templates).
         /// </summary>
+        /// <summary>
+        /// PAT-01.02 — Language list for first-run picker (before login) and profile setup.
+        /// </summary>
         [HttpGet("GetLanguages")]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(LanguageMasterModel), 200)]
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]

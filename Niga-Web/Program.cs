@@ -124,6 +124,9 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AdminAuthorizationPolicies.AccountPortal, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx => AdminAuthorizationPolicies.IsAccountPortalUser(ctx.User)));
+    options.AddPolicy(AdminAuthorizationPolicies.AccountOrAdmin, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx => AdminAuthorizationPolicies.IsAccountOrAdminUser(ctx.User)));
 });
 
 var app = builder.Build();

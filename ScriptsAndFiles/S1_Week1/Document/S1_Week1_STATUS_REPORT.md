@@ -4,9 +4,14 @@ Excel was **not** edited. This file is the delivery record for S1 Week 1 (API + 
 
 ## Scope applied
 
-- **Skipped:** QA, PRE/client gates, Mobile UI/UX/client/Frontend (PAT-*, DMO-*, Track=Mobile).
-- **In scope:** Web API (existing on Old-API, new HTTP on New-API), SQL you run manually, family/caregiver SPA, GetMenuByRole consume.
+- **Skipped:** QA, PRE/client gates, Mobile UI / React Native screens (PAT-*.01/*.03, DMO-*.01/*.03).
+- **In scope:** Web API (existing on Old-API, new HTTP on New-API), SQL you run manually, family/caregiver SPA, GetMenuByRole consume, **Mobile APIs** (PAT-01.02 … PAT-05.02, DMO-01.02 … DMO-03.02).
 - **Not rebuilt:** Admin clinical masters. No third API. Login / Rx-write / Razorpay stay on classic (Old-API).
+
+Shareable API text (give these to test / mobile):
+
+- `NIGA_NewAPI/ScriptsAndFiles/S1_Week1/S1_Week1_API_DOC.txt`
+- `NIGA_NewAPI/ScriptsAndFiles/S1_Week1/S1_Week1_MOBILE_API_DOC.txt`
 
 ## SQL pack (you run)
 
@@ -189,40 +194,40 @@ Both APIs compile (0 errors) to a temp output folder. Running `Niga-Web` / Old-A
 | CON-02.03 | UI | M16 | N/A/Not Started/Not Started/N/A | DONE | Implemented this week (code + docs) |
 | CON-02.04 | Web | M16 | Not Started/Not Started/N/A/N/A | DONE | Implemented this week (code + docs) |
 | CON-02.05 | QA | M16 | Not Started/Not Started/Not Started/N/A | SKIPPED | QA track skipped |
-| PAT-01.01 | Mobile | M17 | N/A/N/A/Done/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| PAT-01.02 | Mobile | M17 | N/A/Not Started/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| PAT-01.03 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
+| PAT-01.01 | Mobile | M17 | N/A/N/A/Done/N/A | SKIPPED | RN UI skipped |
+| PAT-01.02 | Mobile | M17 | N/A/Not Started/Not Started/N/A | API DONE | GET /mastersAPI/GetLanguages (anon) + PatientProfile language |
+| PAT-01.03 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
 | PAT-01.04 | QA | M17 | N/A/Not Started/Not Started/N/A | SKIPPED | QA track skipped |
-| PAT-02.01 | Mobile | M17 | N/A/N/A/Done/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| PAT-02.02 | Mobile | M17 | N/A/Not Started/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| PAT-02.03 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
+| PAT-02.01 | Mobile | M17 | N/A/N/A/Done/N/A | SKIPPED | RN UI skipped |
+| PAT-02.02 | Mobile | M17 | N/A/Not Started/Not Started/N/A | API DONE | GET /Welcome/Patient + welcomeVersionSeen on profile PUT |
+| PAT-02.03 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
 | PAT-02.04 | QA | M17 | N/A/Not Started/Not Started/N/A | SKIPPED | QA track skipped |
-| PAT-03.01 | Mobile | M17 | N/A/N/A/Done/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| PAT-03.02 | Mobile | M17 | N/A/Not Started/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| PAT-03.03 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
+| PAT-03.01 | Mobile | M17 | N/A/N/A/Done/N/A | SKIPPED | RN UI skipped |
+| PAT-03.02 | Mobile | M17 | N/A/Not Started/Not Started/N/A | API DONE | RequestOtp Action=Login + LoginWithOtp |
+| PAT-03.03 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
 | PAT-03.04 | QA | M17 | N/A/Not Started/Not Started/N/A | SKIPPED | QA track skipped |
-| PAT-04.01 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| PAT-04.02 | Mobile | M17 | N/A/Not Started/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| PAT-04.03 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
+| PAT-04.01 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
+| PAT-04.02 | Mobile | M17 | N/A/Not Started/Not Started/N/A | API DONE | GET/PUT /PatientProfile/Me |
+| PAT-04.03 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
 | PAT-04.04 | QA | M17 | N/A/Not Started/Not Started/N/A | SKIPPED | QA track skipped |
-| PAT-05.01 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| PAT-05.02 | Mobile | M17 | N/A/Not Started/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| PAT-05.03 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
+| PAT-05.01 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
+| PAT-05.02 | Mobile | M17 | N/A/Not Started/Not Started/N/A | API DONE | PrivacyStatus + GrantPrivacy + Public/Policies/Privacy |
+| PAT-05.03 | Mobile | M17 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
 | PAT-05.04 | QA | M17 | N/A/Not Started/Not Started/N/A | SKIPPED | QA track skipped |
-| DMO-01.01 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| DMO-01.02 | Mobile | M18 | N/A/Not Started/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| DMO-01.03 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
+| DMO-01.01 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI / Keychain skipped |
+| DMO-01.02 | Mobile | M18 | N/A/Not Started/Not Started/N/A | API DONE | Same Old-API POST /Account/Login. Keychain is RN. |
+| DMO-01.03 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
 | DMO-01.04 | QA | M18 | N/A/Not Started/Not Started/N/A | SKIPPED | QA track skipped |
-| DMO-02.01 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| DMO-02.02 | Mobile | M18 | N/A/Not Started/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| DMO-02.03 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
+| DMO-02.01 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
+| DMO-02.02 | Mobile | M18 | N/A/Not Started/Not Started/N/A | API DONE | GET /Profile/Me + POST /Account/ConfirmMobile |
+| DMO-02.03 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
 | DMO-02.04 | QA | M18 | N/A/Not Started/Not Started/N/A | SKIPPED | QA track skipped |
-| DMO-03.01 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| DMO-03.02 | Mobile | M18 | N/A/Not Started/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
-| DMO-03.03 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | Mobile / mobile frontend skipped |
+| DMO-03.01 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
+| DMO-03.02 | Mobile | M18 | N/A/Not Started/Not Started/N/A | API DONE | POST /Device/Register + Unregister + GET /Device/Mine |
+| DMO-03.03 | Mobile | M18 | N/A/N/A/Not Started/N/A | SKIPPED | RN UI skipped |
 | DMO-03.04 | QA | M18 | N/A/Not Started/Not Started/N/A | SKIPPED | QA track skipped |
 
-Counts: {'SKIPPED': 84, 'DONE': 85, 'SQL READY': 9} (total 178).
+Counts: SKIPPED RN/QA/PRE, DONE web/SQL, API DONE for PAT-01.02…05.02 and DMO-01.02…03.02 (total 178). Excel was not edited.
 
 ## Test / proof guide
 
@@ -233,9 +238,10 @@ Restart New-API and Old-API after SQL + this code (file locks otherwise).
 1. Run scripts 01 → 02 → 03 → 04 → 05 then `06_VERIFY_S1_Week1.sql`.
 2. Proof: `UserPassword` length 500; tables Consent/OTP/Audit/SecureDocument/Family; RoleMaster Patient/Account/PharmacyPartner; Account/Pharmacy MenuMaster rows.
 
-### Auth (classic login stays Old-API path via UI `loginApi` → New-API Account is already used by this SPA)
+### Auth (classic login stays Old-API)
 
-UI `loginApi` posts to New-API. Confirm JWT contains `RoleId`, `RoleName`/`role`, `DoctorID` for doctors, `NameIdentifier` = UserId.
+UI `login` posts to Old-API `:5001` `/api/Account/Login` (`api`, not nigahomeoAPI). Do not switch this host.
+Confirm JWT contains `RoleId`, `RoleName`/`role`, `DoctorID` for doctors, `NameIdentifier` = UserId.
 Login once so plaintext hashes migrate to `PBKDF2$v1$…`.
 
 ### SEC-05.02 directory browsing

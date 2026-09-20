@@ -1,7 +1,7 @@
 /*
 ================================================================================
 Author       : Tufan Powar
-Created      : 19-09-2026
+Created      : 18-09-2026
 Script       : Test sample data insert.sql
 Purpose      : Insert 10 TEST sample rows into each S1 Week 1 NEW table.
 Use          : TEST / UAT / local Dev only.
@@ -19,7 +19,7 @@ SET XACT_ABORT ON;
 DECLARE @OwnerLogin NVARCHAR(200) = N'tufanpowar001@gmail.com';
 DECLARE @Pwd NVARCHAR(500) = N'PBKDF2$v1$100000$uszumO1aPL3it0x1tm/FcA==$hvFLmFwfXrC7i3Id07HFiH9ah4WiIAdjzYPyQnArLxQ='; -- 123456
 DECLARE @OtpHash NVARCHAR(128) = CONVERT(VARCHAR(64), HASHBYTES(N'SHA2_256', CONVERT(VARBINARY(32), N'123456')), 2);
-DECLARE @Now DATETIME = GETUTCDATE();
+DECLARE @Now DATETIME = '2026-09-18T12:00:00';
 DECLARE @Marker NVARCHAR(40) = N'S1-SAMPLE';
 
 IF OBJECT_ID(N'dbo.UserMaster', N'U') IS NULL

@@ -20,8 +20,11 @@ Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 | 7 | `07_TEST_Sample_Data_Insert.sql` | Dev/test sample: 10 enquiries, 10 CogRun, 10 bookings (S2TESTED01–10), KYC, fees, hotspot map, Booking policy. |
 | 8 | `08_CARE_CATEGORIES_RECEPTION_ARTICLES.sql` | HumanSystemMaster care categories, Dev reception login `s2.reception`, S2-TESTED article body. |
 | 9 | `09_WEB_TRU_Doctor_Credential_Documents.sql` | WEB-09.01 TRU-01 tables: DoctorVerification + DoctorCredentialDocument. Backfill one verification row per doctor. |
+| 10 | `10_TODAY_SLOTS_POLICY_DIRECTORY.sql` | Dev-only: today + tomorrow DoctorDailySchedule for every Verified directory doctor; Booking policy 2026.09 if missing. |
+| 11 | `11_FAMILY_RELATION_MASTER.sql` | FamilyRelationMaster + PatientFamilyMember.RelationId. Seed Spouse/Father/Mother/... |
+| 12 | `12_DEV_Seed_Role_Users.sql` | Dev logins for Account (`s2.account`) and PharmacyPartner (`s2.pharmacy`), password hash from tufanpowar001@gmail.com (123456). |
 
-Scripts are idempotent (IF COL_LENGTH / IF NOT EXISTS). Safe to re-run. Scripts 07 and 08 are Dev/test data only.
+Scripts are idempotent (IF COL_LENGTH / IF NOT EXISTS). Safe to re-run. Scripts 07, 08 and 10 are Dev/test data only.
 
 ## After SQL
 

@@ -13,6 +13,7 @@ namespace Niga_Domain.API.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
+    [ForbidMoneyRoles]
     public class PatientProfileController : ControllerBase
     {
         private readonly NIGACentrumContext _context;
@@ -178,6 +179,10 @@ namespace Niga_Domain.API.Controllers
                 }
                 if (request.PreferredLanguageId.HasValue)
                     pref.PreferredLanguageId = request.PreferredLanguageId;
+                if (request.WelcomeVersionSeen != null)
+                    pref.WelcomeVersionSeen = string.IsNullOrWhiteSpace(request.WelcomeVersionSeen)
+                        ? pref.WelcomeVersionSeen
+                        : request.WelcomeVersionSeen.Trim();
                 pref.UpdatedAt = DateTime.UtcNow;
             }
             catch

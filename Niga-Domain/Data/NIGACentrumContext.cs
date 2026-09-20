@@ -427,6 +427,8 @@ namespace Niga_Domain.Data
 
     public virtual DbSet<PatientFamilyMember> PatientFamilyMembers { get; set; }
 
+    public virtual DbSet<FamilyRelationMaster> FamilyRelationMasters { get; set; }
+
     public virtual DbSet<CaregiverAuthorization> CaregiverAuthorizations { get; set; }
 
     public virtual DbSet<UserAppPreference> UserAppPreferences { get; set; }
@@ -3297,6 +3299,17 @@ namespace Niga_Domain.Data
             entity.Property(e => e.ChangedDate).HasColumnType("datetime");
             entity.HasIndex(e => new { e.OwnerUserId, e.OwnerPatientId });
             entity.HasIndex(e => e.MemberPatientId);
+        });
+
+        modelBuilder.Entity<FamilyRelationMaster>(entity =>
+        {
+            entity.HasKey(e => e.RelationId);
+            entity.ToTable("FamilyRelationMaster");
+            entity.Property(e => e.RelationName).HasMaxLength(50);
+            entity.Property(e => e.EnteredBy).HasMaxLength(100);
+            entity.Property(e => e.ChangedBy).HasMaxLength(100);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            entity.Property(e => e.ChangedDate).HasColumnType("datetime");
         });
 
         modelBuilder.Entity<CaregiverAuthorization>(entity =>

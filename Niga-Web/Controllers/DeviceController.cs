@@ -50,7 +50,7 @@ namespace Niga_Domain.API.Controllers
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "DevicePushToken table missing. Run 05_S1_Week1_Mobile_Menus_And_Prefs.sql.",
+                    message = "DevicePushToken table missing. Run 04_S1_Week1_Mobile_Menus_And_Prefs.sql.",
                     detail = ex.Message
                 });
             }
@@ -88,6 +88,51 @@ namespace Niga_Domain.API.Controllers
                     row.UpdatedAt
                 }
             });
+        }
+
+        /// <summary>DMO-03.02 / COM-03 — Soft-unregister this JWT user's FCM or APNs token.</summary>
+        [HttpPost("Unregister")]
+        public async Task<IActionResult> Unregister([FromBody] DeviceUnregisterRequest request)
+        {
+            var token = request?.Token?.Trim();
+            if (string.IsNullOrWhiteSpace(token) && (request?.DevicePushTokenId == null || request.DevicePushTokenId <= 0))
+                return BadRequest(new { success = false, message = "Token or DevicePushTokenId is required." });
+
+            var userId = (long)User.GetUserId();
+            DevicePushToken? row;
+            try
+            {
+                if (request!.DevicePushTokenId.HasValue && request.DevicePushTokenId.Value > 0)
+                {
+                    row = await _context.DevicePushTokens
+                        .FirstOrDefaultAsync(d =>
+                            d.DevicePushTokenId == request.DevicePushTokenId.Value
+                            && d.UserId == userId
+                            && !d.DeleteStatus);
+                }
+                else
+                {
+                    row = await _context.DevicePushTokens
+                        .FirstOrDefaultAsync(d => d.UserId == userId && d.Token == token && !d.DeleteStatus);
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "DevicePushToken table missing. Run 04_S1_Week1_Mobile_Menus_And_Prefs.sql.",
+                    detail = ex.Message
+                });
+            }
+
+            if (row == null)
+                return NotFound(new { success = false, message = "Device token not found." });
+
+            row.DeleteStatus = true;
+            row.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return Ok(new { success = true, message = "Unregistered." });
         }
 
         [HttpGet("Mine")]
