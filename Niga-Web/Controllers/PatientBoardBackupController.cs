@@ -34,13 +34,18 @@ public class PatientBoardBackupController : ControllerBase
 
     [HttpPost("Save")]
     [ProducesResponseType(typeof(ApiResponse<SavePatientBoardBackupResultModel>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<object> Save([FromBody] SavePatientBoardBackupRequest request)
     {
         try
         {
-            if (!ModelState.IsValid)
+            // Authorized doctor with a missing payload must be 400, not HTTP 200 { success:false }.
+            // Reception never reaches here: DoctorOnly IAuthorizationFilter returns 403 first.
+            if (!ModelState.IsValid || request == null || string.IsNullOrWhiteSpace(request.BackupPayload))
             {
-                return ThreeDBodyPartApiResponseHelper.Failure(GetValidationMessage());
+                return BadRequest(new { success = false, message = GetValidationMessage() });
             }
 
             var userId = ResolveDoctorUserId();

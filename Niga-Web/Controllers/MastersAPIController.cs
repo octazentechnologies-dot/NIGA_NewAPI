@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -768,6 +769,8 @@ namespace Niga_Domain.API.Controllers
         /// <summary>
         /// M02 W7 ADM-B04 — Get menus for the role of the given user (New-API restore).
         /// SEC-04.01 / IDOR harden: non-AdminPortal callers are forced to their own JWT userId.
+        /// AdminPortal may pass ?userId= to inspect another user. When userId is omitted or
+        /// zero, use the JWT so Admin GetMenuByRole matches Doctor (no silent 404).
         /// </summary>
         [HttpGet("GetMenuByRole")]
         [ProducesResponseType(typeof(MenuMasterModel), 200)]
@@ -779,18 +782,30 @@ namespace Niga_Domain.API.Controllers
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                if (!User.IsAdminPortalUser())
+                var requestedUserId = userId;
+                var inspectOther = User.IsAdminPortalUser() && requestedUserId > 0;
+                var jwtRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+                    ?? User.FindFirst("Role")?.Value
+                    ?? User.FindFirst("role")?.Value;
+
+                if (!inspectOther)
                 {
-                    userId = User.GetUserId();
+                    try
+                    {
+                        userId = User.GetUserId();
+                    }
+                    catch
+                    {
+                        // Reception NameIdentifier is staff id — service uses JWT role instead.
+                    }
                 }
 
-                var menuList = _mastersAPIService.GetMenuByRole(userId, ref errorResponseModel);
+                var menuList = _mastersAPIService.GetMenuByRole(userId, jwtRole, inspectOther, ref errorResponseModel);
 
-                if (menuList != null && menuList.Count > 0)
-                {
-                    return Ok(menuList);
-                }
-                return ReturnErrorResponse(errorResponseModel);
+                if (errorResponseModel?.StatusCode == HttpStatusCode.NotFound)
+                    return ReturnErrorResponse(errorResponseModel);
+
+                return Ok(menuList ?? new List<MenuMasterModel>());
             }
             catch (Exception ex)
             {

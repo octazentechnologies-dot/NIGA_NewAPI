@@ -187,8 +187,12 @@ namespace Niga_Domain.Business.Interface
 
         /// <summary>
         /// M02 W7 / ADM-B04 — menus allowed for the user's RoleId (from RoleDetails + MenuMaster).
+        /// jwtRoleName is required for Reception: staff NameIdentifier is not UserMaster, and
+        /// the doctor UserId on the JWT must not inherit Doctor case-taking menus.
         /// </summary>
         List<MenuMasterModel> GetMenuByRole(long userId, ref ErrorResponseModel errorResponseModel);
+
+        List<MenuMasterModel> GetMenuByRole(long userId, string jwtRoleName, bool inspectOtherUser, ref ErrorResponseModel errorResponseModel);
 
         /// <summary>
         /// Method is used for get doctor by user Id

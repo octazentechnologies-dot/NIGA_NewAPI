@@ -19,7 +19,7 @@ Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 | 6 | `06_VERIFY_S1_Week1.sql` | Read-only proof queries. |
 | 7 | `07_UNIT_TEST_S1_Week1_Guards.sql` | Guard unit tests (create-if-missing, add-column, insert-if-absent) plus live schema assertions. |
 | 8 | `08_DEV_Seed_S1_NewTables_Sample_Tested.sql` | Sample TESTED rows in new S1 tables (family, caregiver, consent, OTP, audit, device, prefs). Run after 05. |
-| 9 | `09_ADM_B04_Doctor_Clinic_Menus.sql` | Doctor RoleDetails + clinic MenuMaster so GetMenuByRole is 200 for Doctor. |
+| 9 | `09_ADM_B04_Doctor_Clinic_Menus.sql` | Doctor RoleDetails + clinic MenuMaster so GetMenuByRole is 200 for Doctor (no Enquiries). |
 | 10 | `Test sample data insert.sql` (this folder) | **TEST/UAT only — do not run on production.** 10 sample rows in each new S1 table. |
 
 No extra OTP table script: caregiver grant OTP reuses `OtpChallenge` from step 1 (`Action = GrantCaregiver`). Login OTP uses `Action = Login` (anonymous).

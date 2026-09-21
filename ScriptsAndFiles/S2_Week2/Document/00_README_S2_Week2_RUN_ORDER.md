@@ -24,8 +24,11 @@ Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 | 11 | `11_FAMILY_RELATION_MASTER.sql` | FamilyRelationMaster + PatientFamilyMember.RelationId. Seed Spouse/Father/Mother/... |
 | 12 | `12_DEV_Seed_Role_Users.sql` | Dev logins for Account (`s2.account`) and PharmacyPartner (`s2.pharmacy`), password hash from tufanpowar001@gmail.com (123456). |
 | 13 | `13_DOC_Reception_Profile_Menus.sql` | Doctor menus: Reception Staff `/doctor/reception-staff`, Profile `/profile`. |
-| 15 | `15_DEV_Seed_Tufan_Role_Logins.sql` | Team logins `Tufan_*` / `123456` for Admin, Doctor (`Tufan_Doctore`), Reception, Account, Pharmacy, Patient, Caregiver. Dev only. |
-| 16 | `16_DEV_Tufan_Role_Logins_Verify.sql` | Read-only proof of Tufan_* logins. |
+| 15 | `15_DEV_Seed_Tufan_Role_Logins.sql` | Team logins `Tufan_*` / `123456` for Admin, Doctor (`Tufan_Doctore`), Reception, Account, Pharmacy, Patient, Caregiver, plus API-only `Tufan_NoMenu`. Dev only. |
+| 16 | `16_DEV_Tufan_Role_Logins_Verify.sql` | Read-only proof of Tufan_* logins + RoleDetails counts. |
+| 17 | `17_DEV_Tufan_Contact_Email_Mobile.sql` | Unique emails/mobiles so LoginWithOtp is not ambiguous. |
+| 19 | `19_DEV_Seed_Role_Menus.sql` | RoleDetails for Admin/Reception/Pharmacy extras; revoke Doctor Enquiries; unique (RoleId, MenuId). Run after 15. |
+| 22 | `22_DEV_Role_Menu_Consistency.sql` | Read-only proof: Tufan users, role-menu mappings, no Doctor Enquiries, Reception has no patientboard, Tufan_NoMenu has zero menus. |
 
 Scripts 07, 08 and 10 are Dev/test data only. Scripts 14 and 16 are read-only. Script 15 is Dev team users only — do not run on production.
 

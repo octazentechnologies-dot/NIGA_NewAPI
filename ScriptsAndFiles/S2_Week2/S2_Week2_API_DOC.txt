@@ -720,6 +720,30 @@ SAMPLE PAYLOAD: { "userId": 2 }
 OUTPUT     : existing buckets + isOnline, teleQueueCount, unpaidCount
 
 --------------------------------------------------------------------------------
+URL        : GET /api/doctorDashBoard/GetPatientStats?userId=
+USE        : Status-bucket counts on doctor home (DOC-08). Reception may read the
+             owning doctor's stats (DOC-02.02) until Phase 5 splits chrome.
+HOST       : New-API
+TOKEN      : doctor or reception JWT
+SAMPLE     : GET /api/doctorDashBoard/GetPatientStats?userId=10032
+INPUTS     : userId (Reception JWT remaps to DoctorUserID), optional fromDate, toDate
+OUTPUT     : dictionary of status -> count. Empty clinic is 200 with zeros, not 404/500.
+AUTHZ      : Doctor or Reception (clinic dashboard reader). Account/Patient/Pharmacy 403.
+             Unauthenticated 401. Reception query userId is remapped to JWT DoctorUserID.
+
+--------------------------------------------------------------------------------
+URL        : GET /api/doctorDashBoard/GetPatientStatsCharts?userId=&period=
+USE        : Pie/bar charts on doctor home (DOC-02.02). Reception is allowed.
+             Case-taking APIs stay DoctorOnly.
+HOST       : New-API  (UI getPatientStatsCharts)
+TOKEN      : doctor or reception JWT
+SAMPLE     : GET /api/doctorDashBoard/GetPatientStatsCharts?userId=10032&period=ALL
+INPUTS     : userId, period=ALL|1M|3M|6M, optional fromDate+toDate when period=ALL
+OUTPUT     : PatientStatsChartsResponseModel { period, fromDate, toDate, pieChart.series[6], barChart }
+             Empty clinic is 200 with zeros (not 404/500). Account/Patient/Pharmacy 403. Unauthenticated 401.
+             Reception query userId is remapped to JWT DoctorUserID before the userId>0 check.
+
+--------------------------------------------------------------------------------
 URL        : GET /api/doctorDashBoard/ExportPatients
 USE        : Export patients Excel / CSV / PDF (DOC-06). Already on New-API.
 HOST       : New-API
@@ -733,9 +757,16 @@ URL        : POST /api/PatientBoardBackup/Save
              GET  /api/PatientBoardBackup/Summary|Latest
              POST /api/PatientBoardBackup/Delete
 USE        : Session restore (CLN-19). Intensity-on-clipboard is merged into the
-             backup payload (CLN-07). DoctorOnly — reception 403, patient 403.
+             backup payload (CLN-07). DoctorOnly is an authorization filter so
+             Reception/Patient get 403 before model validation (missing BackupPayload
+             used to return 400). Treating doctor only.
 HOST       : New-API
-TOKEN      : doctor JWT
+TOKEN      : doctor JWT (Save/Summary/Latest/Delete)
+STATUS     : 401 unauthenticated or invalid JWT
+             403 Reception / Patient / Account / Pharmacy (authorization filter runs before model validation)
+             400 treating doctor with missing BackupPayload
+             200 treating doctor with valid payload
+INPUTS     : Save body { backupPayload (required), patientCount, schemaVersion }
 OUTPUT     : existing backup DTOs
 
 --------------------------------------------------------------------------------
@@ -805,8 +836,8 @@ DOC-05  URL  POST /api/patient/ImportPatients  (existing)
         USE  Import patients — ACL caller userId or reception DoctorUserID. No new HTTP.
 DOC-07  URL  POST /api/doctorDashBoard  (Old-API list) / GET api/doctorDashBoard (New-API)
         USE  Recent activity — ACL same as GetCountApp. No new HTTP.
-DOC-08  URL  GET /api/doctorDashBoard/GetPatientStats  (existing)
-        USE  Stats — doctor JWT only (reception 403). No new HTTP.
+DOC-08  URL  GET /api/doctorDashBoard/GetPatientStats + GetPatientStatsCharts
+        USE  Stats/charts — doctor or reception JWT (owning DoctorUserID). Not Patient.
 WEB-09  URL  GET/POST /api/Profile/Me/Credentials + CredentialDocuments
         USE  TRU-01 DoctorVerification + DoctorCredentialDocument
 Doctor mobile must NOT call case-taking (clipboard / CenterOfGravity / audio).

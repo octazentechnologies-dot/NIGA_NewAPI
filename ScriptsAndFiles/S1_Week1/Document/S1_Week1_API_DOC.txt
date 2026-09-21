@@ -311,8 +311,8 @@ HOST       : New-API
 TOKEN      : yes
 SAMPLE     : GET /api/mastersAPI/GetMenuByRole?userId=2
 INPUTS     : userId (ignored unless AdminPortal)
-OUTPUT     : menu rows (menuId, menuName, menuUrl, ...)
-NOTE       : SPA LayoutMenuContext consumes this; hardcoded Account/Pharmacy fallback if empty.
+OUTPUT     : menu rows (menuId, menuName, menuUrl, parentMenuId, seqNo, ...)
+NOTE       : SPA LayoutMenuContext consumes this and nests by parentMenuId. Empty RoleDetails is 200 [] (not 404). Missing user is 404. Unauthenticated is 401. Hardcoded SPA nav is used only when GetMenuByRole fails, not when the list is empty. Reception JWT uses ClaimTypes.Role=Reception so menus are not the owning doctor's case-taking items. AdminPortal may pass ?userId= to inspect another user; other roles cannot IDOR another user's menus. Inactive menus (DeleteStatus or ShowInMainMenu=0) are omitted. Seed: 19_DEV_Seed_Role_Menus.sql. Empty-menu probe login: Tufan_NoMenu (EmptyMenuProbe).
 
 --------------------------------------------------------------------------------
 URL        : GET /api/mastersAPI/GetLanguages
@@ -435,6 +435,7 @@ SAMPLE PAYLOAD:
 }
 INPUTS     : patientName required (unless existingMemberPatientId). relationId or relation required.
 OUTPUT     : { success, data: FamilyMemberDto }
+NOTE       : CON-01.03 SPA blocks submit until a relation is selected. API returns 400 "Relation is required." when both are missing. Name-only must not save.
 
 --------------------------------------------------------------------------------
 URL        : GET /api/Family/{id}
@@ -649,11 +650,19 @@ USE        : Reuse ConsentRecord + AudioCaseConsentLog. Do not fork a second tel
 ================================================================================
 DEV LOGINS (HomeoCentrum_Dev)
 ================================================================================
+Team (script 15, password 123456 for all) — clinic SPA uses Old-API Login:
+  Tufan_Admin / Tufan_Doctore / Tufan_Reception / Tufan_Account /
+  Tufan_Pharmacy / Tufan_Patient / Tufan_Caregiver
+  Shared email/mobile tufanpowar@gmail.com / 7768046064 is Tufan_Patient only
+  (plus Reception staff row). Catalog sheet "Logins" has the full table.
+
+Older still valid:
 Doctor     : niga homeopathy / nik123                         Old-API Login
 Patient    : tufanpowar001@gmail.com / 123456                 OTP or password
 Caregiver  : s1.caregiver.tested@homeocentrum.dev / 123456
 Account    : s2.account / 123456
 Pharmacy   : s2.pharmacy / 123456
+Reception  : s2.reception / S2Test@123
 Reset mail : Gmail wrap-safe /reset-password/{token} on SPA :3000
 
 ================================================================================
@@ -668,7 +677,11 @@ NIGA_NewAPI/ScriptsAndFiles/S1_Week1/Database scripts
   06_VERIFY_S1_Week1.sql                   (read-only — OK on any env)
   07_UNIT_TEST_S1_Week1_Guards.sql         DEV/TEST only — do not run on production
   08_DEV_Seed_S1_NewTables_Sample_Tested.sql  DEV/TEST only
+  09_ADM_B04_Doctor_Clinic_Menus.sql       (Doctor clinic SPA menus; Enquiries is Admin-only)
   ../Test sample data insert.sql           DEV/TEST only — 10 rows per new table (18-09-2026)
+S2 team users + role menus (after S1 pack):
+  NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/15_DEV_Seed_Tufan_Role_Logins.sql
+  NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/19_DEV_Seed_Role_Menus.sql
 
 Mobile-only copy of patient/doctor app URLs:
   S1_Week1_MOBILE_API_DOC.txt

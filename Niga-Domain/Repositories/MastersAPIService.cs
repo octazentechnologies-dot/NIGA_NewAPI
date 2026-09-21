@@ -890,33 +890,61 @@ namespace Niga_Domain.Business.Implementation
         /// Does not seed Account/Pharmacy menus (see Database/Scripts/M02_W7_MenuMaster_Account_Pharmacy_Seed.sql).
         /// </summary>
         public List<MenuMasterModel> GetMenuByRole(long userId, ref ErrorResponseModel errorResponseModel)
+            => GetMenuByRole(userId, jwtRoleName: null, inspectOtherUser: false, ref errorResponseModel);
+
+        public List<MenuMasterModel> GetMenuByRole(long userId, string jwtRoleName, bool inspectOtherUser, ref ErrorResponseModel errorResponseModel)
         {
             var menuModelList = new List<MenuMasterModel>();
             errorResponseModel = new ErrorResponseModel();
 
-            var user = context.UserMasters.AsNoTracking()
-                .FirstOrDefault(x => x.UserId == userId && !x.DeleteStatus);
+            int? roleId = null;
 
-            if (user == null || user.RoleId == null)
+            // Reception JWT NameIdentifier is DoctorReceptionStaff id, not UserMaster.
+            // If we resolved menus from the linked doctor UserId we would leak case-taking items.
+            var isReceptionJwt = !inspectOtherUser
+                && !string.IsNullOrWhiteSpace(jwtRoleName)
+                && jwtRoleName.Equals("Reception", StringComparison.OrdinalIgnoreCase);
+
+            if (isReceptionJwt)
+            {
+                roleId = context.RoleMasters.AsNoTracking()
+                    .Where(r => r.RoleName == "Reception" && !r.DeleteStatus)
+                    .Select(r => (int?)r.RoleId)
+                    .FirstOrDefault();
+            }
+            else
+            {
+                var user = context.UserMasters.AsNoTracking()
+                    .FirstOrDefault(x => x.UserId == userId && !x.DeleteStatus);
+
+                if (user == null || user.RoleId == null)
+                {
+                    errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                    errorResponseModel.Message = "User or role not found";
+                    return menuModelList;
+                }
+
+                roleId = user.RoleId.Value;
+            }
+
+            if (roleId == null)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "User or role not found";
                 return menuModelList;
             }
-
-            var roleId = user.RoleId.Value;
             var menuEntityList = context.RoleDetails
                 .AsNoTracking()
                 .Where(x => x.RoleId == roleId && x.IsView)
                 .Include(x => x.Menu)
-                .Where(x => x.Menu != null && !x.Menu.DeleteStatus)
+                .Where(x => x.Menu != null && !x.Menu.DeleteStatus && x.Menu.ShowInMainMenu)
                 .OrderBy(x => x.Menu.SeqNo)
                 .ToList();
 
             if (menuEntityList.Count == 0)
             {
-                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
-                errorResponseModel.Message = "menu not found";
+                // Mapped user/role exists but has no visible RoleDetails. Contract is 200 []
+                // (missing UserMaster is 404; unauthenticated is 401).
                 return menuModelList;
             }
 

@@ -5,16 +5,21 @@ Clinic web login : Old-API POST /api/Account/Login  (local http://127.0.0.1:5001
 Password for every row below : 123456
 Created : 21-Sep-2026
 Seed script : NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/15_DEV_Seed_Tufan_Role_Logins.sql
+Menus       : NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/19_DEV_Seed_Role_Menus.sql
+              (GetMenuByRole on New-API :5038 — Reception menus are Role=Reception, not the doctor's)
 
-Username            Role              Portal / URL                         Notes
+Username            Role              Portal / URL                         Email / Mobile
 ------------------  ----------------  -----------------------------------  ------------------------------------------
-Tufan_Admin         Admin             /dashboard                           Admin portal
-Tufan_Doctore       Doctor            /doctordashboard                     Doctor clinic (Verified, directory visible)
-Tufan_Reception     Reception         /doctordashboard                     DoctorReceptionStaff (not UserMaster)
-Tufan_Account       Account           /accountdashboard                    Account department
-Tufan_Pharmacy      PharmacyPartner   /pharmacydashboard                   Pharmacy console stub
-Tufan_Patient       Patient           /family                              Patient portal
-Tufan_Caregiver     Patient           /family                              Same Patient role; caregiver grant on Tufan_Patient
+Tufan_Admin         Admin             /dashboard                           tufan.admin@homeocentrum.dev / 9000000201
+Tufan_Doctore       Doctor            /doctordashboard                     tufan.doctore@homeocentrum.dev / 9000000202
+Tufan_Reception     Reception         /doctordashboard                     tufanpowar@gmail.com / 7768046064 (staff row, not UserMaster)
+Tufan_Account       Account           /accountdashboard                    tufan.account@homeocentrum.dev / 9000000203
+Tufan_Pharmacy      PharmacyPartner   /pharmacydashboard                   tufan.pharmacy@homeocentrum.dev / 9000000204
+Tufan_Patient       Patient           /family                              tufanpowar@gmail.com / 7768046064
+Tufan_Caregiver     Patient           /family                              tufan.caregiver@homeocentrum.dev / 9000000206
+Tufan_NoMenu        EmptyMenuProbe    (API only, no portal menus)          tufan.nomenu@homeocentrum.dev / 9000000207
+
+Tufan_NoMenu is an API-only probe (EmptyMenuProbe). GET /api/mastersAPI/GetMenuByRole must be 200 [].
 
 How to log in
 -------------
@@ -24,6 +29,12 @@ How to log in
 4. Reception uses the same login screen; the API looks up DoctorReceptionStaff.
 
 Do not use dummy Account/Account or Pharmacy/Pharmacy tokens.
+
+Uniqueness
+----------
+LoginWithOtp and ForgotPassword pick the first UserMaster row for a mobile/email.
+So tufanpowar@gmail.com / 7768046064 is on Tufan_Patient only (plus Reception staff Email/Contact, which is not UserMaster).
+Other Tufan_* UserMaster rows keep unique emails/mobiles. Older tufanpowar001@gmail.com mobile moved to 9000000101 so OTP is not ambiguous.
 
 Older Dev logins (still valid, different passwords)
 ---------------------------------------------------

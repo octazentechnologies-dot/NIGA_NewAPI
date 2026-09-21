@@ -238,9 +238,9 @@ namespace Niga_Domain.Implementation
                     : 0
             };
 
-            if (totalAppointments == 0)
+            if (totalAppointments == 0 && errorResponseModel != null)
             {
-                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.StatusCode = HttpStatusCode.OK;
                 errorResponseModel.Message = "No appointments found for the given date range.";
             }
 

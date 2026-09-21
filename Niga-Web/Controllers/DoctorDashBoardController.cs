@@ -123,17 +123,20 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public object GetPatientStats(long userId, DateTime? fromDate , DateTime? toDate)
+        public async Task<object> GetPatientStats(long userId, DateTime? fromDate , DateTime? toDate)
         {
-            ErrorResponseModel errorResponseModel = null;
+            ErrorResponseModel errorResponseModel = new ErrorResponseModel();
             try
             {
-                var deny = DoctorOwnership.ForbidIfNotTreatingDoctor(User);
+                var deny = DoctorOwnership.ForbidIfNotClinicDashboardReader(User);
                 if (deny != null)
                     return deny;
+                userId = ResolveClinicDashboardUserId(userId);
+                if (userId <= 0)
+                    return BadRequest("userId is required.");
                 if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
                     return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
-                var stats = _doctorDashBoardService.GetPatientStatusStats(userId, fromDate, toDate, errorResponseModel);
+                var stats = await _doctorDashBoardService.GetPatientStatusStats(userId, fromDate, toDate, errorResponseModel);
                 if (stats != null)
                 {
                     return stats;
@@ -166,14 +169,16 @@ namespace Niga_Domain.API.Controllers
         {
             try
             {
+                var deny = DoctorOwnership.ForbidIfNotClinicDashboardReader(User);
+                if (deny != null)
+                    return deny;
+
+                // Reception JWT NameIdentifier is staff id; remap from DoctorUserID before requiring userId.
+                userId = ResolveClinicDashboardUserId(userId);
                 if (userId <= 0)
                 {
                     return BadRequest("userId is required.");
                 }
-
-                var deny = DoctorOwnership.ForbidIfNotTreatingDoctor(User);
-                if (deny != null)
-                    return deny;
 
                 if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
                     return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
@@ -264,6 +269,22 @@ namespace Niga_Domain.API.Controllers
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Reception JWT NameIdentifier is staff id. Dashboard queries use the owning doctor's UserMaster id.
+        /// </summary>
+        private long ResolveClinicDashboardUserId(long userId)
+        {
+            var role = DoctorOwnership.GetRoleName(User);
+            if (!string.IsNullOrWhiteSpace(role)
+                && role.Equals("Reception", StringComparison.OrdinalIgnoreCase))
+            {
+                var doctorUserId = DoctorOwnership.GetDoctorUserId(User);
+                if (doctorUserId.HasValue)
+                    return doctorUserId.Value;
+            }
+            return userId;
         }
 
     }

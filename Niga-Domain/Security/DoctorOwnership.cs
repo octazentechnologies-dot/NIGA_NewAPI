@@ -38,7 +38,9 @@ namespace Niga_Domain.Security
 
         public static string? GetRoleName(ClaimsPrincipal? user)
             => user?.FindFirst(ClaimTypes.Role)?.Value
-               ?? user?.FindFirst("RoleName")?.Value;
+               ?? user?.FindFirst("RoleName")?.Value
+               ?? user?.FindFirst("Role")?.Value
+               ?? user?.FindFirst("role")?.Value;
 
         /// <summary>
         /// Returns true when the caller may access a resource owned by <paramref name="resourceDoctorId"/>.
@@ -106,6 +108,32 @@ namespace Niga_Domain.Security
                 return null;
 
             return new ObjectResult(new { success = false, message = "Only the treating doctor can run case taking." })
+            {
+                StatusCode = StatusCodes.Status403Forbidden
+            };
+        }
+
+        /// <summary>
+        /// DOC-02.02 — Reception may share doctor dashboard charts until Phase 5 splits chrome.
+        /// Case-taking endpoints must still use ForbidIfNotTreatingDoctor.
+        /// </summary>
+        public static IActionResult? ForbidIfNotClinicDashboardReader(ClaimsPrincipal? user)
+        {
+            if (IsAdminPortalUser(user))
+                return null;
+
+            var role = GetRoleName(user);
+            if (!string.IsNullOrWhiteSpace(role)
+                && (role.Equals("Doctor", StringComparison.OrdinalIgnoreCase)
+                    || role.Equals("Reception", StringComparison.OrdinalIgnoreCase)))
+                return null;
+
+            if (GetDoctorId(user).HasValue
+                && (string.IsNullOrWhiteSpace(role)
+                    || !role.Equals("Patient", StringComparison.OrdinalIgnoreCase)))
+                return null;
+
+            return new ObjectResult(new { success = false, message = "Clinic dashboard is for the treating doctor or their reception staff." })
             {
                 StatusCode = StatusCodes.Status403Forbidden
             };
