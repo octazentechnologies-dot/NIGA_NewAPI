@@ -10,6 +10,7 @@ using Niga_Domain.DTOs;
 using Niga_Domain.Enums;
 using Niga_Domain.Helpers;
 using Niga_Domain.Interface;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -46,6 +47,8 @@ namespace Niga_Domain.API.Controllers
             ErrorResponseModel errorResponseModel = null;
             try
             {
+                if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, patientAppmodel.UserId))
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
                 var patientAppModel = _doctorDashBoardService.GetPatientAppCount(patientAppmodel.UserId, patientAppmodel.AppointmentDate, ref errorResponseModel);
 
                 if (patientAppModel != null)
@@ -71,14 +74,19 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
 
-         public async Task<List<PatientAppointmentModel>> GetPatientAppUser([FromQuery] ParameterParams parameterParams)
+        [Authorize]
+        public async Task<IActionResult> GetPatientAppUser([FromQuery] ParameterParams parameterParams)
         {
-            
-                var patientList = await _doctorDashBoardService.GetPatientAppUserDate(parameterParams);
-                Response.AddPaginationHeader(patientList.CurrentPage, patientList.PageSize,
-                    patientList.TotalCount, patientList.TotalPages);
-                return patientList;
-           
+            if (parameterParams?.UserId != null && parameterParams.UserId.Value > 0
+                && !DoctorOwnership.EnsureCallerIsUserOrAdmin(User, parameterParams.UserId.Value))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+            }
+
+            var patientList = await _doctorDashBoardService.GetPatientAppUserDate(parameterParams);
+            Response.AddPaginationHeader(patientList.CurrentPage, patientList.PageSize,
+                patientList.TotalCount, patientList.TotalPages);
+            return Ok(patientList);
         }   
 
         /// <summary>
@@ -120,6 +128,11 @@ namespace Niga_Domain.API.Controllers
             ErrorResponseModel errorResponseModel = null;
             try
             {
+                var deny = DoctorOwnership.ForbidIfNotTreatingDoctor(User);
+                if (deny != null)
+                    return deny;
+                if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
                 var stats = _doctorDashBoardService.GetPatientStatusStats(userId, fromDate, toDate, errorResponseModel);
                 if (stats != null)
                 {
@@ -158,6 +171,13 @@ namespace Niga_Domain.API.Controllers
                     return BadRequest("userId is required.");
                 }
 
+                var deny = DoctorOwnership.ForbidIfNotTreatingDoctor(User);
+                if (deny != null)
+                    return deny;
+
+                if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+
                 if ((fromDate.HasValue && !toDate.HasValue) || (!fromDate.HasValue && toDate.HasValue))
                 {
                     return BadRequest("Both fromDate and toDate are required for a custom date range.");
@@ -189,6 +209,9 @@ namespace Niga_Domain.API.Controllers
             {
                 return BadRequest("userId is required.");
             }
+
+            if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
 
             var normalizedScope = (scope ?? "all").Trim().ToLowerInvariant();
             var normalizedFormat = (format ?? "excel").Trim().ToLowerInvariant();

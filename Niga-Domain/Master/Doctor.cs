@@ -43,6 +43,28 @@ public partial class Doctor
 
     public int? UserId { get; set; }
 
+    public string? ClinicName { get; set; }
+
+    public decimal? ConsultFeeInClinic { get; set; }
+
+    public decimal? ConsultFeeTele { get; set; }
+
+    public string? PhotoPath { get; set; }
+
+    public string? WorkingHoursNote { get; set; }
+
+    public bool IsOnline { get; set; }
+
+    public bool DirectoryVisible { get; set; }
+
+    public string VerificationStatus { get; set; } = "Pending";
+
+    public bool PracticeActivated { get; set; }
+
+    public int? CountryId { get; set; }
+
+    public int? StateId { get; set; }
+
     public virtual ICollection<CaseEntryDetail> CaseEntryDetails { get; set; } = new List<CaseEntryDetail>();
 
     public virtual PackageMaster? Package { get; set; }

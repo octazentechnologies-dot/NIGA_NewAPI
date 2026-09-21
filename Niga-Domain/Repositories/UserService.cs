@@ -65,8 +65,12 @@ namespace Niga_Domain.Repositories
                 EnteredDate = DateTime.Now,
                 RoleId = 3,
                 UserStatus = true,
-                IsUserActivated = true
+                IsUserActivated = false
             };
+
+            var rawToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            userEntity.ActivationTokenHash = SecurityTokenHash.Sha256Hex(rawToken);
+            userEntity.ActivationExpiresAt = DateTime.UtcNow.AddHours(48);
 
             _context.UserMasters.Add(userEntity);
             _context.SaveChanges();
@@ -84,6 +88,13 @@ namespace Niga_Domain.Repositories
                 PassingUniversity = string.IsNullOrWhiteSpace(model.PassingUniversity) ? null : model.PassingUniversity.Trim(),
                 PassingCertNo = string.IsNullOrWhiteSpace(model.PassingCertNo) ? null : model.PassingCertNo.Trim(),
                 City = string.IsNullOrWhiteSpace(model.City) ? null : model.City.Trim(),
+                CountryId = model.CountryId,
+                StateId = model.StateId,
+                ClinicName = model.CompanyName?.Trim(),
+                DirectoryVisible = false,
+                VerificationStatus = "Pending",
+                PracticeActivated = false,
+                IsOnline = false,
                 EnteredBy = model.UserName.Trim(),
                 EnteredDate = DateTime.Now,
                 DeleteStatus = false
@@ -92,9 +103,18 @@ namespace Niga_Domain.Repositories
             _context.Doctors.Add(doctorEntity);
             _context.SaveChanges();
 
-            TrySendWelcomeEmail(userEntity, smtpSettingsModel);
+            _context.DoctorVerifications.Add(new DoctorVerification
+            {
+                DoctorId = doctorEntity.DoctorId,
+                Status = "Pending",
+                EnteredDate = DateTime.UtcNow,
+                DeleteStatus = false
+            });
+            _context.SaveChanges();
 
-            return "Registration successful. Please sign in and choose a subscription plan to continue.";
+            TrySendActivationEmail(userEntity, rawToken, smtpSettingsModel);
+
+            return "Registration successful. Check your email to activate the account. Directory listing stays pending until verification.";
         }
 
         public string AddUser(UserModel model, SmtpSettingsModel smtpSettingsModel, ref ErrorResponseModel errorResponseModel)
@@ -227,10 +247,72 @@ namespace Niga_Domain.Repositories
             }
 
             userEntity.IsUserActivated = true;
+            userEntity.ActivationTokenHash = null;
+            userEntity.ActivationExpiresAt = null;
             userEntity.ChangedBy = model.ChangedBy;
             userEntity.ChangedDate = DateTime.Now;
             _context.SaveChanges();
             return true;
+        }
+
+        public object ActivateByToken(string token, ref ErrorResponseModel errorResponseModel)
+        {
+            errorResponseModel ??= new ErrorResponseModel();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "Token is required";
+                return null!;
+            }
+
+            var hash = SecurityTokenHash.Sha256Hex(token.Trim());
+            var userEntity = _context.UserMasters.FirstOrDefault(x =>
+                x.ActivationTokenHash == hash && !x.DeleteStatus);
+            if (userEntity == null)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "Invalid or already used activation link";
+                return null!;
+            }
+
+            if (userEntity.ActivationExpiresAt.HasValue && userEntity.ActivationExpiresAt.Value < DateTime.UtcNow)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.Gone;
+                errorResponseModel.Message = "Activation link expired. Request a new email.";
+                return null!;
+            }
+
+            userEntity.IsUserActivated = true;
+            userEntity.ActivationTokenHash = null;
+            userEntity.ActivationExpiresAt = null;
+            userEntity.ChangedDate = DateTime.Now;
+            _context.SaveChanges();
+            return new { success = true, message = "Account activated successfully", userId = userEntity.UserId };
+        }
+
+        public object ResendActivation(string emailId, SmtpSettingsModel smtpSettingsModel, ref ErrorResponseModel errorResponseModel)
+        {
+            errorResponseModel ??= new ErrorResponseModel();
+            var userEntity = _context.UserMasters.FirstOrDefault(x =>
+                x.EmailId == emailId && !x.DeleteStatus);
+            if (userEntity == null)
+            {
+                // Do not reveal whether the email exists.
+                return new { success = true, message = "If the account exists and is not activated, an email was sent." };
+            }
+
+            if (userEntity.IsUserActivated == true)
+            {
+                return new { success = true, message = "Account is already activated. Please sign in." };
+            }
+
+            var rawToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            userEntity.ActivationTokenHash = SecurityTokenHash.Sha256Hex(rawToken);
+            userEntity.ActivationExpiresAt = DateTime.UtcNow.AddHours(48);
+            userEntity.ChangedDate = DateTime.Now;
+            _context.SaveChanges();
+            TrySendActivationEmail(userEntity, rawToken, smtpSettingsModel);
+            return new { success = true, message = "If the account exists and is not activated, an email was sent." };
         }
 
         public int GetCount(ref ErrorResponseModel errorResponseModel)
@@ -316,6 +398,41 @@ namespace Niga_Domain.Repositories
             catch (Exception)
             {
                 // Registration should succeed even if SMTP is unavailable.
+            }
+        }
+
+        private void TrySendActivationEmail(UserMaster userEntity, string rawToken, SmtpSettingsModel smtpSettingsModel)
+        {
+            try
+            {
+                var siteUrl = _configuration["ConfigurationModel:SiteUrl"]
+                    ?? _configuration["AppSettings:UiBaseUrl"]
+                    ?? "https://homeocentrum.com";
+                siteUrl = siteUrl.TrimEnd('/');
+                var link = siteUrl + "/activate?token=" + Uri.EscapeDataString(rawToken);
+
+                var strBody = new StringBuilder();
+                strBody.Append("<body style='font-family:Arial,sans-serif;color:#1f2937;'>");
+                strBody.Append("<h2 style='color:#1e88e5;'>Activate your Homeocentrum account</h2>");
+                strBody.Append("<p>Hello Dr. " + (userEntity.FirstName ?? userEntity.UserName) + ",</p>");
+                strBody.Append("<p>Confirm your email to activate login. Directory listing stays pending until verification.</p>");
+                strBody.Append("<p><a href='" + link + "' style='display:inline-block;padding:10px 18px;background:#1e88e5;color:#fff;text-decoration:none;border-radius:6px;'>Activate account</a></p>");
+                strBody.Append("<p style='color:#6b7280;font-size:12px;'>This link expires in 48 hours.</p>");
+                strBody.Append("</body>");
+
+                var emailSenderModel = new EmailSenderModel
+                {
+                    ToAddress = userEntity.EmailId,
+                    Body = strBody.ToString(),
+                    isHtml = true,
+                    Subject = "Activate your Homeocentrum account"
+                };
+
+                _emailSenderService.SendMail(emailSenderModel, smtpSettingsModel);
+            }
+            catch (Exception)
+            {
+                // Activation email is best-effort.
             }
         }
     }

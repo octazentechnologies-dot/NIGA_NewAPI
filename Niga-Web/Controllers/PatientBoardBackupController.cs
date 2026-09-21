@@ -12,13 +12,13 @@ using Niga_Domain.Security;
 namespace Niga_Domain.API.Controllers;
 
 /// <summary>
-/// Save and restore in-progress Patient Board work for doctors and reception staff.
-/// SEC-05.01 — Backups are JWT-bound via GetUserId() (DoctorUserId). Use <see cref="DoctorOwnership"/>
-/// when checking resource DoctorID claims on other patient APIs.
+/// Save and restore in-progress Patient Board work. CLN-19.02 / CLN-02.02 —
+/// treating doctor only (reception and patient 403). JWT-bound to doctor user id.
 /// </summary>
 [Route("api/PatientBoardBackup")]
 [ApiController]
 [Authorize]
+[DoctorOnly]
 public class PatientBoardBackupController : ControllerBase
 {
     private readonly IPatientBoardBackupService _patientBoardBackupService;
@@ -132,8 +132,10 @@ public class PatientBoardBackupController : ControllerBase
     /// </summary>
     private int ResolveDoctorUserId()
     {
-        // Always bind to JWT — never accept query/body doctor user ids (SEC-05.01 IDOR).
-        _ = DoctorOwnership.GetDoctorId(User);
+        var doctorUserClaim = User.FindFirst("DoctorUserID")?.Value
+            ?? User.FindFirst("DoctorUserId")?.Value;
+        if (int.TryParse(doctorUserClaim, out var doctorUserId) && doctorUserId > 0)
+            return doctorUserId;
         return User.GetUserId();
     }
 

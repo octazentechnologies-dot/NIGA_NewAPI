@@ -210,6 +210,7 @@ namespace Niga_Domain.Repositories
                 return null;
             }
 
+            var doctor = await _repository.GetActiveDoctorByDoctorIdAsync(entity.DoctorId);
             var token = await _tokenService.CreateReceptionStaffToken(
                 entity.ReceptionStaffId,
                 entity.UserId,
@@ -217,7 +218,8 @@ namespace Niga_Domain.Repositories
                 entity.FullName,
                 7 * 24 * 60,
                 roleId: null,
-                roleName: "Reception");
+                roleName: "Reception",
+                doctorUserId: doctor?.UserId);
 
             _logger.LogInformation(
                 "Reception staff login successful. ReceptionStaffID={ReceptionStaffId}",

@@ -4,18 +4,21 @@ using Microsoft.EntityFrameworkCore;
 using Niga_Domain.Authorization;
 using Niga_Domain.Data;
 using Niga_Domain.DTOs;
+using Niga_Domain.Enums;
 using Niga_Domain.Extensions;
 using Niga_Domain.Master;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
     /// M16 CON-01.02 — Family CRUD under one patient account (mobile-reusable).
-    /// Member rows are real Patient records sharing PatientId with appointments.
+    /// Owner PatientId is taken from the logged-in user (PatientUserMap), not typed in the UI.
     /// </summary>
     [Route("api/Family")]
     [ApiController]
     [Authorize]
+    [ForbidMoneyRoles]
     public class FamilyController : ControllerBase
     {
         private readonly NIGACentrumContext _context;
@@ -25,7 +28,69 @@ namespace Niga_Domain.API.Controllers
             _context = context;
         }
 
-        /// <summary>Link JWT user to primary clinical PatientId (once per account).</summary>
+        /// <summary>Primary clinical Patient for this login. Auto-links or creates if missing.</summary>
+        [HttpGet("Me")]
+        public async Task<IActionResult> Me()
+        {
+            var userId = (long)User.GetUserId();
+            var owner = await EnsurePrimaryPatientAsync(userId);
+            if (owner == null)
+                return BadRequest(new { success = false, message = "Could not resolve a patient record for this login." });
+
+            return Ok(new
+            {
+                success = true,
+                data = new FamilyOwnerDto
+                {
+                    OwnerPatientId = owner.Value.PatientId,
+                    OwnerPatientName = owner.Value.PatientName,
+                    Linked = true
+                }
+            });
+        }
+
+        [HttpGet("Relations")]
+        public async Task<IActionResult> ListRelations()
+        {
+            var rows = await _context.FamilyRelationMasters.AsNoTracking()
+                .Where(r => !r.DeleteStatus)
+                .OrderBy(r => r.SortOrder)
+                .ThenBy(r => r.RelationName)
+                .Select(r => new FamilyRelationDto
+                {
+                    RelationId = r.RelationId,
+                    RelationName = r.RelationName,
+                    SortOrder = r.SortOrder
+                })
+                .ToListAsync();
+
+            return Ok(new { success = true, data = rows });
+        }
+
+        [HttpPost("Relations")]
+        public async Task<IActionResult> AddRelation([FromBody] FamilyRelationCreateRequest request)
+        {
+            var name = request?.RelationName?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                return BadRequest(new { success = false, message = "Relation name is required." });
+            if (name.Length > 50)
+                return BadRequest(new { success = false, message = "Relation name must be 50 characters or less." });
+
+            var userId = (long)User.GetUserId();
+            var row = await UpsertRelationAsync(name, userId);
+            return Ok(new
+            {
+                success = true,
+                data = new FamilyRelationDto
+                {
+                    RelationId = row.RelationId,
+                    RelationName = row.RelationName,
+                    SortOrder = row.SortOrder
+                }
+            });
+        }
+
+        /// <summary>Link JWT user to primary clinical PatientId (once per account). Optional — Me/Create auto-link.</summary>
         [HttpPost("LinkPrimary")]
         public async Task<IActionResult> LinkPrimary([FromBody] LinkPrimaryPatientRequest request)
         {
@@ -64,6 +129,7 @@ namespace Niga_Domain.API.Controllers
         public async Task<IActionResult> List()
         {
             var userId = (long)User.GetUserId();
+            var owner = await EnsurePrimaryPatientAsync(userId);
             var rows = await (
                 from f in _context.PatientFamilyMembers
                 join p in _context.Patients on f.MemberPatientId equals p.PatientId
@@ -74,30 +140,47 @@ namespace Niga_Domain.API.Controllers
                     FamilyMemberId = f.FamilyMemberId,
                     OwnerPatientId = f.OwnerPatientId,
                     MemberPatientId = f.MemberPatientId,
+                    RelationId = f.RelationId,
                     Relation = f.Relation,
                     PatientName = p.PatientName,
                     MobileNo = p.MobileNo,
                     Email = p.Email
                 }).ToListAsync();
 
-            return Ok(new { success = true, data = rows });
+            return Ok(new
+            {
+                success = true,
+                ownerPatientId = owner?.PatientId,
+                ownerPatientName = owner?.PatientName,
+                data = rows
+            });
         }
 
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] FamilyMemberCreateRequest request)
         {
-            if (request == null || string.IsNullOrWhiteSpace(request.Relation))
-                return BadRequest(new { success = false, message = "Relation is required." });
-            if (request.OwnerPatientId <= 0)
-                return BadRequest(new { success = false, message = "OwnerPatientId is required." });
+            if (request == null)
+                return BadRequest(new { success = false, message = "Body is required." });
 
             var userId = (long)User.GetUserId();
-            if (!AdminAuthorizationPolicies.IsAdminPortalUser(User))
+            var relation = await ResolveRelationAsync(request.RelationId, request.Relation, userId);
+            if (relation == null)
+                return BadRequest(new { success = false, message = "Relation is required." });
+
+            int ownerPatientId;
+            if (AdminAuthorizationPolicies.IsAdminPortalUser(User)
+                && request.OwnerPatientId.HasValue
+                && request.OwnerPatientId.Value > 0)
             {
-                var linked = await EnsureOwnerMapAsync(userId, request.OwnerPatientId);
-                if (linked == null)
+                ownerPatientId = request.OwnerPatientId.Value;
+            }
+            else
+            {
+                var owner = await EnsurePrimaryPatientAsync(userId);
+                if (owner == null)
                     return StatusCode(StatusCodes.Status403Forbidden,
-                        new { success = false, message = "OwnerPatientId is not linked to this user. Call POST /api/Family/LinkPrimary first." });
+                        new { success = false, message = "No patient record is linked to this login." });
+                ownerPatientId = owner.Value.PatientId;
             }
 
             int memberPatientId;
@@ -134,9 +217,10 @@ namespace Niga_Domain.API.Controllers
             var row = new PatientFamilyMember
             {
                 OwnerUserId = userId,
-                OwnerPatientId = request.OwnerPatientId,
+                OwnerPatientId = ownerPatientId,
                 MemberPatientId = memberPatientId,
-                Relation = request.Relation.Trim(),
+                RelationId = relation.Value.RelationId,
+                Relation = relation.Value.RelationName,
                 DeleteStatus = false,
                 EnteredBy = userId.ToString(),
                 EnteredDate = DateTime.UtcNow
@@ -152,6 +236,7 @@ namespace Niga_Domain.API.Controllers
                     FamilyMemberId = row.FamilyMemberId,
                     OwnerPatientId = row.OwnerPatientId,
                     MemberPatientId = row.MemberPatientId,
+                    RelationId = row.RelationId,
                     Relation = row.Relation,
                     PatientName = request.PatientName,
                     MobileNo = request.MobileNo,
@@ -173,8 +258,12 @@ namespace Niga_Domain.API.Controllers
                 return StatusCode(StatusCodes.Status403Forbidden,
                     new { success = false, message = "Access denied." });
 
-            if (!string.IsNullOrWhiteSpace(request?.Relation))
-                row.Relation = request.Relation.Trim();
+            var relation = await ResolveRelationAsync(request?.RelationId, request?.Relation, userId);
+            if (relation != null)
+            {
+                row.RelationId = relation.Value.RelationId;
+                row.Relation = relation.Value.RelationName;
+            }
 
             var patient = await _context.Patients.FirstOrDefaultAsync(p => p.PatientId == row.MemberPatientId);
             if (patient != null && request != null)
@@ -221,6 +310,39 @@ namespace Niga_Domain.API.Controllers
             return Ok(new { success = true, message = "Deleted." });
         }
 
+        [HttpGet("{id:long}")]
+        public async Task<IActionResult> GetById(long id)
+        {
+            var userId = (long)User.GetUserId();
+            var row = await (
+                from f in _context.PatientFamilyMembers
+                join p in _context.Patients on f.MemberPatientId equals p.PatientId
+                where f.FamilyMemberId == id && !f.DeleteStatus && p.DeleteStatus != true
+                select new { f, p }).FirstOrDefaultAsync();
+            if (row == null)
+                return NotFound(new { success = false, message = "Family member not found." });
+
+            if (!AdminAuthorizationPolicies.IsAdminPortalUser(User) && row.f.OwnerUserId != userId)
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    new { success = false, message = "Access denied." });
+
+            return Ok(new
+            {
+                success = true,
+                data = new FamilyMemberDto
+                {
+                    FamilyMemberId = row.f.FamilyMemberId,
+                    OwnerPatientId = row.f.OwnerPatientId,
+                    MemberPatientId = row.f.MemberPatientId,
+                    RelationId = row.f.RelationId,
+                    Relation = row.f.Relation,
+                    PatientName = row.p.PatientName,
+                    MobileNo = row.p.MobileNo,
+                    Email = row.p.Email
+                }
+            });
+        }
+
         /// <summary>
         /// Book-as-member authorisation check used by clients before appointment create.
         /// Returns 200 when JWT user owns the family link (or is Admin / active caregiver).
@@ -229,18 +351,104 @@ namespace Niga_Domain.API.Controllers
         public async Task<IActionResult> CanBookAs(int patientId)
         {
             var userId = (long)User.GetUserId();
+            var allowed = await TryBookAsReasonAsync(userId, patientId);
+            if (allowed == null)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    new { success = false, allowed = false, message = "Not authorised to book as this patient." });
+            }
+
+            return Ok(new { success = true, allowed = true, reason = allowed });
+        }
+
+        /// <summary>CON-01.02 — Create an appointment for a family member (or self / active caregiver patient).</summary>
+        [HttpPost("BookAs")]
+        public async Task<IActionResult> BookAs([FromBody] FamilyBookAsRequest request)
+        {
+            if (request == null || request.MemberPatientId <= 0 || request.DoctorId <= 0)
+                return BadRequest(new { success = false, message = "MemberPatientId and DoctorId are required." });
+            if (!TimeOnly.TryParse(request.AppointmentTime, out var time))
+                return BadRequest(new { success = false, message = "AppointmentTime must be HH:mm." });
+
+            var userId = (long)User.GetUserId();
+            var reason = await TryBookAsReasonAsync(userId, request.MemberPatientId);
+            if (reason == null)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    new { success = false, message = "Not authorised to book as this patient." });
+            }
+
+            var doctor = await _context.Doctors.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.DoctorId == request.DoctorId && !d.DeleteStatus);
+            if (doctor == null)
+                return NotFound(new { success = false, message = "Doctor not found." });
+
+            var member = await _context.Patients.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.PatientId == request.MemberPatientId && p.DeleteStatus != true);
+            if (member == null)
+                return NotFound(new { success = false, message = "Family member patient not found." });
+
+            var day = request.AppointmentDate.Date;
+            var clash = await _context.PatientAppointments.AnyAsync(a =>
+                a.DoctorId == request.DoctorId
+                && a.DeleteStatus != true
+                && a.AppointmentDate.HasValue
+                && a.AppointmentDate.Value.Date == day
+                && a.AppointmentTime == time);
+            if (clash)
+                return Conflict(new { success = false, message = "That slot is already booked." });
+
+            var appt = new PatientAppointment
+            {
+                PatientId = request.MemberPatientId,
+                DoctorId = request.DoctorId,
+                UserId = doctor.UserId ?? 0,
+                AppointmentDate = day,
+                AppointmentTime = time,
+                Status = PatientsStatus.NotArrived.GetDisplayName(),
+                DeleteStatus = false,
+                BookingToken = Guid.NewGuid().ToString("N"),
+                VisitType = string.IsNullOrWhiteSpace(request.VisitType) ? "InClinic" : request.VisitType.Trim(),
+                ConsultMode = string.IsNullOrWhiteSpace(request.ConsultMode) ? "InClinic" : request.ConsultMode.Trim(),
+                IsTele = request.IsTele,
+                PaymentStatus = "PENDING",
+                HoldExpiresAt = DateTime.UtcNow.AddMinutes(15)
+            };
+            _context.PatientAppointments.Add(appt);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                success = true,
+                reason,
+                data = new
+                {
+                    patientAppId = appt.PatientAppId,
+                    patientId = appt.PatientId,
+                    patientName = member.PatientName,
+                    doctorId = appt.DoctorId,
+                    appointmentDate = appt.AppointmentDate,
+                    appointmentTime = appt.AppointmentTime.ToString(),
+                    bookingToken = appt.BookingToken,
+                    status = appt.Status
+                }
+            });
+        }
+
+        private async Task<string?> TryBookAsReasonAsync(long userId, int patientId)
+        {
             if (AdminAuthorizationPolicies.IsAdminPortalUser(User))
-                return Ok(new { success = true, allowed = true, reason = "admin" });
+                return "admin";
 
             var asOwner = await _context.PatientUserMaps.AnyAsync(m =>
                 m.UserId == userId && m.PatientId == patientId && !m.DeleteStatus);
             if (asOwner)
-                return Ok(new { success = true, allowed = true, reason = "self" });
+                return "self";
 
             var asFamily = await _context.PatientFamilyMembers.AnyAsync(f =>
                 f.OwnerUserId == userId && f.MemberPatientId == patientId && !f.DeleteStatus);
             if (asFamily)
-                return Ok(new { success = true, allowed = true, reason = "family" });
+                return "family";
 
             var asCaregiver = await _context.CaregiverAuthorizations.AnyAsync(c =>
                 c.CaregiverUserId == userId
@@ -248,19 +456,133 @@ namespace Niga_Domain.API.Controllers
                 && !c.DeleteStatus
                 && c.RevokedAt == null);
             if (asCaregiver)
-                return Ok(new { success = true, allowed = true, reason = "caregiver" });
+                return "caregiver";
 
-            return StatusCode(StatusCodes.Status403Forbidden,
-                new { success = false, allowed = false, message = "Not authorised to book as this patient." });
+            return null;
         }
 
-        private async Task<PatientUserMap?> EnsureOwnerMapAsync(long userId, int ownerPatientId)
+        private async Task<(int PatientId, string? PatientName)?> EnsurePrimaryPatientAsync(long userId)
         {
             var map = await _context.PatientUserMaps
-                .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus && m.IsPrimary);
-            if (map == null)
+                .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus && m.IsPrimary)
+                ?? await _context.PatientUserMaps
+                    .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus);
+
+            if (map != null)
+            {
+                var linked = await _context.Patients.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.PatientId == map.PatientId && p.DeleteStatus != true);
+                return (map.PatientId, linked?.PatientName);
+            }
+
+            var user = await _context.UserMasters
+                .FirstOrDefaultAsync(u => u.UserId == userId && !u.DeleteStatus);
+            if (user == null)
                 return null;
-            return map.PatientId == ownerPatientId ? map : null;
+
+            var email = user.EmailId ?? user.UserName;
+            Patient? existingPatient = null;
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                existingPatient = await _context.Patients
+                    .FirstOrDefaultAsync(p => p.Email == email && p.DeleteStatus != true);
+            }
+            if (existingPatient == null && !string.IsNullOrWhiteSpace(user.MobileNo))
+            {
+                existingPatient = await _context.Patients
+                    .FirstOrDefaultAsync(p => p.MobileNo == user.MobileNo && p.DeleteStatus != true);
+            }
+
+            int patientId;
+            string? name;
+            if (existingPatient != null)
+            {
+                patientId = existingPatient.PatientId;
+                name = existingPatient.PatientName;
+            }
+            else
+            {
+                name = string.Join(" ", new[] { user.FirstName, user.LastName }
+                    .Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
+                if (string.IsNullOrWhiteSpace(name))
+                    name = user.UserName;
+
+                var created = new Patient
+                {
+                    PatientName = name,
+                    Email = email,
+                    MobileNo = user.MobileNo,
+                    CountryId = user.CountryId,
+                    StateId = user.StateId,
+                    DeleteStatus = false,
+                    EnteredBy = userId.ToString(),
+                    EnteredDate = DateTime.UtcNow
+                };
+                _context.Patients.Add(created);
+                await _context.SaveChangesAsync();
+                patientId = created.PatientId;
+            }
+
+            _context.PatientUserMaps.Add(new PatientUserMap
+            {
+                UserId = userId,
+                PatientId = patientId,
+                IsPrimary = true,
+                DeleteStatus = false,
+                EnteredBy = userId.ToString(),
+                EnteredDate = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync();
+            return (patientId, name);
+        }
+
+        private async Task<(int RelationId, string RelationName)?> ResolveRelationAsync(
+            int? relationId,
+            string? relationName,
+            long userId)
+        {
+            if (relationId.HasValue && relationId.Value > 0)
+            {
+                var byId = await _context.FamilyRelationMasters
+                    .FirstOrDefaultAsync(r => r.RelationId == relationId.Value && !r.DeleteStatus);
+                if (byId != null)
+                    return (byId.RelationId, byId.RelationName);
+            }
+
+            var name = relationName?.Trim();
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                var row = await UpsertRelationAsync(name, userId);
+                return (row.RelationId, row.RelationName);
+            }
+
+            return null;
+        }
+
+        private async Task<FamilyRelationMaster> UpsertRelationAsync(string name, long userId)
+        {
+            var trimmed = name.Trim();
+            var existing = await _context.FamilyRelationMasters
+                .FirstOrDefaultAsync(r => !r.DeleteStatus && r.RelationName.ToLower() == trimmed.ToLower());
+            if (existing != null)
+                return existing;
+
+            var maxSort = await _context.FamilyRelationMasters
+                .Where(r => !r.DeleteStatus)
+                .Select(r => (int?)r.SortOrder)
+                .MaxAsync() ?? 0;
+
+            var row = new FamilyRelationMaster
+            {
+                RelationName = trimmed,
+                SortOrder = maxSort + 10,
+                DeleteStatus = false,
+                EnteredBy = userId.ToString(),
+                EnteredDate = DateTime.UtcNow
+            };
+            _context.FamilyRelationMasters.Add(row);
+            await _context.SaveChangesAsync();
+            return row;
         }
     }
 }

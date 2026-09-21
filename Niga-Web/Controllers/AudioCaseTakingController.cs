@@ -8,12 +8,15 @@ using Niga_Domain.API.Helpers;
 using Niga_Domain.DTOs;
 using Niga_Domain.Extensions;
 using Niga_Domain.Interfaces;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers;
 
+/// <summary>CLN-08 / CLN-09.01 — existing audio engine (accuracy, aliases, metaphors, benchmark). No new HTTP this sprint.</summary>
 [Route("api/AudioCaseTaking")]
 [ApiController]
 [Authorize]
+[DoctorOnly]
 public class AudioCaseTakingController : ControllerBase
 {
     private readonly IAudioCaseTakingService _audioCaseTakingService;

@@ -27,6 +27,11 @@ namespace Niga_Domain.DTOs
         public DateTime? DateOfBirth { get; set; }
         public bool IsWhatsAppOptIn { get; set; }
         public DateTime? WhatsAppOptInDate { get; set; }
+        public string? VisitType { get; set; }
+        public string? ConsultMode { get; set; }
+        public string? PaymentStatus { get; set; }
+        public bool? IsTele { get; set; }
+        public string? BookingToken { get; set; }
         }
 
 
@@ -63,5 +68,9 @@ public class PatientAppointmentModel1
         public int HistoryNoteId { get; set; }
         public bool IsWhatsAppOptIn { get; set; }
         public DateTime? WhatsAppOptInDate { get; set; }
+        public string? VisitType { get; set; }
+        public string? ConsultMode { get; set; }
+        public string? PaymentStatus { get; set; }
+        public bool? IsTele { get; set; }
     }
 

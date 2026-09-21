@@ -7,6 +7,7 @@ public class PatientFamilyMember
     public long OwnerUserId { get; set; }
     public int OwnerPatientId { get; set; }
     public int MemberPatientId { get; set; }
+    public int? RelationId { get; set; }
     public string Relation { get; set; } = null!;
     public bool DeleteStatus { get; set; }
     public string? EnteredBy { get; set; }

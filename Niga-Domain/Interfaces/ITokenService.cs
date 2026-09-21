@@ -19,6 +19,7 @@ namespace Niga_Domain.Interfaces
             string fullName,
             int expiryMin = 0,
             int? roleId = null,
-            string roleName = "Reception");
+            string roleName = "Reception",
+            int? doctorUserId = null);
     }
 }

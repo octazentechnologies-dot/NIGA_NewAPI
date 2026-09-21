@@ -50,4 +50,8 @@ public partial class UserMaster
     public bool? IsUserActivated { get; set; }
 
     public int? RoleId { get; set; }
+
+    public string? ActivationTokenHash { get; set; }
+
+    public DateTime? ActivationExpiresAt { get; set; }
 }

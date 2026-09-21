@@ -59,5 +59,13 @@ namespace Niga_Domain.DTOs
         public bool IsWhatsAppOptIn { get; set; }
 
         public DateTime? WhatsAppOptInDate { get; set; }
+
+        public string? PaymentStatus { get; set; }
+
+        public bool? IsTele { get; set; }
+
+        public string? VisitType { get; set; }
+
+        public string? ConsultMode { get; set; }
     }
 }

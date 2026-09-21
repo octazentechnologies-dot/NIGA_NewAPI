@@ -68,7 +68,8 @@ namespace Niga_Domain.Services
             string fullName,
             int expiryMin = 0,
             int? roleId = null,
-            string roleName = "Reception")
+            string roleName = "Reception",
+            int? doctorUserId = null)
         {
             var effectiveRole = string.IsNullOrWhiteSpace(roleName) ? "Reception" : roleName.Trim();
 
@@ -83,6 +84,9 @@ namespace Niga_Domain.Services
                 new Claim("RoleName", effectiveRole),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             };
+
+            if (doctorUserId.HasValue && doctorUserId.Value > 0)
+                claims.Add(new Claim("DoctorUserID", doctorUserId.Value.ToString()));
 
             if (roleId.HasValue)
                 claims.Add(new Claim("RoleId", roleId.Value.ToString()));

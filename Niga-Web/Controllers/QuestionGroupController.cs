@@ -11,6 +11,7 @@ using Niga_Domain.Interface;
 
 using Niga_Domain.Authorization;
 using Microsoft.AspNetCore.Authorization;
+using Niga_Domain.Security;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -18,7 +19,8 @@ namespace Niga_Domain.API.Controllers
     /// </summary>
     [Route("api/questionGroup")]
     [ApiController]
-    //[Authorize]
+    [Authorize]
+    [DoctorOnly]
     public class QuestionGroupController : ControllerBase
     {
         private readonly IQuestionGroupService _questionGroupService;

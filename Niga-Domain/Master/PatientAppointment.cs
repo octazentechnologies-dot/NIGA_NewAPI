@@ -21,6 +21,20 @@ public partial class PatientAppointment
 
     public int DoctorId { get; set; }
 
+    public string? BookingToken { get; set; }
+
+    public string? VisitType { get; set; }
+
+    public string? ConsultMode { get; set; }
+
+    public string? PaymentStatus { get; set; }
+
+    public bool? IsTele { get; set; }
+
+    public DateTime? HoldExpiresAt { get; set; }
+
+    public string? ConsentPolicyVersion { get; set; }
+
     public virtual ICollection<AppointmentHistoryNote> AppointmentHistoryNotes { get; set; } = new List<AppointmentHistoryNote>();
 
     public virtual Doctor Doctor { get; set; } = null!;

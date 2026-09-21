@@ -14,6 +14,7 @@ using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
 using Niga_Domain.Authorization;
+using Niga_Domain.Security;
 namespace NIGA.Centrum.API.Controllers
 {
     /// <summary>
@@ -21,7 +22,8 @@ namespace NIGA.Centrum.API.Controllers
     /// </summary>
     [Route("api/subsection")]
     [ApiController]
-   // //[Authorize]
+    [Authorize]
+    [DoctorOnly]
     public class SubSectionController : ControllerBase
     {
         private readonly ISubSectionRepository _subSectionService;

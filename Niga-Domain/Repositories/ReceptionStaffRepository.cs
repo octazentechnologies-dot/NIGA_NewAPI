@@ -26,6 +26,13 @@ namespace Niga_Domain.Repositories
                 .FirstOrDefaultAsync(d => d.UserId == doctorUserId && !d.DeleteStatus);
         }
 
+        public Task<Doctor?> GetActiveDoctorByDoctorIdAsync(int doctorId)
+        {
+            return _context.Doctors
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => d.DoctorId == doctorId && !d.DeleteStatus);
+        }
+
         public Task<DoctorReceptionStaff?> GetActiveReceptionStaffEntityByIdAsync(int receptionStaffId)
         {
             return _context.DoctorReceptionStaffs

@@ -8,6 +8,8 @@ namespace Niga_Domain.Interfaces
     {
         Task<Doctor?> GetActiveDoctorByUserIdAsync(int doctorUserId);
 
+        Task<Doctor?> GetActiveDoctorByDoctorIdAsync(int doctorId);
+
         Task<DoctorReceptionStaff?> GetActiveReceptionStaffEntityByIdAsync(int receptionStaffId);
 
         Task<ReceptionStaffResponseModel?> GetReceptionStaffByIdAsync(int receptionStaffId);

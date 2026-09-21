@@ -15,7 +15,7 @@ namespace Niga_Domain.API.Controllers
     /// </summary>
     [Route("api/qualification")]
     [ApiController]
-    //[Authorize]
+    [Authorize]
     public class QualificationController : ControllerBase
     {
         private readonly IQualificationService _qualificationService;

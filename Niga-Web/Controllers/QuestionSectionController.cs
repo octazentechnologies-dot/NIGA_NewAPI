@@ -13,6 +13,7 @@ using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
 using Niga_Domain.Authorization;
+using Niga_Domain.Security;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -20,7 +21,8 @@ namespace Niga_Domain.API.Controllers
     /// </summary>
     [Route("api/questionSection")]
     [ApiController]
-    //[Authorize]
+    [Authorize]
+    [DoctorOnly]
     public class QuestionSectionController : ControllerBase
     {
         private readonly IQuestionSectionService _questionSectionService;

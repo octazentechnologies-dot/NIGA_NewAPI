@@ -10,6 +10,7 @@ using Niga_Domain.Master;
 using System;
 
 using Niga_Domain.Authorization;
+using Niga_Domain.Security;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -17,7 +18,8 @@ namespace Niga_Domain.API.Controllers
     /// </summary>
     [Route("api/questionsubgroup")]
     [ApiController]
-    //[Authorize]
+    [Authorize]
+    [DoctorOnly]
     public class QuestionSubGroupController : ControllerBase
     {
         private readonly IQuestionSubGroupService _questionSubGroupService;

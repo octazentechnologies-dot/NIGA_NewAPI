@@ -24,13 +24,16 @@ namespace Niga_Domain.API.Controllers
         private const int MaxPerWindow = 3;
 
         private readonly NIGACentrumContext _context;
+        private readonly ISmsSender _smsSender;
 
-        public OtpController(NIGACentrumContext context)
+        public OtpController(NIGACentrumContext context, ISmsSender smsSender)
         {
             _context = context;
+            _smsSender = smsSender;
         }
 
         [HttpPost("RequestOtp")]
+        [AllowAnonymous]
         public async Task<IActionResult> RequestOtp([FromBody] RequestOtpModel request)
         {
             if (request == null
@@ -40,6 +43,22 @@ namespace Niga_Domain.API.Controllers
                 || string.IsNullOrWhiteSpace(request.Destination))
             {
                 return BadRequest(new { success = false, message = "Action, EntityType, EntityId, and Destination are required." });
+            }
+
+            var isAnonymousAction =
+                request.Action.Equals("Login", StringComparison.OrdinalIgnoreCase)
+                || request.Action.Equals("PatientAuth", StringComparison.OrdinalIgnoreCase);
+            if (!isAnonymousAction && User?.Identity?.IsAuthenticated != true)
+                return Unauthorized(new { success = false, message = "Sign in required to request this OTP." });
+
+            if (isAnonymousAction)
+            {
+                var digits = Niga_Domain.Security.PhoneNormalizer.Digits(request.Destination);
+                if (digits.Length < 8)
+                    return BadRequest(new { success = false, message = "Destination must be a valid mobile number for Login OTP." });
+                request.EntityType = "Mobile";
+                request.EntityId = digits;
+                request.Destination = digits;
             }
 
             var since = DateTime.UtcNow.Subtract(RateLimitWindow);
@@ -76,12 +95,15 @@ namespace Niga_Domain.API.Controllers
                 ToMasked = masked,
                 Success = true,
                 At = DateTime.UtcNow,
-                ActorUserId = User.GetUserId()
+                ActorUserId = User?.Identity?.IsAuthenticated == true ? User.GetUserId() : null
             });
             await _context.SaveChangesAsync();
 
-            // SMS provider adapter stub until wired — do not return raw code in production responses.
-            // Development hint only when ASPNETCORE_ENVIRONMENT is Development:
+            await _smsSender.SendAsync(
+                request.Destination,
+                "Your Homeocentrum verification code is valid for 10 minutes.");
+
+            // SMS provider adapter stub until PRE-03 vendor is live — do not return raw code in production.
             var payload = new Dictionary<string, object?>
             {
                 ["otpChallengeId"] = challenge.OtpChallengeId,
@@ -96,6 +118,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("VerifyOtp")]
+        [AllowAnonymous]
         public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpModel request)
         {
             if (request == null || request.OtpChallengeId <= 0 || string.IsNullOrWhiteSpace(request.Code))
@@ -142,15 +165,9 @@ namespace Niga_Domain.API.Controllers
 
         /// <summary>SEC-07.03 — Account and Admin roles (masked destination).</summary>
         [HttpGet("Audit")]
-        [Authorize]
+        [Authorize(Policy = AdminAuthorizationPolicies.AccountOrAdmin)]
         public async Task<IActionResult> Audit([FromQuery] int take = 100)
         {
-            var roleName = AdminAuthorizationPolicies.GetRoleName(User);
-            var isAccount = string.Equals(roleName, "Account", StringComparison.OrdinalIgnoreCase)
-                || User.IsInRole("Account");
-            if (!isAccount && !AdminAuthorizationPolicies.IsAdminPortalUser(User))
-                return Forbid();
-
             take = Math.Clamp(take, 1, 500);
             var rows = await _context.OtpAuditLogs
                 .AsNoTracking()
@@ -182,7 +199,7 @@ namespace Niga_Domain.API.Controllers
                 ToMasked = challenge.DestinationMasked,
                 Success = success,
                 At = DateTime.UtcNow,
-                ActorUserId = User.GetUserId()
+                ActorUserId = User?.Identity?.IsAuthenticated == true ? User.GetUserId() : null
             });
             await _context.SaveChangesAsync();
         }

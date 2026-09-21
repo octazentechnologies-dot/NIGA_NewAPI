@@ -1,0 +1,378 @@
+S1 WEEK 1 — MOBILE APP API DOCUMENT
+Date       : 20-Sep-2026
+Catalog    : NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
+Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
+Host       : New-API  http://localhost:5038/api   (nigahomeoAPI)
+Auth       : Authorization: Bearer <JWT> unless TOKEN = no
+Dev OTP    : Development responses include data.devCode (never in production)
+Clinic login / Razorpay stay Old-API :5001. Doctor mobile must NOT call case-taking.
+
+RN screens are out of scope. These are the HTTP contracts the patient/doctor apps must call.
+Every endpoint has USE / HOST / TOKEN / SAMPLE / INPUTS / OUTPUT.
+
+Shareable full Week-1 API pack (web + security + dual-API hosts):
+  NIGA_NewAPI/ScriptsAndFiles/S1_Week1/S1_Week1_API_DOC.txt
+
+Week 2 PAT-08–15 / DMO-04–06 / public booking:
+  NIGA_NewAPI/ScriptsAndFiles/S2_Week2/S2_Week2_MOBILE_API_DOC.txt
+
+--------------------------------------------------------------------------------
+PATIENT APP FLOW (PAT-01 … PAT-05 + CON family/caregiver)
+--------------------------------------------------------------------------------
+  1. GET  /Welcome/Patient                         TOKEN=no
+  2. GET  /mastersAPI/GetLanguages                 TOKEN=no
+  3. POST /Otp/RequestOtp          Action=Login    TOKEN=no
+  4. POST /Account/LoginWithOtp                    TOKEN=no  -> save data.token
+  5. GET  /Consent/PrivacyStatus
+     if data.granted == false -> POST /Consent/GrantPrivacy
+  6. GET  /PatientProfile/Me
+     PUT  /PatientProfile/Me
+  7. GET/POST /Family   GET/PUT/DELETE /Family/{id}
+  8. POST /Otp/RequestOtp Action=GrantCaregiver
+     POST /Caregiver/Grant
+  9. POST /Device/Register
+ 10. POST /Account/Logout                          (must hit server)
+
+--------------------------------------------------------------------------------
+DOCTOR APP FLOW (DMO-01 … DMO-03)
+--------------------------------------------------------------------------------
+  1. POST /api/Account/Login   HOST=Old-API :5001   TOKEN=no
+     OR New-API LoginWithOtp if the doctor uses mobile OTP
+  2. GET  /Profile/Me
+     POST /Account/ConfirmMobile
+  3. POST /Device/Register     FCM / APNs
+Doctor mobile MUST NOT call clipboard / COG / audio / diagnosis mutate.
+
+================================================================================
+PAT-01 Language selection
+================================================================================
+URL        : GET /api/mastersAPI/GetLanguages
+USE        : Language list for first-run picker (PAT-01.02).
+HOST       : New-API
+TOKEN      : no
+SAMPLE     : GET http://localhost:5038/api/mastersAPI/GetLanguages
+INPUTS     : none
+OUTPUT     : language rows (languageId, languageName)
+
+URL        : GET /api/PatientProfile/Me
+USE        : Read preferredLanguageId after login.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: { userId, preferredLanguageId, welcomeVersionSeen, ... } }
+
+URL        : PUT /api/PatientProfile/Me
+USE        : Save preferred language.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "preferredLanguageId": 1, "welcomeVersionSeen": "1" }
+INPUTS     : preferredLanguageId, welcomeVersionSeen optional
+OUTPUT     : same as GET Me
+
+================================================================================
+PAT-02 Welcome & introduction
+================================================================================
+URL        : GET /api/Welcome/Patient
+USE        : Welcome slides for patient app (PAT-02.02).
+HOST       : New-API
+TOKEN      : no
+SAMPLE     : GET /api/Welcome/Patient
+INPUTS     : none
+OUTPUT     : { success, data: { version, audience, slides: [ { welcomeSlideId, sortOrder, title, body, version } ] } }
+
+URL        : PUT /api/PatientProfile/Me
+USE        : Persist which welcome version the user has seen.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "welcomeVersionSeen": "1" }
+INPUTS     : welcomeVersionSeen
+OUTPUT     : GET Me including welcomeVersionSeen
+
+================================================================================
+PAT-03 Mobile number + OTP login
+================================================================================
+URL        : POST /api/Otp/RequestOtp
+USE        : Send login OTP (PAT-03.02). Action must be Login.
+HOST       : New-API
+TOKEN      : no
+SAMPLE PAYLOAD:
+{
+  "action": "Login",
+  "entityType": "Mobile",
+  "entityId": "7768046064",
+  "destination": "7768046064"
+}
+INPUTS     : action=Login, destination = mobile digits
+OUTPUT     : { success, otpChallengeId, expiresAt, destinationMasked, devCode? }
+
+URL        : POST /api/Account/LoginWithOtp
+USE        : Exchange verified OTP for JWT. Web clinic login stays Old-API password.
+HOST       : New-API
+TOKEN      : no
+SAMPLE PAYLOAD:
+{
+  "otpChallengeId": 1,
+  "code": "123456",
+  "mobileNo": "7768046064"
+}
+INPUTS     : otpChallengeId, code, mobileNo
+OUTPUT     : { success, data: { token, userId, role, ... } }
+
+================================================================================
+PAT-04 Profile setup
+================================================================================
+URL        : GET /api/PatientProfile/Me
+USE        : Load name, mobile, language, linked PatientId (PAT-04.02).
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: { userId, firstName, lastName, email, mobileNo, patientId,
+             patientName, preferredLanguageId, welcomeVersionSeen } }
+
+URL        : PUT /api/PatientProfile/Me
+USE        : Save profile fields.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD:
+{
+  "firstName": "Tufan",
+  "lastName": "Powar",
+  "patientName": "Tufan Powar",
+  "mobileNo": "7768046064",
+  "preferredLanguageId": 1
+}
+INPUTS     : patientName, mobileNo, email, dateOfBirth, gender, age, preferredLanguageId
+OUTPUT     : same as GET Me
+
+================================================================================
+PAT-05 Privacy consent
+================================================================================
+URL        : GET /api/Consent/PrivacyStatus
+USE        : Has this user granted Privacy consent (PAT-05.02).
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: { granted: true|false } }
+
+URL        : POST /api/Consent/GrantPrivacy
+USE        : Grant Privacy in one call.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { }
+INPUTS     : none
+OUTPUT     : { success, data }
+
+URL        : GET /api/Public/Policies/Privacy
+USE        : Signed privacy copy + version to show on the consent screen.
+HOST       : New-API
+TOKEN      : no
+SAMPLE     : GET /api/Public/Policies/Privacy
+INPUTS     : none
+OUTPUT     : { success, data: { policyType, version, title, bodyHtml, effectiveAt } }
+
+================================================================================
+CON-01 Family members (same URLs PAT-06 will reuse)
+================================================================================
+URL        : GET /api/Family/Me
+USE        : Own PatientId. Do not ask the user to type it.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: { ownerPatientId, ownerPatientName, linked } }
+
+URL        : GET /api/Family/Relations
+USE        : Relation dropdown.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: [ { relationId, relationName, sortOrder } ] }
+
+URL        : GET /api/Family
+USE        : List family members.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, ownerPatientId, ownerPatientName, data: [ FamilyMemberDto ] }
+
+URL        : POST /api/Family
+USE        : Add a family member. Omit ownerPatientId.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "relationId": 1, "patientName": "Anita", "mobileNo": "9100000001" }
+INPUTS     : patientName, relationId or relation
+OUTPUT     : { success, data: FamilyMemberDto }
+
+URL        : GET /api/Family/{id}
+USE        : Read one member.
+HOST       : New-API
+TOKEN      : patient JWT
+INPUTS     : id = FamilyMemberId
+OUTPUT     : { success, data: FamilyMemberDto }
+
+URL        : PUT /api/Family/{id}
+USE        : Update a member.
+HOST       : New-API
+TOKEN      : patient JWT
+INPUTS     : id = FamilyMemberId
+OUTPUT     : { success, message }
+
+URL        : DELETE /api/Family/{id}
+USE        : Soft-delete a member.
+HOST       : New-API
+TOKEN      : patient JWT
+INPUTS     : id = FamilyMemberId
+OUTPUT     : { success, message }
+
+URL        : GET /api/Family/CanBookAs/{patientId}
+USE        : Authorisation check before booking as that patient.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, allowed, reason }
+
+URL        : POST /api/Family/BookAs
+USE        : Book an appointment as a family member / self / caregiver patient.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD:
+{
+  "memberPatientId": 3021,
+  "doctorId": 3,
+  "appointmentDate": "2026-09-22",
+  "appointmentTime": "11:15"
+}
+INPUTS     : memberPatientId, doctorId, appointmentDate, appointmentTime
+OUTPUT     : { success, reason, data: { patientAppId, bookingToken, status } }
+
+================================================================================
+CON-02 Caregiver authorization (same URLs PAT-07 will reuse)
+================================================================================
+URL        : GET /api/Caregiver/Me
+USE        : Own PatientId + OTP destination. Do not ask for ids.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: { ownerPatientId, ownerPatientName, otpDestination, linked } }
+
+URL        : GET /api/Caregiver/Lookup?contact=
+USE        : Find caregiver by mobile or email (not UserId).
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE     : GET /api/Caregiver/Lookup?contact=s1.caregiver.tested@homeocentrum.dev
+INPUTS     : contact
+OUTPUT     : { success, data: { caregiverUserId, displayName, contact } }
+
+URL        : POST /api/Otp/RequestOtp
+USE        : OTP required to grant caregiver. entityId = owner PatientId from /Caregiver/Me.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD:
+{
+  "action": "GrantCaregiver",
+  "entityType": "Patient",
+  "entityId": "3033",
+  "destination": "tufanpowar001@gmail.com"
+}
+INPUTS     : action=GrantCaregiver, entityId, destination
+OUTPUT     : { success, otpChallengeId, expiresAt, destinationMasked, devCode? }
+
+URL        : POST /api/Caregiver/Grant
+USE        : Grant after OTP. Send caregiverContact. Omit patientId and caregiverUserId.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD:
+{
+  "caregiverContact": "s1.caregiver.tested@homeocentrum.dev",
+  "otpChallengeId": 1,
+  "otpCode": "123456",
+  "scope": "booking"
+}
+INPUTS     : caregiverContact, otpChallengeId, otpCode
+OUTPUT     : { success, data: CaregiverAuthorizationDto }
+
+URL        : POST /api/Caregiver/Revoke
+USE        : Revoke a grant.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "caregiverAuthorizationId": 1 }
+INPUTS     : caregiverAuthorizationId
+OUTPUT     : { success, message, data }
+
+URL        : GET /api/Caregiver/ListMine
+USE        : Grants where I am the patient.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: [ CaregiverAuthorizationDto ] }
+
+URL        : GET /api/Caregiver/ListActingFor
+USE        : Patients I may act for.
+HOST       : New-API
+TOKEN      : caregiver JWT
+OUTPUT     : { success, data: [ CaregiverAuthorizationDto ] }
+
+================================================================================
+DMO-01 Doctor login (JWT)
+================================================================================
+URL        : POST /api/Account/Login
+USE        : Clinic / doctor app password login (DMO-01.02). Existing URL. Store JWT in Keychain/Keystore on device (RN — out of this pack).
+HOST       : Old-API  http://localhost:5001/api
+TOKEN      : no
+SAMPLE PAYLOAD: { "userName": "niga homeopathy", "password": "nik123" }
+INPUTS     : userName, password
+OUTPUT     : { success, data: { token, userId, role, doctorId, ... } }
+NOTE       : Do not switch this host.
+
+URL        : POST /api/Account/LoginWithOtp
+USE        : Optional OTP login on New-API if the doctor uses mobile OTP.
+HOST       : New-API
+TOKEN      : no
+SAMPLE PAYLOAD: { "otpChallengeId": 1, "code": "123456", "mobileNo": "7768046064" }
+INPUTS     : otpChallengeId, code, mobileNo
+OUTPUT     : { success, data: { token, userId, role, ... } }
+
+================================================================================
+DMO-02 Confirm number against profile
+================================================================================
+URL        : GET /api/Profile/Me
+USE        : Doctor profile including mobileNo (DMO-02.02).
+HOST       : New-API
+TOKEN      : doctor JWT
+SAMPLE     : GET /api/Profile/Me
+INPUTS     : none
+OUTPUT     : { success, data: DoctorProfileMeDto }  mobileNo, clinicName, fees, verificationStatus
+
+URL        : POST /api/Account/ConfirmMobile
+USE        : Confirm entered number against UserMaster / Doctor / linked Patient mobile.
+HOST       : New-API
+TOKEN      : yes
+SAMPLE PAYLOAD: { "mobileNo": "9876543210" }
+INPUTS     : mobileNo
+OUTPUT     : { success, data: { matched, profileMasked, role } }
+
+================================================================================
+DMO-03 Device push token
+================================================================================
+URL        : POST /api/Device/Register
+USE        : Register FCM / APNs (DMO-03.02 / COM-03).
+HOST       : New-API
+TOKEN      : yes
+SAMPLE PAYLOAD: { "platform": "FCM", "token": "device-token", "deviceId": "optional" }
+INPUTS     : platform = FCM | APNs, token required
+OUTPUT     : { success, data: { devicePushTokenId, platform, deviceId, updatedAt } }
+
+URL        : POST /api/Device/Unregister
+USE        : Soft-unregister this user’s FCM / APNs token.
+HOST       : New-API
+TOKEN      : yes
+SAMPLE PAYLOAD: { "token": "device-token" }
+INPUTS     : token or devicePushTokenId
+OUTPUT     : { success, message }
+
+URL        : GET /api/Device/Mine
+USE        : List this user’s registered devices.
+HOST       : New-API
+TOKEN      : yes
+OUTPUT     : { success, data: [ { devicePushTokenId, platform, deviceId, updatedAt } ] }
+
+================================================================================
+LOGOUT
+================================================================================
+URL        : POST /api/Account/Logout
+USE        : Server-side logout (SEC-03.03). Mobile must call New-API. Clinic SPA also calls Old-API.
+HOST       : New-API (and Old-API for clinic web dual logout)
+TOKEN      : yes
+SAMPLE PAYLOAD: { }
+INPUTS     : none
+OUTPUT     : { success, message }

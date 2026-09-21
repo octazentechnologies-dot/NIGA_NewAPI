@@ -160,6 +160,23 @@ public class AudioCaseTakingService : IAudioCaseTakingService
             EnteredDate = now,
         });
 
+        var consentType = await _context.ConsentTypes.AsNoTracking()
+            .FirstOrDefaultAsync(t => t.IsActive && (t.Code == "TeleRecording" || t.Code == "AudioRecording"), cancellationToken);
+        if (consentType != null)
+        {
+            _context.ConsentRecords.Add(new ConsentRecord
+            {
+                ConsentTypeId = consentType.ConsentTypeId,
+                SubjectType = "Patient",
+                SubjectId = request.PatientId,
+                GrantedByUserId = doctorUserId,
+                GrantedAt = now,
+                IpAddress = ipAddress,
+                UserAgent = userAgent,
+                Notes = "AudioCaseConsentLog dual-write session " + sessionId
+            });
+        }
+
         await LogEventAsync(sessionId, correlationId, "SessionCreated", "Success", "Audio case session created.", doctorUserId, ipAddress);
         await LogEventAsync(sessionId, correlationId,
             audioSource.Equals("FileUpload", StringComparison.OrdinalIgnoreCase) ? "FileUploaded" : "AudioUploaded",

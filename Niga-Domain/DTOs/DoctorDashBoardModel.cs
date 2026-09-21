@@ -24,6 +24,15 @@ namespace Niga_Domain.DTOs
 
         /// <summary>Total distinct patients registered for this doctor (all time).</summary>
         public int totalPatients { get; set; }
+
+        /// <summary>DOC-01.02 — doctor online flag (nullable until always populated).</summary>
+        public bool? IsOnline { get; set; }
+
+        /// <summary>DOC-01.02 — tele / e-consult queue (IsTele or E-Consult status).</summary>
+        public int teleQueueCount { get; set; }
+
+        /// <summary>DOC-01.02 — appointments not Paid/Waived (nullable column until Phase 6/11).</summary>
+        public int unpaidCount { get; set; }
     }
 
     public class PatientAppModel

@@ -1,9 +1,13 @@
 ﻿using API.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Helpers;
 using Niga_Domain.Interface;
+using Niga_Domain.Security;
+using Niga_Domain.Extensions;
 using System.Net;
 
 namespace Niga_Domain.API.Controllers
@@ -21,14 +25,12 @@ namespace Niga_Domain.API.Controllers
     public class PatientController : BaseAPIController
     {
         IPatientService _patientService;
+        private readonly NIGACentrumContext _context;
 
-        /// <summary>
-        /// Used to initialize controller and inject patient Service
-        /// </summary>
-        /// <param name="patientService"></param>
-        public PatientController(IPatientService patientService)
+        public PatientController(IPatientService patientService, NIGACentrumContext context)
         {
             _patientService = patientService;
+            _context = context;
         }
 
         /// <summary>
@@ -40,13 +42,15 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public async Task<List<PatientModel>> GetCases([FromQuery] ParameterParams parameterParams)
+        public async Task<IActionResult> GetCases(long UserId, [FromQuery] ParameterParams parameterParams)
         {
-           
-                var patientList = await _patientService.GetCases(parameterParams);
-                Response.AddPaginationHeader(patientList.CurrentPage, patientList.PageSize,
-                    patientList.TotalCount, patientList.TotalPages);
-                return patientList;
+            if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, UserId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+
+            var patientList = await _patientService.GetCases(parameterParams);
+            Response.AddPaginationHeader(patientList.CurrentPage, patientList.PageSize,
+                patientList.TotalCount, patientList.TotalPages);
+            return Ok(patientList);
         }
 
        
@@ -65,6 +69,17 @@ namespace Niga_Domain.API.Controllers
             }
             try
             {
+                // DOC-04.02 — doctor or reception of this clinic only (JWT DoctorID).
+                if (!DoctorOwnership.IsAdminPortalUser(User))
+                {
+                    var jwtDoctor = DoctorOwnership.GetDoctorId(User);
+                    if (jwtDoctor.HasValue && model.DoctorID <= 0)
+                        model.DoctorID = jwtDoctor.Value;
+                    var forbid = DoctorOwnership.ForbidIfNotOwner(User, model.DoctorID);
+                    if (forbid != null)
+                        return forbid;
+                }
+
                 var userModel = await _patientService.SavePatient(model);
                 if (
                     !string.IsNullOrEmpty(userModel.Message)
@@ -99,7 +114,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetPatientDetails(long PatientID,long caseId)
+        public async Task<IActionResult> GetPatientDetails(long PatientID,long caseId)
         {
             ErrorResponseModel errorResponseModel = null;
             try
@@ -108,6 +123,8 @@ namespace Niga_Domain.API.Controllers
 
                 if (patientModelList != null)
                 {
+                    if (!await CanAccessPatientAsync((int)PatientID, patientModelList.DoctorID))
+                        return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
                     return Ok(patientModelList);
                 }
                 return ReturnErrorResponse(errorResponseModel);
@@ -126,6 +143,7 @@ namespace Niga_Domain.API.Controllers
         /// <returns></returns>
         [HttpPost]
         [Route("SaveComplaints")]
+        [DoctorOnly]
         public IActionResult SaveComplaints(PatientModel model)
         {
             if (model == null || !ModelState.IsValid)
@@ -216,6 +234,7 @@ namespace Niga_Domain.API.Controllers
 
 
         [HttpPost("SaveCaseDetails")]
+        [DoctorOnly]
         [ProducesResponseType(typeof(CaseDetailsModel), 200)]
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
@@ -239,8 +258,101 @@ namespace Niga_Domain.API.Controllers
             }
         }
 
+        /// <summary>CLN-16.02 — GET complaints for a patient (classic SaveComplaints is POST).</summary>
+        [HttpGet("GetComplaints/{patientId}")]
+        [DoctorOnly]
+        public async Task<IActionResult> GetComplaints(int patientId)
+        {
+            var caseRow = await _context.CaseEntryDetails.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.PatientId == patientId && c.DeleteStatus == false);
+            if (caseRow == null)
+                return Ok(new { success = true, data = Array.Empty<object>() });
 
-  [HttpGet("getAllCases")]
+            if (!await CanAccessPatientAsync(patientId, caseRow.DoctorId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+
+            var rows = await _context.CaseEntryChiefComplaints.AsNoTracking()
+                .Where(c => c.CaseId == caseRow.CaseId)
+                .Select(c => new { c.CaseChiefComplaintId, c.CaseId, c.ChiefComplaintName })
+                .ToListAsync();
+            return Ok(new { success = true, data = rows });
+        }
+
+        /// <summary>CLN-16.02 — GET case details for a case (classic SaveCaseDetails is POST).</summary>
+        [HttpGet("GetCaseDetails/{caseId}")]
+        [DoctorOnly]
+        public async Task<IActionResult> GetCaseDetails(int caseId)
+        {
+            var caseRow = await _context.CaseEntryDetails.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.CaseId == caseId && c.DeleteStatus == false);
+            if (caseRow == null)
+                return NotFound(new { success = false, message = "Case not found." });
+
+            if (!await CanAccessPatientAsync(caseRow.PatientId, caseRow.DoctorId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+
+            var rows = await _context.CaseDetails.AsNoTracking()
+                .Where(d => d.CaseId == caseId)
+                .Select(d => new CaseDetailsModel
+                {
+                    CaseDetailId = d.CaseDetailId,
+                    CaseId = d.CaseId,
+                    SubsectionId = d.SubsectionId,
+                    IntensityId = d.IntensityId,
+                    RemedyCount = d.RemedyCount
+                })
+                .ToListAsync();
+            return Ok(new { success = true, data = rows });
+        }
+
+        /// <summary>CLN-18.01 — clinical case PDF (doctor copy).</summary>
+        [HttpGet("ExportCaseToPdf/{patientId}/{caseId}")]
+        [DoctorOnly]
+        public async Task<IActionResult> ExportCaseToPdf(int patientId, int caseId)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            var patient = _patientService.GetPatientDetails(patientId, caseId, ref errorResponseModel);
+            if (patient == null)
+                return NotFound(new { success = false, message = errorResponseModel?.Message ?? "Case not found." });
+            if (!await CanAccessPatientAsync(patientId, patient.DoctorID))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+
+            var complaints = await _context.CaseEntryChiefComplaints.AsNoTracking()
+                .Where(c => c.CaseId == caseId)
+                .Select(c => c.ChiefComplaintName)
+                .ToListAsync();
+            var details = await (
+                from d in _context.CaseDetails.AsNoTracking()
+                join s in _context.SubSectionMasters.AsNoTracking() on d.SubsectionId equals s.SubSectionId into sj
+                from s in sj.DefaultIfEmpty()
+                where d.CaseId == caseId
+                select (s != null ? s.SubSectionName : ("Subsection " + d.SubsectionId)) + " (intensity " + d.IntensityId + ")"
+            ).ToListAsync();
+            var notes = await _context.AppointmentHistoryNotes.AsNoTracking()
+                .Where(n => n.Appointment != null && n.Appointment.PatientId == patientId && n.DeletedStatus != true)
+                .OrderByDescending(n => n.HistoryId)
+                .Select(n => n.HistoryNote)
+                .Take(20)
+                .ToListAsync();
+
+            var lines = new List<string>
+            {
+                "Patient: " + (patient.PatientName ?? string.Empty),
+                "PatientId: " + patient.PatientID + "  CaseId: " + caseId,
+                "Mobile: " + (patient.MobileNo ?? string.Empty),
+                "Diagnosis: " + (patient.DiagnosisIds ?? string.Empty),
+                "Complaints: " + string.Join("; ", complaints.Where(x => !string.IsNullOrWhiteSpace(x))),
+                "Rubrics:",
+            };
+            lines.AddRange(details);
+            lines.Add("Notes:");
+            lines.AddRange(notes.Where(x => !string.IsNullOrWhiteSpace(x))!);
+
+            var bytes = ClinicalCasePdfBuilder.Build("Clinical case — doctor copy", lines);
+            return File(bytes, "application/pdf", $"Case_{patientId}_{caseId}.pdf");
+        }
+
+        [HttpGet("getAllCases")]
         public async Task<List<PatientModel>> getAllCases([FromQuery] ParameterParams parameterParams)
         {
             var sectionList = await _patientService.getAllCases(parameterParams);
@@ -250,8 +362,15 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpGet("ExportCasesToExcel")]
+        [DoctorOnly]
         public async Task<IActionResult> ExportCasesToExcel([FromQuery] ParameterParams parameterParams)
         {
+            parameterParams ??= new ParameterParams();
+            if (!parameterParams.UserId.HasValue || parameterParams.UserId.Value <= 0)
+                parameterParams.UserId = User.GetUserId();
+            if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, parameterParams.UserId.Value))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+
             var errorResponseModel = new ErrorResponseModel();
             var cases = await _patientService.getAllCasesForExport(parameterParams);
             if (cases == null || !cases.Any())
@@ -302,6 +421,7 @@ namespace Niga_Domain.API.Controllers
         /// <param name="patientId"></param>
         /// <returns></returns>
         [HttpGet("GetPatientBackHistoryById/{patientId}")]
+        [DoctorOnly]
         [ProducesResponseType(typeof(PatientAppointmentModel1), 200)]
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
@@ -343,7 +463,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         /// <summary>
-        /// Bulk import patients from Excel or CSV file.
+        /// DOC-05.02 — bulk import. ACL: caller userId or reception DoctorUserID must match.
         /// </summary>
         [HttpPost("ImportPatients")]
         [DisableRequestSizeLimit]
@@ -361,6 +481,9 @@ namespace Niga_Domain.API.Controllers
             {
                 return BadRequest("userId is required.");
             }
+
+            if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
 
             var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (extension is not (".xlsx" or ".xls" or ".csv"))
@@ -380,6 +503,32 @@ namespace Niga_Domain.API.Controllers
             catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
+
+        private async Task<bool> CanAccessPatientAsync(int patientId, int resourceDoctorId)
+        {
+            if (DoctorOwnership.EnsureDoctorOwns(User, resourceDoctorId))
+                return true;
+
+            var jwtDoctor = DoctorOwnership.GetDoctorId(User);
+            if (jwtDoctor.HasValue)
+            {
+                return await _context.PatientAppointments.AsNoTracking().AnyAsync(a =>
+                    a.PatientId == patientId && a.DoctorId == jwtDoctor.Value && a.DeleteStatus != true);
+            }
+
+            try
+            {
+                var userId = (long)User.GetUserId();
+                return await _context.PatientUserMaps.AsNoTracking().AnyAsync(m =>
+                        m.UserId == userId && m.PatientId == patientId && !m.DeleteStatus)
+                    || await _context.PatientFamilyMembers.AsNoTracking().AnyAsync(f =>
+                        f.OwnerUserId == userId && f.MemberPatientId == patientId && !f.DeleteStatus);
+            }
+            catch
+            {
+                return false;
             }
         }
 

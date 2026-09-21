@@ -1,9 +1,12 @@
 using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Niga_Domain.API.Helpers;
+using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Interfaces;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -13,17 +16,21 @@ namespace Niga_Domain.API.Controllers
     [Route("api/Prescription")]
     [ApiController]
     [Authorize]
+    [DoctorOnly]
     public class PrescriptionController : ControllerBase
     {
         private readonly IPrescriptionService _prescriptionService;
         private readonly ILogger<PrescriptionController> _logger;
+        private readonly NIGACentrumContext _context;
 
         public PrescriptionController(
             IPrescriptionService prescriptionService,
-            ILogger<PrescriptionController> logger)
+            ILogger<PrescriptionController> logger,
+            NIGACentrumContext context)
         {
             _prescriptionService = prescriptionService;
             _logger = logger;
+            _context = context;
         }
 
         /// <summary>
@@ -68,6 +75,12 @@ namespace Niga_Domain.API.Controllers
                 {
                     return ThreeDBodyPartApiResponseHelper.Failure("Appointment not found");
                 }
+
+                var appointment = await _context.PatientAppointments.AsNoTracking()
+                    .FirstOrDefaultAsync(a => a.PatientAppId == request.AppointmentId && a.DeleteStatus == false);
+                var forbid = DoctorOwnership.ForbidIfNotOwner(User, appointment?.DoctorId);
+                if (forbid != null)
+                    return forbid;
 
                 var result = await _prescriptionService.GetPrescriptionDetailsByAppointmentIdAsync(request);
 

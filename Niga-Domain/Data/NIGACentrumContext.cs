@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Niga_Domain.Entities;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
@@ -125,6 +127,16 @@ namespace Niga_Domain.Data
     public virtual DbSet<DoctorPatientBoardBackup> DoctorPatientBoardBackups { get; set; }
 
     public virtual DbSet<DoctorDailySchedule> DoctorDailySchedules { get; set; }
+
+    public virtual DbSet<DoctorPayeeKyc> DoctorPayeeKycs { get; set; }
+
+    public virtual DbSet<DoctorVerification> DoctorVerifications { get; set; }
+
+    public virtual DbSet<DoctorCredentialDocument> DoctorCredentialDocuments { get; set; }
+
+    public virtual DbSet<CogRun> CogRuns { get; set; }
+
+    public virtual DbSet<PolicyVersion> PolicyVersions { get; set; }
 
     public virtual DbSet<AudioCaseSession> AudioCaseSessions { get; set; }
 
@@ -415,7 +427,15 @@ namespace Niga_Domain.Data
 
     public virtual DbSet<PatientFamilyMember> PatientFamilyMembers { get; set; }
 
+    public virtual DbSet<FamilyRelationMaster> FamilyRelationMasters { get; set; }
+
     public virtual DbSet<CaregiverAuthorization> CaregiverAuthorizations { get; set; }
+
+    public virtual DbSet<UserAppPreference> UserAppPreferences { get; set; }
+
+    public virtual DbSet<WelcomeSlide> WelcomeSlides { get; set; }
+
+    public virtual DbSet<DevicePushToken> DevicePushTokens { get; set; }
 
     public virtual DbSet<WhatsAppMessageLog> WhatsAppMessageLogs { get; set; }
 
@@ -425,17 +445,57 @@ namespace Niga_Domain.Data
 
     public virtual DbSet<YearMaster> YearMasters { get; set; }
 
-//    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-//#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-//        => optionsBuilder.UseSqlServer("Server=103.154.184.104;Database=HomeoCentrum_Production;User Id=sa;Password=Homeo@niga19;TrustServerCertificate=true;");
-
-
-
+        /// <summary>
+        /// Uses ConnectionStrings:DefaultConnection from appsettings.json when this context
+        /// is constructed without DI options (design-time / parameterless ctor).
+        /// Runtime already sets the same key in Program.cs — do not override it here.
+        /// </summary>
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Server=103.196.187.99,1433;Database=HomeoCentrum_Dev;User Id=sa;Password=nik@123JAM;TrustServerCertificate=True;");
+        {
+            if (optionsBuilder.IsConfigured)
+                return;
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+            var connectionString = ResolveDefaultConnectionString();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException(
+                    "Connection string 'DefaultConnection' was not found. Set ConnectionStrings:DefaultConnection in appsettings.json.");
+            }
+
+            optionsBuilder.UseSqlServer(connectionString);
+        }
+
+        private static string? ResolveDefaultConnectionString()
+        {
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(ResolveContentRoot())
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+                .Build();
+
+            return configuration.GetConnectionString("DefaultConnection");
+        }
+
+        private static string ResolveContentRoot()
+        {
+            var candidates = new[]
+            {
+                Directory.GetCurrentDirectory(),
+                AppContext.BaseDirectory
+            };
+
+            foreach (var candidate in candidates)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate)
+                    && File.Exists(Path.Combine(candidate, "appsettings.json")))
+                {
+                    return candidate;
+                }
+            }
+
+            return Directory.GetCurrentDirectory();
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AccompaniedDetail>(entity =>
         {
@@ -997,6 +1057,12 @@ namespace Niga_Domain.Data
             entity.Property(e => e.PassingUniversity).HasMaxLength(500);
             entity.Property(e => e.PermanantAddress).HasMaxLength(500);
             entity.Property(e => e.QualificationId).HasColumnName("QualificationID");
+            entity.Property(e => e.ClinicName).HasMaxLength(200);
+            entity.Property(e => e.ConsultFeeInClinic).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.ConsultFeeTele).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.PhotoPath).HasMaxLength(500);
+            entity.Property(e => e.WorkingHoursNote).HasMaxLength(500);
+            entity.Property(e => e.VerificationStatus).HasMaxLength(30);
 
             entity.HasOne(d => d.Package).WithMany(p => p.Doctors)
                 .HasForeignKey(d => d.PackageId)
@@ -1872,10 +1938,13 @@ namespace Niga_Domain.Data
         {
             entity.HasKey(e => e.EnquiryId);
 
+            entity.ToTable("EnquiryDetails");
             entity.Property(e => e.EmailId).HasMaxLength(100);
             entity.Property(e => e.EnquiryDate).HasColumnType("datetime");
             entity.Property(e => e.EnquiryName).HasMaxLength(100);
+            entity.Property(e => e.EnquiryDetails).HasColumnName("EnquiryDetails");
             entity.Property(e => e.MobileNo).HasMaxLength(15);
+            entity.Property(e => e.TicketStatus).HasMaxLength(30);
         });
 
         modelBuilder.Entity<FirmDetail>(entity =>
@@ -2338,6 +2407,11 @@ namespace Niga_Domain.Data
 
             entity.Property(e => e.AppointmentDate).HasMaxLength(50);
             entity.Property(e => e.Status).HasMaxLength(50);
+            entity.Property(e => e.BookingToken).HasMaxLength(64);
+            entity.Property(e => e.VisitType).HasMaxLength(50);
+            entity.Property(e => e.ConsultMode).HasMaxLength(50);
+            entity.Property(e => e.PaymentStatus).HasMaxLength(30);
+            entity.Property(e => e.ConsentPolicyVersion).HasMaxLength(20);
 
             entity.HasOne(d => d.Doctor).WithMany(p => p.PatientAppointments)
                 .HasForeignKey(d => d.DoctorId)
@@ -2877,8 +2951,63 @@ namespace Niga_Domain.Data
             entity.Property(e => e.SectionHotspotId).HasColumnName("SectionHotspotID");
             entity.Property(e => e.SectionId).HasColumnName("SectionID");
             entity.Property(e => e.HotspotName).HasMaxLength(200);
+            entity.Property(e => e.SubSectionId).HasColumnName("SubSectionId");
             entity.Property(e => e.EnteredDate).HasColumnType("datetime");
             entity.Property(e => e.ChangedDate).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<DoctorPayeeKyc>(entity =>
+        {
+            entity.HasKey(e => e.DoctorPayeeKycId);
+            entity.ToTable("DoctorPayeeKyc");
+            entity.Property(e => e.AccountHolder).HasMaxLength(200);
+            entity.Property(e => e.BankName).HasMaxLength(200);
+            entity.Property(e => e.AccountNumber).HasMaxLength(50);
+            entity.Property(e => e.Ifsc).HasMaxLength(20);
+            entity.Property(e => e.Pan).HasMaxLength(20);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<DoctorVerification>(entity =>
+        {
+            entity.HasKey(e => e.DoctorVerificationId);
+            entity.ToTable("DoctorVerification");
+            entity.Property(e => e.Status).HasMaxLength(30);
+            entity.Property(e => e.ReviewerNote).HasMaxLength(1000);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            entity.Property(e => e.ChangedDate).HasColumnType("datetime");
+            entity.Property(e => e.ReviewedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<DoctorCredentialDocument>(entity =>
+        {
+            entity.HasKey(e => e.DoctorCredentialDocumentId);
+            entity.ToTable("DoctorCredentialDocument");
+            entity.Property(e => e.DocumentType).HasMaxLength(50);
+            entity.Property(e => e.FileName).HasMaxLength(260);
+            entity.Property(e => e.FilePath).HasMaxLength(500);
+            entity.Property(e => e.ContentType).HasMaxLength(100);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<CogRun>(entity =>
+        {
+            entity.HasKey(e => e.CogRunId);
+            entity.ToTable("CogRun");
+            entity.Property(e => e.InputJson).HasColumnType("nvarchar(max)");
+            entity.Property(e => e.OutputJson).HasColumnType("nvarchar(max)");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<PolicyVersion>(entity =>
+        {
+            entity.HasKey(e => e.PolicyVersionId);
+            entity.ToTable("PolicyVersion");
+            entity.Property(e => e.PolicyType).HasMaxLength(30);
+            entity.Property(e => e.Version).HasMaxLength(20);
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.EffectiveAt).HasColumnType("datetime");
         });
 
         modelBuilder.Entity<TypeofSymptomsGroupMaster>(entity =>
@@ -3053,6 +3182,8 @@ namespace Niga_Domain.Data
             entity.Property(e => e.UserPassword).HasMaxLength(500);
             entity.Property(e => e.UserPhoto).HasMaxLength(250);
             entity.Property(e => e.UserStatus).HasDefaultValue(true);
+            entity.Property(e => e.ActivationTokenHash).HasMaxLength(128);
+            entity.Property(e => e.ActivationExpiresAt).HasColumnType("datetime");
         });
 
         modelBuilder.Entity<PasswordResetToken>(entity =>
@@ -3171,6 +3302,17 @@ namespace Niga_Domain.Data
             entity.HasIndex(e => e.MemberPatientId);
         });
 
+        modelBuilder.Entity<FamilyRelationMaster>(entity =>
+        {
+            entity.HasKey(e => e.RelationId);
+            entity.ToTable("FamilyRelationMaster");
+            entity.Property(e => e.RelationName).HasMaxLength(50);
+            entity.Property(e => e.EnteredBy).HasMaxLength(100);
+            entity.Property(e => e.ChangedBy).HasMaxLength(100);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            entity.Property(e => e.ChangedDate).HasColumnType("datetime");
+        });
+
         modelBuilder.Entity<CaregiverAuthorization>(entity =>
         {
             entity.HasKey(e => e.CaregiverAuthorizationId);
@@ -3180,6 +3322,38 @@ namespace Niga_Domain.Data
             entity.Property(e => e.RevokedAt).HasColumnType("datetime");
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.CaregiverUserId);
+        });
+
+        modelBuilder.Entity<UserAppPreference>(entity =>
+        {
+            entity.HasKey(e => e.UserId);
+            entity.ToTable("UserAppPreference");
+            entity.Property(e => e.UserId).ValueGeneratedNever();
+            entity.Property(e => e.WelcomeVersionSeen).HasMaxLength(20);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<WelcomeSlide>(entity =>
+        {
+            entity.HasKey(e => e.WelcomeSlideId);
+            entity.ToTable("WelcomeSlide");
+            entity.Property(e => e.Audience).HasMaxLength(30);
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.Body).HasMaxLength(2000);
+            entity.Property(e => e.Version).HasMaxLength(20);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<DevicePushToken>(entity =>
+        {
+            entity.HasKey(e => e.DevicePushTokenId);
+            entity.ToTable("DevicePushToken");
+            entity.Property(e => e.Platform).HasMaxLength(20);
+            entity.Property(e => e.Token).HasMaxLength(512);
+            entity.Property(e => e.DeviceId).HasMaxLength(100);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+            entity.HasIndex(e => new { e.UserId, e.Token });
         });
 
         modelBuilder.Entity<YearMaster>(entity =>
