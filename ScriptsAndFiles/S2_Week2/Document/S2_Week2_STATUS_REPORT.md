@@ -36,9 +36,20 @@ Do **not** run 07 / 08 / 10 sample scripts on production.
 11. `11_FAMILY_RELATION_MASTER.sql`
 12. `12_DEV_Seed_Role_Users.sql`
 13. `13_DOC_Reception_Profile_Menus.sql`
+14. `14_DEV_Dashboard_Users_Verify.sql` (read-only dashboard logins)
+
+## Re-audit 21 Sep 2026 (after upper-branch pull)
+
+Excel Done/Not Started ignored. In-scope 107 rows checked against code (skip QA / Mobile UI / Mobile Frontend / PRE). Dummy Account/Pharmacy SPA tokens removed; use `s2.account` / `s2.pharmacy` on Old-API Login. Dashboard users verified on `HomeoCentrum_Dev`. S3–S5 week sheets are not in this branch delivery.
+
+## Re-audit 21 Sep 2026 (S1+S2 full inventory + live test)
+
+- No additional S2 feature gaps found in code vs tracker (Excel Done ignored). CON-02.04 caregiver Grant OTP is in New-API (`Action=GrantCaregiver`).
+- Mobile developer sheet: **`Mobile_API_Reference`** in `Homeocentrum_All_New_And_Updated+APIs.xlsx` (all Old-API + New-API HTTP, not S1/S2-only).
+- UI verified locally: `/book` directory + profile fees, `/pricing` labelled SaaS vs consult, doctor dashboard chrome (availability / tele queue / unpaid), reception-staff page, Account portal login.
+- Regenerator + smoke: `Documents/_build_mobile_api_reference.py`, `NIGA_NewAPI/ScriptsAndFiles/S2_Week2/15_S1_S2_Human_Smoke.py`.
 
 ## Code shipped this week
-
 | ID | Change | Where |
 |----|--------|-------|
 | WEB-03/04/05 | Public /book list, slots, confirm, pay, success/failure | Landing HomeoJobLanding |

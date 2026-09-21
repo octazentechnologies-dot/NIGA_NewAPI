@@ -1,0 +1,37 @@
+HomeoCentrum — team logins (Dev)
+================================
+Database : HomeoCentrum_Dev (localhost\MSSQLSERVER25)
+Clinic web login : Old-API POST /api/Account/Login  (local http://127.0.0.1:5001)
+Password for every row below : 123456
+Created : 21-Sep-2026
+Seed script : NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/15_DEV_Seed_Tufan_Role_Logins.sql
+
+Username            Role              Portal / URL                         Notes
+------------------  ----------------  -----------------------------------  ------------------------------------------
+Tufan_Admin         Admin             /dashboard                           Admin portal
+Tufan_Doctore       Doctor            /doctordashboard                     Doctor clinic (Verified, directory visible)
+Tufan_Reception     Reception         /doctordashboard                     DoctorReceptionStaff (not UserMaster)
+Tufan_Account       Account           /accountdashboard                    Account department
+Tufan_Pharmacy      PharmacyPartner   /pharmacydashboard                   Pharmacy console stub
+Tufan_Patient       Patient           /family                              Patient portal
+Tufan_Caregiver     Patient           /family                              Same Patient role; caregiver grant on Tufan_Patient
+
+How to log in
+-------------
+1. Open the clinic SPA login page.
+2. User name = the Username column (exact spelling: Tufan_Doctore).
+3. Password = 123456
+4. Reception uses the same login screen; the API looks up DoctorReceptionStaff.
+
+Do not use dummy Account/Account or Pharmacy/Pharmacy tokens.
+
+Older Dev logins (still valid, different passwords)
+---------------------------------------------------
+admin                         Admin      1234
+niga homeopathy               Doctor     nik123
+testdoctor                    Doctor     nik123
+s2.reception                  Reception  S2Test@123
+s2.account                    Account    123456
+s2.pharmacy                   Pharmacy   123456
+tufanpowar001@gmail.com       Patient    123456
+s1.caregiver.tested@homeocentrum.dev  Patient (caregiver)  123456

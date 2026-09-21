@@ -1,0 +1,119 @@
+HomeoCentrum — hardcoded hosts in APIs + inputs needed from you
+===============================================================
+Date: 21-Sep-2026
+Scope: New-API (nigahomeoAPI) + Old-API (classic api). UI config.js is separate.
+
+A. Connection strings (not hardcoded in C# — come from appsettings)
+-------------------------------------------------------------------
+Both APIs currently use:
+
+  Server=localhost\MSSQLSERVER25
+  Database=HomeoCentrum_Dev
+  Integrated Security=True
+
+Files:
+  NIGA_NewAPI/Niga-Web/appsettings.json  → ConnectionStrings:DefaultConnection
+  NIGA_OldAPI/NIGA.Centrum.API/appsettings.json → ConnectionStrings:DefaultConnection
+
+Commented (not active) older servers still sitting in those files:
+  New-API : Server=103.154.184.104  Database=demo  User=sa
+  Old-API : Server=103.196.187.99,1433  Database=HomeoCentrum_Dev  User=sa
+
+INPUT: confirm Dev stays localhost\MSSQLSERVER25 / HomeoCentrum_Dev.
+INPUT: if a machine has a different SQL instance name, you must change DefaultConnection.
+
+B. Hardcoded URLs / hosts in API code (C#)
+------------------------------------------
+New-API AccountController GetUiSiteUrl()
+  Fallback if ConfigurationModel:SiteUrl is empty:
+    Development → http://localhost:3000
+    otherwise   → https://homeocentrum.com
+  Active appsettings already has ConfigurationModel:SiteUrl = http://localhost:3000
+
+New-API UserService welcome / activation email
+  Fallback site URL: https://homeocentrum.com  (if SiteUrl not bound)
+
+New-API JWT section in appsettings (not used the same way as Old-API TokenKey):
+  ValidAudience: http://localhost:4200
+  ValidIssuer:   http://localhost:5000
+  (legacy Angular ports — clinic SPA is :3000, New-API is :5038)
+
+Old-API UserService welcome email HTML
+  Hardcoded: http://ui.homeocentrum.com/Login/login?UserId=...
+
+Old-API OrderService Razorpay
+  Hardcoded live key+secret in C# (not appsettings):
+    POST https://api.razorpay.com/v1/orders
+  Same public key is hardcoded in UI Widgets.js
+
+New-API WhatsAppMetaApiClient
+  Host: https://graph.facebook.com/{version}/...
+  Tokens from appsettings WhatsAppMeta (AccessToken, PhoneNumberId, BusinessAccountId)
+
+New-API OpenAI client
+  Default BaseUrl https://api.openai.com/v1
+  ApiKey is NOT in current appsettings.json (empty → audio/embeddings run mock / skip)
+
+New-API Program.cs / launchSettings
+  http://localhost:5038  (New-API)
+Old-API launchSettings
+  http://localhost:5001  (Old-API)
+
+C. What I need from you (all tasks / go-live)
+---------------------------------------------
+1. SQL
+   - Confirm Dev SQL: localhost\MSSQLSERVER25 + HomeoCentrum_Dev
+   - Production SQL server name, database name, SQL login (if not Windows auth)
+
+2. Public hosts
+   - Production/dev UI URL (today fallback homeocentrum.com / localhost:3000)
+   - Old-API public URL (devapi1.homeocentrum.com vs api1.homeocentrum.com)
+   - New-API public URL (devapi2.homeocentrum.com)
+   - Whether clinic SPA should stay on localhost or remote for your next demo
+
+3. SMTP / email (reset password, doctor activation, welcome)
+   - From address
+   - SMTP host/port (Gmail 587 already in appsettings)
+   - SMTP username
+   - App password (Gmail)
+   - Confirm SiteUrl used inside reset/activation links
+   Current Dev uses tufanpowar001@gmail.com in both API appsettings.
+   INPUT: is that the mailbox the team should keep, or a company mailbox?
+
+4. SMS / OTP (PRE-03 — NOT live)
+   - Vendor name (MSG91 / Twilio / Exotel / other)
+   - API key / sender ID / DLT template IDs (India)
+   - OTP template text
+   Today New-API uses StubSmsSender: OTP is logged, not sent to a phone.
+   LoginWithOtp / RequestOtp / caregiver Grant OTP will not reach a real handset until this is given.
+
+5. WhatsApp
+   - Confirm Meta AccessToken / PhoneNumberId / BusinessAccountId in New-API appsettings are still valid
+   - Or provide a new permanent token if expired
+
+6. Razorpay (Old-API + doctor dashboard pay)
+   - Confirm the live key in OrderService/Widgets.js is the one you want
+   - OR provide test key_id + key_secret to move into appsettings (recommended; keys should not stay in source)
+
+7. OpenAI / Azure OpenAI (audio case-taking, embeddings, COG-related AI)
+   - OpenAI API key  OR  Azure OpenAI endpoint + key + deployments (gpt-4o, text-embedding-3-small)
+   Without this: transcription/embeddings stay mock or skip (logs already say Embedding API is not configured).
+
+8. Google Maps (website /book map, Velzon maps pages)
+   - Browser API key (UI currently has a Google key in GoogleMaps.js)
+   INPUT: confirm that key is yours and billing-enabled, or send a replacement.
+
+9. File / blob storage
+   - If production documents should not stay on local disk (SecureDocument / registration files)
+   INPUT: Azure Blob / S3 / folder path
+
+10. Push notifications (patient/doctor mobile — Device API exists)
+    - FCM server key / Firebase project
+    - APNs key (iOS)
+    Not required for web S1/S2.
+
+11. Team demo
+    - Which environment the team should hit (local vs https://devapi1 / devapi2)
+    - Share Documents/Tufan_Team_Logins.txt (password 123456)
+
+Nothing was committed. Do not paste production secrets into chat; put them in appsettings or a secrets store.

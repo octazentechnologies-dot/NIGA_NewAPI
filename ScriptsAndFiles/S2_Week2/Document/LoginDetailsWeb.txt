@@ -1,0 +1,43 @@
+Admin portal  /dashboard
+Username : Tufan_Admin
+Password : 123456
+
+Doctor portal  /doctordashboard
+Username : Tufan_Doctore
+Password : 123456
+
+Reception (DoctorReceptionStaff, same doctor chrome until Phase 5)
+Username : Tufan_Reception
+Password : 123456
+
+Account department  /accountdashboard
+Username : Tufan_Account
+Password : 123456
+
+Pharmacy console stub  /pharmacydashboard
+Username : Tufan_Pharmacy
+Password : 123456
+
+Patient portal  /family
+Username : Tufan_Patient
+Password : 123456
+
+Caregiver (Patient role + CaregiverAuthorization on Tufan_Patient)
+Username : Tufan_Caregiver
+Password : 123456
+
+Clinic password login is Old-API POST /api/Account/Login.
+Do not use dummy Account/Account or Pharmacy/Pharmacy — those bypass JWT.
+
+Shareable copy: Documents/Tufan_Team_Logins.txt
+Seed: NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/15_DEV_Seed_Tufan_Role_Logins.sql
+
+--- older Dev logins (still in database) ---
+admin / 1234
+niga homeopathy / nik123
+testdoctor / nik123
+s2.reception / S2Test@123
+s2.account / 123456
+s2.pharmacy / 123456
+tufanpowar001@gmail.com / 123456
+s1.caregiver.tested@homeocentrum.dev / 123456

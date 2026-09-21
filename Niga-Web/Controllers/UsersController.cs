@@ -83,9 +83,7 @@ namespace Niga_Domain.API.Controllers
         [AllowAnonymous]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> RegisterDoctorWithDocuments(
-            [FromForm] DoctorRegistrationModel model,
-            [FromForm] IFormFile? qualificationDoc,
-            [FromForm] IFormFile? registrationDoc)
+            [FromForm] RegisterDoctorWithDocumentsForm model)
         {
             if (model == null || !ModelState.IsValid)
                 return BadRequest("Invalid request, please verify details");
@@ -108,8 +106,8 @@ namespace Niga_Domain.API.Controllers
                 var saved = 0;
                 if (doctor != null)
                 {
-                    saved += await SaveRegistrationDocumentAsync(doctor, qualificationDoc, "Qualification");
-                    saved += await SaveRegistrationDocumentAsync(doctor, registrationDoc, "Registration");
+                    saved += await SaveRegistrationDocumentAsync(doctor, model.QualificationDoc, "Qualification");
+                    saved += await SaveRegistrationDocumentAsync(doctor, model.RegistrationDoc, "Registration");
                 }
 
                 return Ok(new

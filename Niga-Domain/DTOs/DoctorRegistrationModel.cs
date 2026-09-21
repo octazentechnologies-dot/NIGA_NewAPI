@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace Niga_Domain.DTOs
 {
@@ -49,5 +50,17 @@ namespace Niga_Domain.DTOs
         public string PassingUniversity { get; set; }
 
         public string PassingCertNo { get; set; }
+    }
+
+    /// <summary>
+    /// WEB-09.03 — RegisterDoctor fields plus qualification/registration files.
+    /// Single [FromForm] model so Swagger does not collapse two IFormFile parameters
+    /// onto a duplicate ContentType key.
+    /// </summary>
+    public class RegisterDoctorWithDocumentsForm : DoctorRegistrationModel
+    {
+        public IFormFile QualificationDoc { get; set; }
+
+        public IFormFile RegistrationDoc { get; set; }
     }
 }

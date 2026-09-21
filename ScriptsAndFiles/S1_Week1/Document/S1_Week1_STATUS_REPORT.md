@@ -28,8 +28,23 @@ Docs: `NIGA_NewAPI/ScriptsAndFiles/S1_Week1/Document`
 4. `04_S1_Week1_Mobile_Menus_And_Prefs.sql`
 5. `05_DEV_Seed_Patient_Portal_TufanPowar.sql`
 6. `06_VERIFY_S1_Week1.sql`
+7. `07_UNIT_TEST_S1_Week1_Guards.sql`
+8. `08_DEV_Seed_S1_NewTables_Sample_Tested.sql` (Dev only)
+9. `09_ADM_B04_Doctor_Clinic_Menus.sql`
 
-Database is shared. Run once on `HomeoCentrum_*`.
+Database is shared. Run once on `HomeoCentrum_*`. Do **not** run 07 / 08 / Test sample insert on production.
+
+## Re-audit 21 Sep 2026 (after upper-branch pull)
+
+Excel Done/Not Started ignored. In-scope 102 rows checked against code. Five portals (FND-02.04) documented. Dummy Account/Pharmacy tokens removed. S3–S5 not in this branch delivery.
+
+## Re-audit 21 Sep 2026 (S1+S2 full inventory + live test)
+
+- Excel status still ignored. QA / Mobile UI / Mobile Frontend excluded. Mobile **APIs** documented.
+- New-API Swagger was broken (`RegisterDoctorWithDocuments` duplicate form `ContentType`). Fixed with a single `[FromForm] RegisterDoctorWithDocumentsForm`. Swagger JSON now serves (~1 MB).
+- Complete callable HTTP inventory: sheet **`Mobile_API_Reference`** (+ **`Mobile_HowTo`**) in `Homeocentrum_All_New_And_Updated+APIs.xlsx` — 757 endpoints (402 New-API + 355 Old-API). Regenerator: `Documents/_build_mobile_api_reference.py`.
+- Live smoke (local `:5001` / `:5038`): clinic logins (doctor/account/pharmacy/reception/admin), public doctors, Family ACL 403 for money roles, Enquiry 400, Swagger 200. ForgotPassword returns generic 200 for unknown emails (anti-enumeration — expected).
+- UI (local `:3000` after pointing `config.js` at localhost): doctor login → `/doctordashboard`; ACL redirect away from `/accountdashboard`; `/doctor/reception-staff`; public `/book` + `/book/4`; `/pricing` SaaS vs consult copy; logout; `s2.account` → `/accountdashboard`.
 
 ## Code shipped this week
 
