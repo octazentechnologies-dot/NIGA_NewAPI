@@ -1,10 +1,13 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace Niga_Domain.Master;
 
 public partial class PackageEntryDetail
 {
+    // M02 W7 ADM-B03: This table is S1 SaaS doctor subscription only.
+    // Do NOT reuse for S2 consult billing or S5 medicine/pharmacy ledger.
+
     public int PackageDetailId { get; set; }
 
     public int? PackageId { get; set; }

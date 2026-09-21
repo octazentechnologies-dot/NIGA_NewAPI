@@ -39,6 +39,9 @@ namespace Niga_Domain.DTOs
         public bool IsWhatsAppOptIn { get; set; }
 
         public DateTime? WhatsAppOptInDate { get; set; }
+
+        /// <summary>DOC-03.02 — latest appointment date for this patient (nullable).</summary>
+        public DateTime? LastVisitAt { get; set; }
     }
 
     public class BaseModel

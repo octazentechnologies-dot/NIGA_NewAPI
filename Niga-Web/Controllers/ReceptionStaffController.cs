@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Niga_Domain.API.Helpers;
 using Niga_Domain.DTOs;
+using Niga_Domain.Extensions;
 using Niga_Domain.Interfaces;
+using Niga_Domain.Security;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -44,6 +46,10 @@ namespace Niga_Domain.API.Controllers
                     return ThreeDBodyPartApiResponseHelper.Failure(GetValidationMessage());
                 }
 
+                BindDoctorUserId(request);
+                if (request.DoctorUserID <= 0)
+                    return ThreeDBodyPartApiResponseHelper.Failure("DoctorUserID is required.");
+
                 var (success, message, result) = await _receptionStaffService.AddReceptionStaffAsync(request);
                 if (!success)
                 {
@@ -75,6 +81,10 @@ namespace Niga_Domain.API.Controllers
                     return ThreeDBodyPartApiResponseHelper.Failure(GetValidationMessage());
                 }
 
+                var deny = await ForbidIfNotOwnStaffAsync(request.ReceptionStaffID);
+                if (deny != null)
+                    return deny;
+
                 var (success, message) = await _receptionStaffService.UpdateReceptionStaffAsync(request);
                 if (!success)
                 {
@@ -105,6 +115,10 @@ namespace Niga_Domain.API.Controllers
                 {
                     return ThreeDBodyPartApiResponseHelper.Failure(GetValidationMessage());
                 }
+
+                var deny = await ForbidIfNotOwnStaffAsync(request.ReceptionStaffID);
+                if (deny != null)
+                    return deny;
 
                 var (success, message) = await _receptionStaffService.DeleteReceptionStaffAsync(request);
                 if (!success)
@@ -144,6 +158,10 @@ namespace Niga_Domain.API.Controllers
                     return ThreeDBodyPartApiResponseHelper.Failure("Reception staff not found or has been deleted.");
                 }
 
+                var deny = DoctorOwnership.ForbidIfNotOwner(User, result.DoctorID);
+                if (deny != null)
+                    return deny;
+
                 return ThreeDBodyPartApiResponseHelper.Success(result, "Reception staff retrieved successfully.");
             }
             catch (Exception ex)
@@ -164,10 +182,12 @@ namespace Niga_Domain.API.Controllers
         {
             try
             {
-                if (!ModelState.IsValid)
-                {
-                    return ThreeDBodyPartApiResponseHelper.PaginatedFailure(GetValidationMessage());
-                }
+                request ??= new GetReceptionStaffListRequest();
+                BindDoctorUserId(request);
+                if (request.DoctorUserID <= 0)
+                    return ThreeDBodyPartApiResponseHelper.PaginatedFailure("DoctorUserID is required.");
+                if (request.PageNumber < 1) request.PageNumber = 1;
+                if (request.PageSize < 1) request.PageSize = 10;
 
                 var (success, message, result) = await _receptionStaffService.GetReceptionStaffListAsync(request);
                 if (!success || result == null)
@@ -182,6 +202,32 @@ namespace Niga_Domain.API.Controllers
                 _logger.LogError(ex, "GetReceptionStaffList failed for DoctorUserID={DoctorUserId}", request.DoctorUserID);
                 return ThreeDBodyPartApiResponseHelper.PaginatedError(ex.Message);
             }
+        }
+
+        private void BindDoctorUserId(AddReceptionStaffRequest request)
+        {
+            if (DoctorOwnership.IsAdminPortalUser(User))
+                return;
+            request.DoctorUserID = User.GetUserId();
+        }
+
+        private void BindDoctorUserId(GetReceptionStaffListRequest request)
+        {
+            if (DoctorOwnership.IsAdminPortalUser(User))
+                return;
+            request.DoctorUserID = User.GetUserId();
+        }
+
+        private async Task<IActionResult?> ForbidIfNotOwnStaffAsync(int receptionStaffId)
+        {
+            if (DoctorOwnership.IsAdminPortalUser(User))
+                return null;
+
+            var row = await _receptionStaffService.GetReceptionStaffByIdAsync(receptionStaffId);
+            if (row == null)
+                return null;
+
+            return DoctorOwnership.ForbidIfNotOwner(User, row.DoctorID);
         }
 
         private string GetValidationMessage()

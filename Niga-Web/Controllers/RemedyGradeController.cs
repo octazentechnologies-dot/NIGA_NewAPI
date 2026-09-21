@@ -7,6 +7,7 @@ using Niga_Domain.Helpers;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -79,6 +80,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("AddRemedyGrade")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddNewRemedyGrade(RemedyGradeMaster RemedyGradeMaster)
         {
             try
@@ -116,6 +118,7 @@ namespace Niga_Domain.API.Controllers
 
 
         [HttpPost("UpdateRemedyGradeDetails")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateRemedyGradeDetails(RemedyGradeMaster updateRemedyGradeDto)
         {
             try
@@ -153,6 +156,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("DeleteRemedyGradeDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteRemedyGradeDetails(int Id)
         {
             var data = await _remedyGradeService.GetRemedyGradeById(Id);

@@ -9,6 +9,9 @@ using Niga_Domain.Helpers;
 using Niga_Domain.Master;
 using Niga_Domain.Interface;
 
+using Niga_Domain.Authorization;
+using Microsoft.AspNetCore.Authorization;
+using Niga_Domain.Security;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -16,7 +19,8 @@ namespace Niga_Domain.API.Controllers
     /// </summary>
     [Route("api/questionGroup")]
     [ApiController]
-    //[Authorize]
+    [Authorize]
+    [DoctorOnly]
     public class QuestionGroupController : ControllerBase
     {
         private readonly IQuestionGroupService _questionGroupService;
@@ -81,6 +85,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("AddQuestionGroup")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddNewQuestionGroup(QuestionGroupModel questionGroupModel)
         {
             try
@@ -115,6 +120,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("UpdateQuestionGroupDetails")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateQuestionGroupDetails(QuestionGroupModel updateQuestionGroupModel)
         {
             try
@@ -151,6 +157,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("DeleteQuestionGroupDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteQuestionGroupDetails(int Id)
         {
             var data = await _questionGroupService.GetQuestionById(Id);

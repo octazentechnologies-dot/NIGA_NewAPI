@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Niga_Domain.Data;
 using Niga_Domain.DTOs;
@@ -152,6 +153,14 @@ namespace Niga_Domain.Repositories
                 errorResponseModel.Message = "Patient not found";
             }
 
+            var patientIds = caseEntityList.Select(x => x.PatientId).Distinct().ToList();
+            var lastVisits = _context.PatientAppointments
+                .Where(a => patientIds.Contains(a.PatientId) && a.DeleteStatus != true)
+                .GroupBy(a => a.PatientId)
+                .Select(g => new { PatientId = g.Key, Last = g.Max(x => x.AppointmentDate) })
+                .ToList()
+                .ToDictionary(x => x.PatientId, x => x.Last);
+
             caseEntityList.ForEach(item =>
             {
                 PatientModelList.Add(new PatientModel
@@ -165,6 +174,7 @@ namespace Niga_Domain.Repositories
                     DateOfBirth = item.Patient.DateOfBirth,
                     IsWhatsAppOptIn = item.Patient.IsWhatsAppOptIn,
                     WhatsAppOptInDate = item.Patient.WhatsAppOptInDate,
+                    LastVisitAt = lastVisits.TryGetValue(item.PatientId, out var last) ? last : null,
                 });
             });
 
@@ -425,6 +435,10 @@ namespace Niga_Domain.Repositories
                 UserId = entity.UserId,
                 IsWhatsAppOptIn = entity.Patient?.IsWhatsAppOptIn ?? false,
                 WhatsAppOptInDate = entity.Patient?.WhatsAppOptInDate,
+                PaymentStatus = entity.PaymentStatus,
+                IsTele = entity.IsTele,
+                VisitType = entity.VisitType,
+                ConsultMode = entity.ConsultMode,
             };
         }
 

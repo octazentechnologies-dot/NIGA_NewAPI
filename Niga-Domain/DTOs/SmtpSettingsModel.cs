@@ -13,5 +13,7 @@ namespace Niga_Domain.DTOs
         public bool enableSsl { get; set; }
         public string userName { get; set; }
         public string password { get; set; }
+        public string appName { get; set; }
+        public string SiteUrl { get; set; }
     }
 }

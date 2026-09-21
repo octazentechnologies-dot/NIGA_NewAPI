@@ -13,6 +13,8 @@ namespace Niga_Domain.DTOs
 
         public string HotspotName { get; set; } = null!;
 
+        public int? SubSectionId { get; set; }
+
         public int? EnteredBy { get; set; }
 
         public DateTime? EnteredDate { get; set; }
@@ -33,6 +35,8 @@ namespace Niga_Domain.DTOs
         public string? SectionName { get; set; }
 
         public string HotspotName { get; set; } = null!;
+
+        public int? SubSectionId { get; set; }
     }
 
     public class AddThreeDBodyPartSectionHotspotRequest
@@ -48,6 +52,8 @@ namespace Niga_Domain.DTOs
         [Required(ErrorMessage = "EnteredBy is required")]
         [Range(1, int.MaxValue, ErrorMessage = "EnteredBy is required")]
         public int EnteredBy { get; set; }
+
+        public int? SubSectionId { get; set; }
     }
 
     public class UpdateThreeDBodyPartSectionHotspotRequest
@@ -67,6 +73,8 @@ namespace Niga_Domain.DTOs
         [Required(ErrorMessage = "ChangedBy is required")]
         [Range(1, int.MaxValue, ErrorMessage = "ChangedBy is required")]
         public int ChangedBy { get; set; }
+
+        public int? SubSectionId { get; set; }
     }
 
     public class DeleteThreeDBodyPartSectionHotspotRequest

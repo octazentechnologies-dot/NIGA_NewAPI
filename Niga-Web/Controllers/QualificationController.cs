@@ -6,6 +6,8 @@ using Niga_Domain.Helpers;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
+using Niga_Domain.Authorization;
+using Microsoft.AspNetCore.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -13,7 +15,7 @@ namespace Niga_Domain.API.Controllers
     /// </summary>
     [Route("api/qualification")]
     [ApiController]
-    //[Authorize]
+    [Authorize]
     public class QualificationController : ControllerBase
     {
         private readonly IQualificationService _qualificationService;
@@ -78,6 +80,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("AddQualification")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddNewQualification(QualificationModel qualificationMasterDto)
         {
             try
@@ -129,6 +132,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("UpdateQualificationDetails")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateQualificationDetails(QualificationModel updateQualificationDto)
         {
             try
@@ -184,6 +188,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("DeleteQualificationDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteQualificationDetails(int Id)
         {
             var data = await _qualificationService.GetQualificationById(Id);

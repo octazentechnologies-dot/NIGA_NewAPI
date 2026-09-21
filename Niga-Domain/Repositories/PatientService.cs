@@ -214,6 +214,9 @@ namespace Niga_Domain.Implementation
                     Age = p.Age,
                     IsWhatsAppOptIn = p.IsWhatsAppOptIn,
                     WhatsAppOptInDate = p.WhatsAppOptInDate,
+                    LastVisitAt = context.PatientAppointments
+                        .Where(a => a.PatientId == p.PatientId && a.DeleteStatus != true)
+                        .Max(a => (DateTime?)a.AppointmentDate),
                     DiagnosisIds = string.Join(
                         ",",
                         (
@@ -424,6 +427,9 @@ namespace Niga_Domain.Implementation
                     EnteredDate = caseEntry.EnteredDate,
                     IsWhatsAppOptIn = patient.IsWhatsAppOptIn,
                     WhatsAppOptInDate = patient.WhatsAppOptInDate,
+                    LastVisitAt = context.PatientAppointments
+                        .Where(a => a.PatientId == patient.PatientId && a.DeleteStatus != true)
+                        .Max(a => (DateTime?)a.AppointmentDate),
                     DiagnosisIds = string.Join(
                         ',',
                         diagnosisGroup
@@ -610,6 +616,10 @@ namespace Niga_Domain.Implementation
                     HistoryNoteId = AHN != null ? AHN.HistoryId : 0,
                     IsWhatsAppOptIn = patient.IsWhatsAppOptIn,
                     WhatsAppOptInDate = patient.WhatsAppOptInDate,
+                    VisitType = patientAppointment.VisitType,
+                    ConsultMode = patientAppointment.ConsultMode,
+                    PaymentStatus = patientAppointment.PaymentStatus,
+                    IsTele = patientAppointment.IsTele,
                 }
             ).ToList();
 

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Niga_Domain.Data;
 using Niga_Domain.DTOs;
+using Niga_Domain.Helpers;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
@@ -31,6 +32,8 @@ public class PatientBoardBackupService : IPatientBoardBackupService
         {
             return (false, "Backup payload is required.", null);
         }
+
+        request.BackupPayload = BoardBackupIntensityMerger.EnsureIntensityPersisted(request.BackupPayload);
 
         var now = DateTime.UtcNow;
         var existing = await _context.DoctorPatientBoardBackups
@@ -126,7 +129,7 @@ public class PatientBoardBackupService : IPatientBoardBackupService
             PatientCount = backup.PatientCount,
             SchemaVersion = backup.SchemaVersion,
             SavedAt = backup.ChangedDate ?? backup.EnteredDate,
-            BackupPayload = backup.BackupPayload,
+            BackupPayload = BoardBackupIntensityMerger.EnsureIntensityPersisted(backup.BackupPayload),
         });
     }
 

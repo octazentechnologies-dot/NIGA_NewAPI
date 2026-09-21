@@ -2,6 +2,11 @@ using System;
 
 namespace Niga_Domain.Master;
 
+/// <summary>
+/// Audio case-taking consent log (session-scoped).
+/// SEC-06.03 — Do not fork a second telemedicine consent model.
+/// Phase 11 writes TeleRecording into ConsentRecord (ConsentType master); reuse this pattern / ConsentRecord APIs.
+/// </summary>
 public partial class AudioCaseConsentLog
 {
     public long ConsentLogId { get; set; }

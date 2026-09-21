@@ -9,6 +9,8 @@ using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 using System;
 
+using Niga_Domain.Authorization;
+using Niga_Domain.Security;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -16,7 +18,8 @@ namespace Niga_Domain.API.Controllers
     /// </summary>
     [Route("api/questionsubgroup")]
     [ApiController]
-    //[Authorize]
+    [Authorize]
+    [DoctorOnly]
     public class QuestionSubGroupController : ControllerBase
     {
         private readonly IQuestionSubGroupService _questionSubGroupService;
@@ -81,6 +84,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("AddQuestionSubGroup")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddNewQuestionSubGroup(QuestionSubGroupModel questionSubGroupModel)
         {
             try
@@ -115,6 +119,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("UpdateQuestionSubGroupDetails")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateQuestionSubGroupDetails(QuestionSubGroupModel updateQuestionSubGroupModel)
         {
             try
@@ -151,6 +156,7 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpPost("DeleteQuestionSubGroupDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteQuestionSubGroupDetails(int Id)
         {
             var data = await _questionSubGroupService.GetQuestionSubGroupById(Id);

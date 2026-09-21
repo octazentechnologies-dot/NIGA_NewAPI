@@ -1,0 +1,220 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Niga_Domain.Authorization;
+using Niga_Domain.Data;
+using Niga_Domain.DTOs;
+using Niga_Domain.Extensions;
+using Niga_Domain.Master;
+using Niga_Domain.Security;
+
+namespace Niga_Domain.API.Controllers
+{
+    /// <summary>SEC-06.02 — Consent grant / withdraw / list / admin audit (no clinical content).</summary>
+    [Route("api/[controller]")]
+    [ApiController]
+    [Authorize]
+    [ForbidMoneyRoles]
+    public class ConsentController : ControllerBase
+    {
+        private readonly NIGACentrumContext _context;
+
+        public ConsentController(NIGACentrumContext context)
+        {
+            _context = context;
+        }
+
+        [HttpPost("Grant")]
+        public async Task<IActionResult> Grant([FromBody] ConsentGrantRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.ConsentTypeCode))
+                return BadRequest(new { success = false, message = "ConsentTypeCode is required." });
+
+            var type = await _context.ConsentTypes
+                .FirstOrDefaultAsync(t => t.Code == request.ConsentTypeCode.Trim() && t.IsActive);
+            if (type == null)
+                return BadRequest(new { success = false, message = "Unknown or inactive consent type." });
+
+            var subjectType = string.IsNullOrWhiteSpace(request.SubjectType) ? "User" : request.SubjectType.Trim();
+            var subjectId = request.SubjectId > 0 ? request.SubjectId : User.GetUserId();
+
+            if (!User.IsAdminPortalUser()
+                && subjectType.Equals("User", StringComparison.OrdinalIgnoreCase)
+                && subjectId != User.GetUserId())
+            {
+                return Forbid();
+            }
+
+            var existing = await _context.ConsentRecords
+                .Where(r => r.ConsentTypeId == type.ConsentTypeId
+                    && r.SubjectType == subjectType
+                    && r.SubjectId == subjectId
+                    && r.WithdrawnAt == null)
+                .OrderByDescending(r => r.GrantedAt)
+                .FirstOrDefaultAsync();
+            if (existing != null)
+            {
+                return Ok(new
+                {
+                    success = true,
+                    alreadyGranted = true,
+                    data = new
+                    {
+                        existing.ConsentRecordId,
+                        ConsentTypeCode = type.Code,
+                        existing.SubjectType,
+                        existing.SubjectId,
+                        existing.GrantedAt
+                    }
+                });
+            }
+
+            var record = new ConsentRecord
+            {
+                ConsentTypeId = type.ConsentTypeId,
+                SubjectType = subjectType,
+                SubjectId = subjectId,
+                GrantedByUserId = User.GetUserId(),
+                GrantedAt = DateTime.UtcNow,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = Request.Headers.UserAgent.ToString(),
+                Notes = request.Notes
+            };
+
+            _context.ConsentRecords.Add(record);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    record.ConsentRecordId,
+                    ConsentTypeCode = type.Code,
+                    record.SubjectType,
+                    record.SubjectId,
+                    record.GrantedAt
+                }
+            });
+        }
+
+        [HttpPost("Withdraw")]
+        public async Task<IActionResult> Withdraw([FromBody] ConsentWithdrawRequest request)
+        {
+            if (request == null || request.ConsentRecordId <= 0)
+                return BadRequest(new { success = false, message = "ConsentRecordId is required." });
+
+            var record = await _context.ConsentRecords
+                .FirstOrDefaultAsync(r => r.ConsentRecordId == request.ConsentRecordId);
+            if (record == null)
+                return NotFound(new { success = false, message = "Consent record not found." });
+
+            if (!User.IsAdminPortalUser()
+                && !(record.SubjectType.Equals("User", StringComparison.OrdinalIgnoreCase)
+                     && record.SubjectId == User.GetUserId()))
+            {
+                return Forbid();
+            }
+
+            if (record.WithdrawnAt != null)
+                return Ok(new { success = true, message = "Already withdrawn." });
+
+            record.WithdrawnAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return Ok(new { success = true, message = "Consent withdrawn." });
+        }
+
+        [HttpGet("ListMine")]
+        public async Task<IActionResult> ListMine()
+        {
+            var userId = User.GetUserId();
+            var rows = await _context.ConsentRecords
+                .AsNoTracking()
+                .Include(r => r.ConsentType)
+                .Where(r => r.SubjectType == "User" && r.SubjectId == userId)
+                .OrderByDescending(r => r.GrantedAt)
+                .Select(r => new
+                {
+                    r.ConsentRecordId,
+                    ConsentTypeCode = r.ConsentType!.Code,
+                    ConsentTypeName = r.ConsentType.Name,
+                    r.GrantedAt,
+                    r.WithdrawnAt,
+                    IsActive = r.WithdrawnAt == null
+                })
+                .ToListAsync();
+
+            return Ok(new { success = true, data = rows });
+        }
+
+        [HttpGet("AdminAudit")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        public async Task<IActionResult> AdminAudit([FromQuery] int take = 100)
+        {
+            take = Math.Clamp(take, 1, 500);
+            var rows = await _context.ConsentRecords
+                .AsNoTracking()
+                .Include(r => r.ConsentType)
+                .OrderByDescending(r => r.GrantedAt)
+                .Take(take)
+                .Select(r => new
+                {
+                    r.ConsentRecordId,
+                    ConsentTypeCode = r.ConsentType!.Code,
+                    r.SubjectType,
+                    r.SubjectId,
+                    r.GrantedByUserId,
+                    r.GrantedAt,
+                    r.WithdrawnAt,
+                    r.IpAddress
+                })
+                .ToListAsync();
+
+            return Ok(new { success = true, data = rows });
+        }
+
+        /// <summary>PAT-05.02 — First-run privacy consent status for the JWT user.</summary>
+        [HttpGet("PrivacyStatus")]
+        public async Task<IActionResult> PrivacyStatus()
+        {
+            var userId = User.GetUserId();
+            var type = await _context.ConsentTypes.AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Code == "Privacy" && t.IsActive);
+            if (type == null)
+                return Ok(new { success = true, data = new { required = true, granted = false, missingType = true } });
+
+            var latest = await _context.ConsentRecords.AsNoTracking()
+                .Where(r => r.ConsentTypeId == type.ConsentTypeId
+                    && r.SubjectType == "User"
+                    && r.SubjectId == userId)
+                .OrderByDescending(r => r.GrantedAt)
+                .FirstOrDefaultAsync();
+
+            var granted = latest != null && latest.WithdrawnAt == null;
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    required = true,
+                    granted,
+                    consentRecordId = latest?.ConsentRecordId,
+                    grantedAt = latest?.GrantedAt,
+                    withdrawnAt = latest?.WithdrawnAt
+                }
+            });
+        }
+
+        /// <summary>PAT-05.02 — Grant Privacy consent for the caller. Idempotent if already granted.</summary>
+        [HttpPost("GrantPrivacy")]
+        public Task<IActionResult> GrantPrivacy()
+        {
+            return Grant(new ConsentGrantRequest
+            {
+                ConsentTypeCode = "Privacy",
+                SubjectType = "User",
+                SubjectId = User.GetUserId()
+            });
+        }
+    }
+}

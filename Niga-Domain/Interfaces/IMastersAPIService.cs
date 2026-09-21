@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using Niga_Domain.DTOs;
@@ -185,13 +185,10 @@ namespace Niga_Domain.Business.Interface
         /// <returns></returns>
         List<FirmDetailsModel> GetFirmDetails(ref ErrorResponseModel errorResponseModel);
 
-        ///// <summary>
-        ///// Method is used for get menu by role Id
-        ///// </summary>
-        ///// <param name=""></param>
-        ///// <returns></returns>
-        //List<MenuMasterModel> GetMenuByRole(long userId, ref ErrorResponseModel errorResponseModel);
-
+        /// <summary>
+        /// M02 W7 / ADM-B04 — menus allowed for the user's RoleId (from RoleDetails + MenuMaster).
+        /// </summary>
+        List<MenuMasterModel> GetMenuByRole(long userId, ref ErrorResponseModel errorResponseModel);
 
         /// <summary>
         /// Method is used for get doctor by user Id

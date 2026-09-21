@@ -1,9 +1,14 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Niga_Domain.API.Controllers;
 using Niga_Domain.API.Helpers;
+using Niga_Domain.Authorization;
+using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Interfaces;
+using Niga_Domain.Security;
+using Niga_Domain.Extensions;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -17,13 +22,16 @@ namespace Niga_Domain.API.Controllers
     {
         private readonly IPatientAppointmentService _PatientAppointmentService;
         private readonly ILogger<PatientAppointmentController> _logger;
+        private readonly NIGACentrumContext _context;
 
         public PatientAppointmentController(
             IPatientAppointmentService PatientAppointmentService,
-            ILogger<PatientAppointmentController> logger)
+            ILogger<PatientAppointmentController> logger,
+            NIGACentrumContext context)
         {
             _PatientAppointmentService = PatientAppointmentService;
             _logger = logger;
+            _context = context;
         }
 
         /// <summary>
@@ -42,6 +50,9 @@ namespace Niga_Domain.API.Controllers
                 var PatientAppModel = _PatientAppointmentService.GetPatientAppById(PatientAppId, ref errorResponseModel);
                 if (PatientAppModel != null)
                 {
+                    var forbid = DoctorOwnership.ForbidIfNotOwner(User, PatientAppModel.DoctorId);
+                    if (forbid != null)
+                        return forbid;
                     return Ok(PatientAppModel);
                 }
                 return ReturnErrorResponse(errorResponseModel);
@@ -131,6 +142,43 @@ namespace Niga_Domain.API.Controllers
             ErrorResponseModel errorResponseModel = null;
             try
             {
+                // SEC-05.01 — bind DoctorId from JWT when present; forbid cross-doctor mutate
+                var jwtDoctorId = DoctorOwnership.GetDoctorId(User);
+                if (jwtDoctorId.HasValue && (PatientAppointmentModel.DoctorId <= 0))
+                    PatientAppointmentModel.DoctorId = jwtDoctorId.Value;
+
+                var forbid = DoctorOwnership.ForbidIfNotOwner(User, PatientAppointmentModel.DoctorId);
+                if (forbid != null)
+                    return forbid;
+
+                // CON-01.02 / CON-02.02 — patient/caregiver booking authorisation
+                var roleName = AdminAuthorizationPolicies.GetRoleName(User) ?? string.Empty;
+                var isClinicStaff =
+                    DoctorOwnership.IsAdminPortalUser(User)
+                    || roleName.Equals("Doctor", StringComparison.OrdinalIgnoreCase)
+                    || roleName.Equals("Reception", StringComparison.OrdinalIgnoreCase)
+                    || jwtDoctorId.HasValue;
+                if (!isClinicStaff && PatientAppointmentModel.PatientId > 0)
+                {
+                    var userId = (long)User.GetUserId();
+                    var pid = PatientAppointmentModel.PatientId;
+                    var allowed =
+                        _context.PatientUserMaps.Any(m =>
+                            m.UserId == userId && m.PatientId == pid && !m.DeleteStatus)
+                        || _context.PatientFamilyMembers.Any(f =>
+                            f.OwnerUserId == userId && f.MemberPatientId == pid && !f.DeleteStatus)
+                        || _context.CaregiverAuthorizations.Any(c =>
+                            c.CaregiverUserId == userId
+                            && c.PatientId == pid
+                            && !c.DeleteStatus
+                            && c.RevokedAt == null);
+                    if (!allowed)
+                    {
+                        return StatusCode(StatusCodes.Status403Forbidden,
+                            new { success = false, message = "Not authorised to book as this patient." });
+                    }
+                }
+
                 var result = _PatientAppointmentService.SavePatientApp(PatientAppointmentModel, ref errorResponseModel);
                 if (!string.IsNullOrEmpty(result))
                 {
@@ -157,6 +205,10 @@ namespace Niga_Domain.API.Controllers
             ErrorResponseModel errorResponseModel = new ErrorResponseModel();
             try
             {
+                if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { success = false, message = "Access denied for this doctor resource." });
+
                 var PatientModelList = _PatientAppointmentService.GetCasesByUser(userId, ref errorResponseModel);
                 if (PatientModelList != null)
                 {
@@ -192,6 +244,13 @@ namespace Niga_Domain.API.Controllers
                 if (request.AppointmentDate == default)
                 {
                     return BadRequest("AppointmentDate is required");
+                }
+
+                // SEC-05.01 — non-admin must only query own user id
+                if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, request.UserId))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { success = false, message = "Access denied for this doctor resource." });
                 }
 
                 var appointments = await _PatientAppointmentService.GetAppointmentsByDateAsync(request);
@@ -259,6 +318,10 @@ namespace Niga_Domain.API.Controllers
                     return BadRequest("DoctorId is required");
                 }
 
+                var forbid = DoctorOwnership.ForbidIfNotOwner(User, request.DoctorId);
+                if (forbid != null)
+                    return forbid;
+
                 if (request.ScheduleDate == default)
                 {
                     return BadRequest("ScheduleDate is required");
@@ -293,6 +356,10 @@ namespace Niga_Domain.API.Controllers
                 {
                     return BadRequest("DoctorId is required");
                 }
+
+                var forbid = DoctorOwnership.ForbidIfNotOwner(User, request.DoctorId);
+                if (forbid != null)
+                    return forbid;
 
                 if (request.ScheduleDate == default)
                 {

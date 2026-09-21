@@ -17,8 +17,11 @@ namespace Niga_Domain.Services
                     return false;
                 }
 
-                var fromAddress = new MailAddress(settingsModel.from);
+                var displayName = string.IsNullOrWhiteSpace(settingsModel.appName) ? settingsModel.from : settingsModel.appName;
+                var fromAddress = new MailAddress(settingsModel.from, displayName);
                 var toAddress = new MailAddress(emailSenderModel.ToAddress);
+                var smtpUser = string.IsNullOrWhiteSpace(settingsModel.userName) ? settingsModel.from : settingsModel.userName;
+                var smtpPassword = (settingsModel.password ?? string.Empty).Replace(" ", string.Empty);
                 var smtp = new SmtpClient
                 {
                     Host = settingsModel.host,
@@ -26,7 +29,7 @@ namespace Niga_Domain.Services
                     EnableSsl = settingsModel.enableSsl,
                     DeliveryMethod = SmtpDeliveryMethod.Network,
                     UseDefaultCredentials = settingsModel.defaultCredentials,
-                    Credentials = new NetworkCredential(fromAddress.Address, settingsModel.password),
+                    Credentials = new NetworkCredential(smtpUser, smtpPassword),
                 };
 
                 using (var message = new MailMessage(fromAddress, toAddress)

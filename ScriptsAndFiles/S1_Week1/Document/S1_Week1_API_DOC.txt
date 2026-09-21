@@ -1,0 +1,677 @@
+S1 WEEK 1 — API DOCUMENT (shareable)
+Date       : 20-Sep-2026
+Catalog    : NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
+Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
+Auth       : Authorization: Bearer <JWT> unless TOKEN = no
+Dev OTP    : Development responses include data.devCode (never in production)
+Host rule  : New HTTP -> New-API nigahomeoAPI  http://localhost:5038/api
+             Existing URL stays on the host the live UI already calls.
+             Clinic Login / Rx-write / Razorpay stay Old-API  http://localhost:5001/api
+             Do not silently switch hosts.
+             Doctor mobile must NOT call case-taking (clipboard / COG / audio / Rx mutate).
+Sample data: Test sample data insert.sql (10 rows S1-SAMPLE-01..10)
+             + 08_DEV_Seed_S1_NewTables_Sample_Tested.sql (S1-TESTED)
+Every API below has USE (what the screen/app uses it for), plus HOST, TOKEN, SAMPLE, INPUTS, OUTPUT.
+
+Skipped this week: QA, PRE/client gates, React Native UI.
+In scope: Web API, Database, Security, Web Frontend UI, Mobile APIs (not RN screens).
+
+--------------------------------------------------------------------------------
+SUGGESTED FLOWS
+--------------------------------------------------------------------------------
+CLINIC WEB LOGIN (do not switch host)
+  1. POST http://localhost:5001/api/Account/Login
+     { "userName": "niga homeopathy", "password": "nik123" }
+  2. Save data.token. Use on both hosts (TokenKey / JWT:Secret aligned on Dev).
+  3. POST both hosts /api/Account/Logout on sign-out.
+
+PATIENT APP (New-API)
+  1. GET  /api/Welcome/Patient                         TOKEN=no
+  2. GET  /api/mastersAPI/GetLanguages                 TOKEN=no  (PAT-01 first-run)
+  3. POST /api/Otp/RequestOtp          Action=Login    TOKEN=no
+  4. POST /api/Account/LoginWithOtp                    TOKEN=no  -> data.token
+  5. GET  /api/Consent/PrivacyStatus
+     if granted=false -> POST /api/Consent/GrantPrivacy
+  6. GET  /api/PatientProfile/Me
+     PUT  /api/PatientProfile/Me
+  7. GET/POST /api/Family   PUT/DELETE /api/Family/{id}
+  8. POST /api/Otp/RequestOtp  Action=GrantCaregiver
+     POST /api/Caregiver/Grant
+  9. POST /api/Device/Register
+ 10. POST /api/Account/Logout
+
+DOCTOR APP (same clinic account)
+  1. POST Old-API /api/Account/Login                   TOKEN=no
+  2. GET  New-API /api/Profile/Me
+     POST New-API /api/Account/ConfirmMobile
+  3. POST New-API /api/Device/Register
+  Doctor mobile MUST NOT call clipboard / CenterOfGravity / audio / diagnosis mutate.
+
+PASSWORD RESET (New-API + SPA :3000)
+  1. POST /api/Account/ForgotPassword  { "email": "..." }
+  2. Open /reset-password/{token}  (Gmail wrap-safe path link)
+  3. POST /api/Account/ResetPassword  { "token", "newPassword" }
+
+================================================================================
+NEW / S1 HTTP  (HOST = New-API  nigahomeoAPI  :5038)
+================================================================================
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Account/Login
+USE        : Password login exists on New-API (lazy-migrates plaintext to PBKDF2).
+             Clinic SPA and doctor app MUST keep using Old-API Login (SEC-01.02 / DMO-01.02).
+HOST       : New-API (exists) — UI host is Old-API, do not switch
+TOKEN      : no
+SAMPLE PAYLOAD: { "userName": "niga homeopathy", "password": "nik123" }
+INPUTS     : userName, password
+OUTPUT     : { success, data: { token, userId, role, roleId, doctorId, ... } }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Account/Login
+USE        : Clinic web + doctor-app password login. Same URL as today (SEC-01.02, DMO-01.02).
+             JWT claims: RoleId, RoleName/role, DoctorID, NameIdentifier=UserId.
+HOST       : Old-API  http://localhost:5001/api
+TOKEN      : no
+SAMPLE PAYLOAD: { "userName": "niga homeopathy", "password": "nik123" }
+INPUTS     : userName, password
+OUTPUT     : { success, message, data: { token, userId, role, roleId, doctorId, ... } }
+NOTE       : Do not switch this host. Reception token includes RoleName + DoctorUserID.
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Account/Logout
+USE        : Server-side logout; persist UserLoginStatus; denylist until expiry (SEC-03.01 / SEC-03.03).
+             Clinic SPA dual-calls Old-API and New-API. Mobile must hit at least New-API.
+HOST       : New-API and Old-API
+TOKEN      : yes
+SAMPLE PAYLOAD: { }
+INPUTS     : none (JWT)
+OUTPUT     : { success, message }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Account/ForgotPassword
+USE        : Email a reset LINK. Never emails plaintext password (SEC-02.02).
+HOST       : New-API
+TOKEN      : no
+SAMPLE PAYLOAD: { "email": "tufanpowar001@gmail.com" }
+INPUTS     : email (EmailId or UserName)
+OUTPUT     : { success, message }  Dev also: resetLink, mailSent
+NOTE       : Link is /reset-password/{token} so Gmail wrap does not drop the token.
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Account/ResetPassword
+USE        : Consume PasswordResetToken (2 hours, one use) and set new hash (SEC-02.02).
+HOST       : New-API
+TOKEN      : no
+SAMPLE PAYLOAD: { "token": "<from email>", "newPassword": "123456" }
+INPUTS     : token, newPassword (min 6)
+OUTPUT     : { success, message }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Account/ChangePassword
+USE        : Logged-in user changes password (SEC-02.02).
+HOST       : New-API
+TOKEN      : yes
+SAMPLE PAYLOAD: { "currentPassword": "123456", "newPassword": "654321" }
+INPUTS     : currentPassword, newPassword
+OUTPUT     : { success, message }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Account/MigratePlaintextPasswords
+USE        : Admin bulk-hash remaining plaintext UserMaster passwords (SEC-01.01).
+HOST       : New-API
+TOKEN      : AdminPortal JWT
+SAMPLE PAYLOAD: { }
+INPUTS     : none
+OUTPUT     : { success, migrated, skipped, failed }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Account/SetUserPassword
+USE        : Admin sets a user’s password (hashed). Not for self-service.
+HOST       : New-API
+TOKEN      : AdminPortal JWT
+SAMPLE PAYLOAD: { "userName": "s2.account", "newPassword": "123456" }
+INPUTS     : userName, newPassword
+OUTPUT     : { success, message }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Account/LoginWithOtp
+USE        : Patient-app (and optional doctor OTP) login (PAT-03.02). Exchange OTP for JWT.
+HOST       : New-API
+TOKEN      : no
+SAMPLE PAYLOAD:
+{
+  "otpChallengeId": 1,
+  "code": "123456",
+  "mobileNo": "7768046064"
+}
+INPUTS     : otpChallengeId, code, mobileNo
+OUTPUT     : { success, data: { token, userId, role, ... } }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Account/ConfirmMobile
+USE        : Doctor/patient first-run: confirm typed number against UserMaster, Doctor, or
+             linked Patient mobile (DMO-02.02).
+HOST       : New-API
+TOKEN      : yes
+SAMPLE PAYLOAD: { "mobileNo": "9000000002" }
+INPUTS     : mobileNo
+OUTPUT     : { success, data: { matched, profileMasked, role } }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Profile/Me
+USE        : Doctor profile including mobileNo for onboarding confirm (DMO-02.02).
+HOST       : New-API
+TOKEN      : doctor JWT (reception 403 on mutate)
+SAMPLE     : GET /api/Profile/Me
+INPUTS     : none
+OUTPUT     : { success, data: DoctorProfileMeDto }  mobileNo, clinicName, fees, verificationStatus
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Otp/RequestOtp
+USE        : Generic OTP (SEC-07.02). Login / PatientAuth are anonymous. GrantCaregiver needs JWT.
+             Rate-limit 3/min per entity; 5 attempts then 15-min lockout; SMS stub until PRE-03.
+HOST       : New-API
+TOKEN      : no for Action=Login or PatientAuth; yes for GrantCaregiver and others
+SAMPLE PAYLOAD (login):
+{
+  "action": "Login",
+  "entityType": "Mobile",
+  "entityId": "7768046064",
+  "destination": "7768046064"
+}
+SAMPLE PAYLOAD (caregiver grant):
+{
+  "action": "GrantCaregiver",
+  "entityType": "Patient",
+  "entityId": "3033",
+  "destination": "tufanpowar001@gmail.com"
+}
+INPUTS     : action, entityType, entityId, destination
+OUTPUT     : { success, otpChallengeId, expiresAt, destinationMasked, devCode? }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Otp/VerifyOtp
+USE        : Verify a challenge without logging in (SEC-07.02). LoginWithOtp also verifies.
+HOST       : New-API
+TOKEN      : no
+SAMPLE PAYLOAD: { "otpChallengeId": 1, "code": "123456" }
+INPUTS     : otpChallengeId, code
+OUTPUT     : { success, verified }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Otp/Audit?take=50
+USE        : Account + Admin OTP audit with masked destination (SEC-07.03).
+HOST       : New-API
+TOKEN      : AccountOrAdmin JWT
+SAMPLE     : GET /api/Otp/Audit?take=50
+INPUTS     : take optional
+OUTPUT     : { success, data: [ { action, entityType, entityId, toMasked, success, at } ] }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Consent/Grant
+USE        : Grant a consent type (SEC-06.02). No clinical payload — type + time only.
+HOST       : New-API
+TOKEN      : yes (money roles forbidden)
+SAMPLE PAYLOAD: { "consentTypeCode": "Privacy", "subjectType": "User", "subjectId": 0, "notes": "" }
+INPUTS     : consentTypeCode required. Codes: Privacy, Booking, TeleRecording, PharmacyShare, Marketing, Caregiver
+OUTPUT     : { success, data: consent row }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Consent/Withdraw
+USE        : Withdraw a consent (SEC-06.02).
+HOST       : New-API
+TOKEN      : yes
+SAMPLE PAYLOAD: { "consentRecordId": 1 }
+INPUTS     : consentRecordId
+OUTPUT     : { success, message }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Consent/ListMine
+USE        : List this user’s consents (SEC-06.02).
+HOST       : New-API
+TOKEN      : yes
+OUTPUT     : { success, data: [ { consentRecordId, consentTypeCode, grantedAt, withdrawnAt } ] }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Consent/AdminAudit
+USE        : Admin consent audit (SEC-06.02).
+HOST       : New-API
+TOKEN      : AdminPortal JWT
+OUTPUT     : { success, data: [ masked rows ] }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Consent/PrivacyStatus
+USE        : Patient-app privacy gate (PAT-05.02).
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: { granted: true|false } }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Consent/GrantPrivacy
+USE        : One-call Privacy grant for the logged-in user (PAT-05.02).
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { }
+INPUTS     : none
+OUTPUT     : { success, data }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Public/Policies/{policyType}
+USE        : Signed Privacy / Terms / Booking copy + version for consent screens (PAT-05 / WEB-07).
+HOST       : New-API
+TOKEN      : no
+SAMPLE     : GET /api/Public/Policies/Privacy
+INPUTS     : policyType = Privacy | Terms | Booking
+OUTPUT     : { success, data: { policyType, version, title, bodyHtml, effectiveAt } }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/SecureDocument/Upload
+USE        : Multipart upload into SecureDocument (SEC-09.02). No public folder listing.
+HOST       : New-API
+TOKEN      : yes (money roles forbidden)
+SAMPLE     : multipart form-data  file, ownerType=Patient, ownerId=3033
+INPUTS     : file, ownerType, ownerId
+OUTPUT     : { success, data: { secureDocumentId, fileName, hash, createdAt } }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/SecureDocument/{id}
+USE        : Authorised download metadata/content (SEC-09.02). Owner / admin / treating doctor.
+HOST       : New-API
+TOKEN      : yes
+SAMPLE     : GET /api/SecureDocument/1
+INPUTS     : id = SecureDocumentId
+OUTPUT     : file stream or { success, data }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/SecureFile/Sign
+USE        : Signed URL for /attachments and /Blogs files after directory browsing was disabled (SEC-05.02).
+HOST       : New-API
+TOKEN      : yes
+SAMPLE PAYLOAD: { "root": "attachments", "path": "folder/file.pdf", "ttlMinutes": 15 }
+INPUTS     : root, path, ttlMinutes
+OUTPUT     : { success, url, expiresAt }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/SecureFile/{root}/{*path}
+USE        : Authorised static-file fetch (SEC-05.02).
+HOST       : New-API
+TOKEN      : yes
+--------------------------------------------------------------------------------
+URL        : GET /api/SecureFile/Download?token=
+USE        : Consume a signed download token (SEC-05.02).
+HOST       : New-API
+TOKEN      : signed query (no Bearer required)
+INPUTS     : token query
+OUTPUT     : file bytes
+
+--------------------------------------------------------------------------------
+URL        : GET /api/mastersAPI/GetMenuByRole?userId=
+USE        : Restore menus by role (SEC-04.01 / ADM-B04.02 / ADM-B04.03). Non-admin forced to own JWT userId.
+HOST       : New-API
+TOKEN      : yes
+SAMPLE     : GET /api/mastersAPI/GetMenuByRole?userId=2
+INPUTS     : userId (ignored unless AdminPortal)
+OUTPUT     : menu rows (menuId, menuName, menuUrl, ...)
+NOTE       : SPA LayoutMenuContext consumes this; hardcoded Account/Pharmacy fallback if empty.
+
+--------------------------------------------------------------------------------
+URL        : GET /api/mastersAPI/GetLanguages
+USE        : Language picker for patient first-run (PAT-01.02) and profile. Public list, no PII.
+HOST       : New-API
+TOKEN      : no
+SAMPLE     : GET http://localhost:5038/api/mastersAPI/GetLanguages
+INPUTS     : none
+OUTPUT     : language rows (languageId, languageName)
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Welcome/Patient
+USE        : Welcome / introduction slides (PAT-02.02).
+HOST       : New-API
+TOKEN      : no
+SAMPLE     : GET /api/Welcome/Patient
+INPUTS     : none
+OUTPUT     : { success, data: { version, audience, slides: [ { welcomeSlideId, sortOrder, title, body, version } ] } }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/PatientProfile/Me
+USE        : Patient profile + preferredLanguageId + welcomeVersionSeen (PAT-01 / PAT-04).
+HOST       : New-API
+TOKEN      : patient JWT (money roles forbidden)
+OUTPUT     : { success, data: { userId, firstName, lastName, email, mobileNo, patientId,
+             patientName, preferredLanguageId, welcomeVersionSeen, ... } }
+
+--------------------------------------------------------------------------------
+URL        : PUT /api/PatientProfile/Me
+USE        : Save profile, language, and welcome version seen (PAT-01 / PAT-02 / PAT-04).
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD:
+{
+  "patientName": "Tufan Powar",
+  "mobileNo": "7768046064",
+  "email": "tufanpowar001@gmail.com",
+  "preferredLanguageId": 1,
+  "welcomeVersionSeen": "1"
+}
+INPUTS     : patientName, mobileNo, email, dateOfBirth, gender, age, preferredLanguageId,
+             welcomeVersionSeen, patientId (optional link)
+OUTPUT     : same as GET Me
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Device/Register
+USE        : Register FCM or APNs token (DMO-03.02 / COM-03).
+HOST       : New-API
+TOKEN      : yes (patient or doctor JWT)
+SAMPLE PAYLOAD: { "platform": "FCM", "token": "device-token", "deviceId": "optional" }
+INPUTS     : platform = FCM | APNs, token required, deviceId optional
+OUTPUT     : { success, data: { devicePushTokenId, platform, deviceId, updatedAt } }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Device/Unregister
+USE        : Soft-unregister this user’s FCM / APNs token (DMO-03.02).
+HOST       : New-API
+TOKEN      : yes
+SAMPLE PAYLOAD: { "token": "device-token" }
+INPUTS     : token or devicePushTokenId
+OUTPUT     : { success, message }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Device/Mine
+USE        : List this user’s registered devices (DMO-03.02).
+HOST       : New-API
+TOKEN      : yes
+OUTPUT     : { success, data: [ { devicePushTokenId, platform, deviceId, updatedAt } ] }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Family/Me
+USE        : Logged-in patient’s own PatientId. UI must not ask them to type it (CON-01).
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: { ownerPatientId, ownerPatientName, linked } }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Family/Relations
+USE        : Relation dropdown for family add/edit (CON-01.02).
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: [ { relationId, relationName, sortOrder } ] }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Family/Relations
+USE        : Add a missing relation (last dropdown option).
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "relationName": "Guardian" }
+INPUTS     : relationName
+OUTPUT     : { success, data: { relationId, relationName, sortOrder } }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Family/LinkPrimary
+USE        : Optional manual link. GET /Family/Me and POST /Family already auto-link.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "patientId": 3033 }
+INPUTS     : patientId
+OUTPUT     : { success, data: { userId, patientId } }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Family
+USE        : List family members (CON-01.02).
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, ownerPatientId, ownerPatientName, data: [ FamilyMemberDto ] }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Family
+USE        : Add a family member. ownerPatientId is taken from login — omit it.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD:
+{
+  "relationId": 1,
+  "relation": "Spouse",
+  "patientName": "Anita",
+  "mobileNo": "9100000001"
+}
+INPUTS     : patientName required (unless existingMemberPatientId). relationId or relation required.
+OUTPUT     : { success, data: FamilyMemberDto }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Family/{id}
+USE        : Read one family member (CON-01.02 CRUD).
+HOST       : New-API
+TOKEN      : patient JWT
+INPUTS     : id = FamilyMemberId
+OUTPUT     : { success, data: FamilyMemberDto }
+
+--------------------------------------------------------------------------------
+URL        : PUT /api/Family/{id}
+USE        : Update a family member.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "relationId": 4, "patientName": "Rohan" }
+INPUTS     : id = FamilyMemberId
+OUTPUT     : { success, message }
+
+--------------------------------------------------------------------------------
+URL        : DELETE /api/Family/{id}
+USE        : Soft-delete a family member.
+HOST       : New-API
+TOKEN      : patient JWT
+INPUTS     : id = FamilyMemberId
+OUTPUT     : { success, message }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Family/CanBookAs/{patientId}
+USE        : Can this JWT book as that patient (self, family, or caregiver) (CON-01.02).
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE     : GET /api/Family/CanBookAs/3021
+INPUTS     : patientId = Member PatientId
+OUTPUT     : { success, allowed, reason }  reason = self | family | caregiver | admin
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Family/BookAs
+USE        : Create an appointment for a family member / self / caregiver patient (CON-01.02).
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD:
+{
+  "memberPatientId": 3021,
+  "doctorId": 3,
+  "appointmentDate": "2026-09-22",
+  "appointmentTime": "11:15",
+  "visitType": "InClinic",
+  "consultMode": "InClinic",
+  "isTele": false
+}
+INPUTS     : memberPatientId, doctorId, appointmentDate, appointmentTime (HH:mm)
+OUTPUT     : { success, reason, data: { patientAppId, patientId, patientName, doctorId,
+             appointmentDate, appointmentTime, bookingToken, status } }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Caregiver/Me
+USE        : Logged-in patient’s PatientId + OTP destination. Do not ask for PatientId or UserId.
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: { ownerPatientId, ownerPatientName, otpDestination, linked } }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Caregiver/Lookup?contact=
+USE        : Resolve caregiver by registered mobile or email (not UserId) (CON-02.02).
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE     : GET /api/Caregiver/Lookup?contact=s1.caregiver.tested@homeocentrum.dev
+INPUTS     : contact = mobile or email
+OUTPUT     : { success, data: { caregiverUserId, displayName, contact } }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Caregiver/Grant
+USE        : Grant caregiver after OTP Action=GrantCaregiver (CON-02.02 / CON-02.04).
+             Send caregiverContact. Omit patientId and caregiverUserId in the patient UI.
+             AdminPortal may omit OTP.
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD:
+{
+  "caregiverContact": "s1.caregiver.tested@homeocentrum.dev",
+  "otpChallengeId": 1,
+  "otpCode": "123456",
+  "scope": "booking"
+}
+INPUTS     : caregiverContact (preferred), otpChallengeId, otpCode, scope
+OUTPUT     : { success, data: CaregiverAuthorizationDto }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/Caregiver/Revoke
+USE        : Revoke a caregiver grant (CON-02.02).
+HOST       : New-API
+TOKEN      : patient JWT
+SAMPLE PAYLOAD: { "caregiverAuthorizationId": 1 }
+INPUTS     : caregiverAuthorizationId
+OUTPUT     : { success, message, data }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Caregiver/ListMine
+USE        : Grants where I am the patient (CON-02.02).
+HOST       : New-API
+TOKEN      : patient JWT
+OUTPUT     : { success, data: [ CaregiverAuthorizationDto ] }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Caregiver/ListActingFor
+USE        : Patients I may book for as caregiver (CON-02.02).
+HOST       : New-API
+TOKEN      : caregiver JWT
+OUTPUT     : { success, data: [ CaregiverAuthorizationDto ] }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/AdminAcl/me
+USE        : Probe current JWT role flags (ADM dual-API / SoD).
+HOST       : New-API
+TOKEN      : yes
+OUTPUT     : { success, data: role flags }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/AdminAcl/ping
+USE        : Admin-only ping (ADM ACL).
+HOST       : New-API
+TOKEN      : AdminPortal JWT
+OUTPUT     : { success }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/AdminAcl/coverage
+USE        : Map of which masters are Admin-mutate / Doctor-read (ADM-*.02).
+HOST       : New-API
+TOKEN      : yes
+OUTPUT     : { success, data: coverage rows }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/qualification/GetQualificationList
+USE        : Qualification master list. UI uses New-API (ADM-B01.03).
+HOST       : New-API
+TOKEN      : yes
+OUTPUT     : qualification rows
+
+--------------------------------------------------------------------------------
+URL        : POST /api/qualification/AddQualification
+USE        : Create qualification. Admin mutate only (ADM-B01.02).
+HOST       : New-API
+TOKEN      : AdminPortal JWT
+--------------------------------------------------------------------------------
+URL        : POST /api/qualification/UpdateQualificationDetails
+USE        : Update qualification. Admin mutate only.
+HOST       : New-API
+TOKEN      : AdminPortal JWT
+--------------------------------------------------------------------------------
+URL        : POST /api/qualification/DeleteQualificationDetails/{Id}
+USE        : Delete qualification. Admin mutate only.
+HOST       : New-API
+TOKEN      : AdminPortal JWT
+--------------------------------------------------------------------------------
+URL        : GET /api/registration/qualifications
+USE        : Public register-doctor dropdown (AllowAnonymous). Same New-API host.
+HOST       : New-API
+TOKEN      : no
+
+--------------------------------------------------------------------------------
+URL        : GET /api/threeDBodyPartMeshKeyMaster/GetMeshKeyMasterList
+USE        : 3D mesh key master. UI host is New-API (ADM-3D1.03). Mutate AdminPortal (ADM-3D1.02).
+HOST       : New-API
+TOKEN      : yes (mutate AdminPortal)
+Same host for:
+  threeDBodyPartSectionMaster  (ADM-3D2)
+  threeDBodyPartSectionHotspot (ADM-3D3)
+Add/Update/Delete = AdminPortal. List/Get = Doctor read OK.
+
+================================================================================
+EXISTING URLs — keep the live UI host (do not silently switch)
+================================================================================
+
+Clinic Login / Logout / Rx-write / Razorpay
+HOST       : Old-API  http://localhost:5001/api
+USE        : Same as production today (FND-01.03, SEC-01.02).
+
+Drug system / Drug group admin CRUD          HOST=Old-API   ACL mutate=AdminPortal   (ADM-A01, ADM-A02)
+Allopathic admin CRUD                        HOST=Old-API   ACL mutate=AdminPortal   (ADM-A03)
+Allopathic dropdown on Patient Board         HOST=New-API   read
+Lab catalog admin (Pagination/GetPatientLabTests, AddEdit, Delete)
+                                             HOST=Old-API   ACL mutate=AdminPortal   (ADM-B02)
+Package admin CRUD /api/package              HOST=Old-API   ACL mutate=AdminPortal   (ADM-B03)
+Package read GET /api/mastersAPI/GetPackages HOST=New-API
+Diagnosis / therapeutics / conditions        HOST=Old-API   ACL mutate=AdminPortal   (ADM-D01..D03)
+Author / MM master / heads / remedies        HOST=Old-API   ACL mutate=AdminPortal   (ADM-M01..M04)
+Question section/group/sub-group / mapping   HOST=Old-API (New parity locked Admin)  (ADM-Q01, Q02)
+Repertory section / subsection / rubric-remedy / remedy-linked
+                                             HOST=Old-API (+ New parity Admin mutate) (ADM-R01..R04)
+Language / body part / intensity / remedy / grade masters
+                                             HOST=Old-API   ACL mutate=AdminPortal   (ADM-R05..R09)
+RoleMaster / RoleDetails / MenuMaster CRUD   HOST=Old-API   ACL mutate=AdminPortal   (ADM-B04)
+
+SEC-05.01 DoctorId ownership (Old-API, JWT DoctorID)
+USE        : Patient, Appointment, Case, Rx, notes, labs, board backup cannot cross-doctor.
+SAMPLE     : GET /api/patientApp/{id} for another doctor -> 403
+             POST /api/patientApp with another DoctorId -> 403
+HOST       : Old-API (also enforced on matching New-API patientApp reads)
+
+SEC-08.02 Audit middleware
+USE        : Writes AuditEvent on mutating money/Rx/approval/family/caregiver/consent/device paths.
+HOST       : New-API (no list API — helper used by later phases)
+OUTPUT     : rows in dbo.AuditEvent (ActorUserId, Role, Action, Entity, OldJson, NewJson, At, CorrelationId)
+
+SEC-05.02 Directory browsing
+USE        : /attachments and /Blogs must not list. Direct file URL still works if the file exists.
+SAMPLE     : GET http://localhost:5038/attachments/  -> no directory index
+
+SEC-06.03 Tele consent
+USE        : Reuse ConsentRecord + AudioCaseConsentLog. Do not fork a second tele consent model.
+
+================================================================================
+DEV LOGINS (HomeoCentrum_Dev)
+================================================================================
+Doctor     : niga homeopathy / nik123                         Old-API Login
+Patient    : tufanpowar001@gmail.com / 123456                 OTP or password
+Caregiver  : s1.caregiver.tested@homeocentrum.dev / 123456
+Account    : s2.account / 123456
+Pharmacy   : s2.pharmacy / 123456
+Reset mail : Gmail wrap-safe /reset-password/{token} on SPA :3000
+
+================================================================================
+SQL PACK (run manually on HomeoCentrum_Dev — not from the app)
+================================================================================
+NIGA_NewAPI/ScriptsAndFiles/S1_Week1/Database scripts
+  01_SEC_M01_Foundation_Security_Server.sql
+  02_ADM_M02_W7_MenuMaster_Account_Pharmacy_Seed.sql
+  03_CON_M16_Family_Caregiver.sql          (includes FamilyRelationMaster)
+  04_S1_Week1_Mobile_Menus_And_Prefs.sql
+  05_DEV_Seed_Patient_Portal_TufanPowar.sql
+  06_VERIFY_S1_Week1.sql                   (read-only — OK on any env)
+  07_UNIT_TEST_S1_Week1_Guards.sql         DEV/TEST only — do not run on production
+  08_DEV_Seed_S1_NewTables_Sample_Tested.sql  DEV/TEST only
+  ../Test sample data insert.sql           DEV/TEST only — 10 rows per new table (18-09-2026)
+
+Mobile-only copy of patient/doctor app URLs:
+  S1_Week1_MOBILE_API_DOC.txt
+Week 2 public booking / PAT-06–15 / DMO-04–06:
+  NIGA_NewAPI/ScriptsAndFiles/S2_Week2/S2_Week2_API_DOC.txt
+  NIGA_NewAPI/ScriptsAndFiles/S2_Week2/S2_Week2_MOBILE_API_DOC.txt

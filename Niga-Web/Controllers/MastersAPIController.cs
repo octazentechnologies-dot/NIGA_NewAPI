@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Niga_Domain.Business.Interface;
 using Niga_Domain.DTOs;
+using Niga_Domain.Extensions;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -97,7 +98,11 @@ namespace Niga_Domain.API.Controllers
         /// <summary>
         /// To get all active languages (e.g. English, Marathi for WhatsApp templates).
         /// </summary>
+        /// <summary>
+        /// PAT-01.02 — Language list for first-run picker (before login) and profile setup.
+        /// </summary>
         [HttpGet("GetLanguages")]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(LanguageMasterModel), 200)]
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
@@ -760,34 +765,38 @@ namespace Niga_Domain.API.Controllers
         }
 
 
-        ///// <summary>
-        ///// To get all menu By role
-        ///// </summary>
-        ///// <param name=""></param>
-        ///// <returns></returns>
-        //[HttpGet("GetMenuByRole")]
-        //[ProducesResponseType(typeof(MenuMasterModel), 200)]
-        //[ProducesResponseType(typeof(string), 404)]
-        //[ProducesResponseType(typeof(string), 400)]
-        //[ProducesResponseType(typeof(string), 500)]
-        //public IActionResult GetMenuByRole(long userId)
-        //{
-        //    ErrorResponseModel errorResponseModel = null;
-        //    try
-        //    {
-        //        var menuList = _mastersAPIService.GetMenuByRole(userId, ref errorResponseModel);
+        /// <summary>
+        /// M02 W7 ADM-B04 — Get menus for the role of the given user (New-API restore).
+        /// SEC-04.01 / IDOR harden: non-AdminPortal callers are forced to their own JWT userId.
+        /// </summary>
+        [HttpGet("GetMenuByRole")]
+        [ProducesResponseType(typeof(MenuMasterModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        public IActionResult GetMenuByRole(long userId)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                if (!User.IsAdminPortalUser())
+                {
+                    userId = User.GetUserId();
+                }
 
-        //        if (menuList != null)
-        //        {
-        //            return Ok(menuList);
-        //        }
-        //        return ReturnErrorResponse(errorResponseModel);
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
-        //    }
-        //}
+                var menuList = _mastersAPIService.GetMenuByRole(userId, ref errorResponseModel);
+
+                if (menuList != null && menuList.Count > 0)
+                {
+                    return Ok(menuList);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
 
         /// <summary>
         /// Get doctor 

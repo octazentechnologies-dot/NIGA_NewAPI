@@ -4,11 +4,14 @@ using Niga_Domain.Business.Interface;
 using Niga_Domain.DTOs;
 using System;
 
+using Niga_Domain.Authorization;
+using Niga_Domain.Security;
 namespace Niga_Domain.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
+    [DoctorOnly]
     public class MateriaMedicaRemediesDetailsController : BaseAPIController
     {
         IMateriaMedicaRemediesDetails _materiamediService;
@@ -37,6 +40,24 @@ namespace Niga_Domain.API.Controllers
                 {
                     return Ok(materiamedicaList);
                 }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
+
+        /// <summary>CLN-10.02 — lightweight get-by-remedy (all authors) to avoid chatty author loops.</summary>
+        [HttpGet("GetMateriaMedicaByRemedy/{remedyId}")]
+        public IActionResult GetMateriaMedicaByRemedy(long remedyId)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var list = _materiamediService.GetMateriaMedicaByRemedy(remedyId, ref errorResponseModel);
+                if (list != null && list.Count > 0)
+                    return Ok(list);
                 return ReturnErrorResponse(errorResponseModel);
             }
             catch (Exception ex)

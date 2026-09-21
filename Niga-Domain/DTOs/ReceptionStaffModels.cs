@@ -5,7 +5,6 @@ namespace Niga_Domain.DTOs
 {
     public class AddReceptionStaffRequest
     {
-        [Required(ErrorMessage = "DoctorUserID is required")]
         public int DoctorUserID { get; set; }
 
         [Required(ErrorMessage = "UserID is required")]
@@ -92,8 +91,6 @@ namespace Niga_Domain.DTOs
 
     public class GetReceptionStaffListRequest
     {
-        [Required(ErrorMessage = "DoctorUserID is required")]
-        [Range(1, int.MaxValue, ErrorMessage = "DoctorUserID must be greater than 0")]
         public int DoctorUserID { get; set; }
 
         [Range(1, int.MaxValue, ErrorMessage = "PageNumber must be greater than 0")]

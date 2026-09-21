@@ -6,6 +6,7 @@ using Niga_Domain.DTOs;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -30,6 +31,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(object), 400)]
         [ProducesResponseType(typeof(object), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddThreeDBodyPartSectionHotspot([FromBody] AddThreeDBodyPartSectionHotspotRequest request)
         {
             try
@@ -55,7 +57,8 @@ namespace Niga_Domain.API.Controllers
                     HotspotName = request.HotspotName.Trim(),
                     EnteredBy = request.EnteredBy,
                     EnteredDate = DateTime.Now,
-                    DeleteStatus = false
+                    DeleteStatus = false,
+                    SubSectionId = request.SubSectionId
                 };
 
                 _hotspotService.SaveHotspot(hotspot);
@@ -85,6 +88,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(object), 400)]
         [ProducesResponseType(typeof(object), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateThreeDBodyPartSectionHotspot([FromBody] UpdateThreeDBodyPartSectionHotspotRequest request)
         {
             try
@@ -115,6 +119,7 @@ namespace Niga_Domain.API.Controllers
 
                 entity.SectionId = request.SectionId;
                 entity.HotspotName = request.HotspotName.Trim();
+                entity.SubSectionId = request.SubSectionId;
                 entity.ChangedBy = request.ChangedBy;
                 entity.ChangedDate = DateTime.Now;
 
@@ -140,6 +145,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(object), 400)]
         [ProducesResponseType(typeof(object), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteThreeDBodyPartSectionHotspot([FromBody] DeleteThreeDBodyPartSectionHotspotRequest request)
         {
             try

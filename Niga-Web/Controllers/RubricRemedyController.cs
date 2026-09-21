@@ -13,6 +13,7 @@ using Niga_Domain.Implementation;
 using Niga_Domain.Interface;
 using Niga_Domain.Interfaces;
 
+using Niga_Domain.Authorization;
 namespace Niga_Domain.API.Controllers
 {
     /// <summary>
@@ -49,6 +50,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public IActionResult SaveRemedyDetails(List<RubricRemedyDetailsModel> rubricRemedyDetailsModel)
         {
             ErrorResponseModel errorResponseModel = null;
@@ -295,6 +297,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public IActionResult SaveUpdateRubricRemedy(RubricRemedyDetailModel rubricRemedyDetailsModel)
         {
             ErrorResponseModel errorResponseModel = null;
@@ -337,6 +340,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public IActionResult DeleteRubricRemedyAuthor(RubricRemedyDeleteModel rubricRemedyDeleteModel)
         {
             ErrorResponseModel errorResponseModel = null;
@@ -367,6 +371,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public IActionResult UpdateIsSmallRubric(int rubricRemedyId, bool isSmallRubric)
         {
             ErrorResponseModel errorResponseModel = null;
@@ -397,6 +402,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public IActionResult UpdateIsConfirmationRubric(int rubricRemedyId, bool isConformationRubric)
         {
             ErrorResponseModel errorResponseModel = null;
@@ -487,6 +493,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(string), 500)]
         [RequestSizeLimit(100_000_000)]
         [RequestFormLimits(MultipartBodyLengthLimit = 100_000_000)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> ImportRubricRemedyFromExcel(IFormFile file, CancellationToken cancellationToken)
         {
             try
@@ -517,6 +524,7 @@ namespace Niga_Domain.API.Controllers
         [HttpGet("ImportFromExcel/Status/{jobId}")]
         [ProducesResponseType(typeof(ImportJobStatusModel), 200)]
         [ProducesResponseType(typeof(string), 404)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public IActionResult GetImportFromExcelStatus(string jobId)
         {
             var status = _importQueue.GetStatus(jobId);
@@ -532,6 +540,7 @@ namespace Niga_Domain.API.Controllers
         [ProducesResponseType(typeof(FileContentResult), 200)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> ExportRubricsToExcel(int sectionId)
         {
             try

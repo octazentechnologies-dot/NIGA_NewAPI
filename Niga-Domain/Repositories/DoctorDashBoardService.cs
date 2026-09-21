@@ -64,6 +64,11 @@ namespace Niga_Domain.Implementation
                     DateOfBirth = pa.DateOfBirth,
                     IsWhatsAppOptIn = pa.IsWhatsAppOptIn,
                     WhatsAppOptInDate = pa.WhatsAppOptInDate,
+                    VisitType = p.VisitType,
+                    ConsultMode = p.ConsultMode,
+                    PaymentStatus = p.PaymentStatus,
+                    IsTele = p.IsTele,
+                    BookingToken = p.BookingToken,
                 }
             ).AsQueryable();
             if (patientAppEntityList == null)
@@ -174,7 +179,19 @@ namespace Niga_Domain.Implementation
                     .Select(x => x.PatientId)
                     .Distinct()
                     .Count();
+                appointmentCount.IsOnline = doctor.IsOnline;
+                appointmentCount.DoctorId = doctor.DoctorId;
             }
+
+            var dayAppts = context.PatientAppointments.AsNoTracking()
+                .Where(x => x.AppointmentDate.Value.Date == appointmentDate.Value.Date && x.UserId == userId && x.DeleteStatus != true);
+            appointmentCount.teleQueueCount = dayAppts.Count(x =>
+                x.IsTele == true
+                || x.Status == PatientsStatus.E_Consult.GetDisplayName());
+            appointmentCount.unpaidCount = dayAppts.Count(x =>
+                x.PaymentStatus != null
+                && x.PaymentStatus != "Paid"
+                && x.PaymentStatus != "Waived");
 
             return appointmentCount;
         }
