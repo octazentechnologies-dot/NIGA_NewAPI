@@ -1942,6 +1942,7 @@ namespace Niga_Domain.Data
             entity.Property(e => e.EmailId).HasMaxLength(100);
             entity.Property(e => e.EnquiryDate).HasColumnType("datetime");
             entity.Property(e => e.EnquiryName).HasMaxLength(100);
+            entity.Property(e => e.EnquiryDetails).HasColumnName("EnquiryDetails");
             entity.Property(e => e.MobileNo).HasMaxLength(15);
             entity.Property(e => e.TicketStatus).HasMaxLength(30);
         });

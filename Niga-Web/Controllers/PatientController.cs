@@ -362,8 +362,15 @@ namespace Niga_Domain.API.Controllers
         }
 
         [HttpGet("ExportCasesToExcel")]
+        [DoctorOnly]
         public async Task<IActionResult> ExportCasesToExcel([FromQuery] ParameterParams parameterParams)
         {
+            parameterParams ??= new ParameterParams();
+            if (!parameterParams.UserId.HasValue || parameterParams.UserId.Value <= 0)
+                parameterParams.UserId = User.GetUserId();
+            if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, parameterParams.UserId.Value))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+
             var errorResponseModel = new ErrorResponseModel();
             var cases = await _patientService.getAllCasesForExport(parameterParams);
             if (cases == null || !cases.Any())
@@ -414,6 +421,7 @@ namespace Niga_Domain.API.Controllers
         /// <param name="patientId"></param>
         /// <returns></returns>
         [HttpGet("GetPatientBackHistoryById/{patientId}")]
+        [DoctorOnly]
         [ProducesResponseType(typeof(PatientAppointmentModel1), 200)]
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]

@@ -82,6 +82,11 @@ namespace Niga_Domain.DTOs
         public string? EmailId { get; set; }
         public string? MobileNo { get; set; }
         public string? City { get; set; }
+        public string? AddressLine1 { get; set; }
+        public string? AddressLine2 { get; set; }
+        public string? State { get; set; }
+        public int? StateId { get; set; }
+        public string? Pincode { get; set; }
         public int? QualificationId { get; set; }
         public string? QualificationName { get; set; }
         public string? PassingUniversity { get; set; }
@@ -122,6 +127,11 @@ namespace Niga_Domain.DTOs
         public string? EmailId { get; set; }
         public string? MobileNo { get; set; }
         public string? City { get; set; }
+        public string? AddressLine1 { get; set; }
+        public string? AddressLine2 { get; set; }
+        public string? State { get; set; }
+        public int? StateId { get; set; }
+        public string? Pincode { get; set; }
         public int? QualificationId { get; set; }
         public string? PassingUniversity { get; set; }
         public string? PassingCertNo { get; set; }
@@ -146,6 +156,15 @@ namespace Niga_Domain.DTOs
         public bool IsOnline { get; set; }
         public string? WorkingHoursNote { get; set; }
         public DoctorDailyScheduleModel? TodaySchedule { get; set; }
+        public List<DoctorDailyScheduleModel> WeekSchedules { get; set; } = new();
+    }
+
+    public class AvailabilityDayHours
+    {
+        public DateTime ScheduleDate { get; set; }
+        public TimeOnly WorkStartTime { get; set; }
+        public TimeOnly WorkEndTime { get; set; }
+        public int SlotIntervalMinutes { get; set; } = 15;
     }
 
     public class AvailabilityUpdateRequest
@@ -157,6 +176,7 @@ namespace Niga_Domain.DTOs
         public TimeOnly? WorkStartTime { get; set; }
         public TimeOnly? WorkEndTime { get; set; }
         public int? SlotIntervalMinutes { get; set; }
+        public List<AvailabilityDayHours>? Days { get; set; }
     }
 
     public class CogRubricInput

@@ -47,6 +47,8 @@ namespace Niga_Domain.API.Controllers
                 }
 
                 BindDoctorUserId(request);
+                if (request.DoctorUserID <= 0)
+                    return ThreeDBodyPartApiResponseHelper.Failure("DoctorUserID is required.");
 
                 var (success, message, result) = await _receptionStaffService.AddReceptionStaffAsync(request);
                 if (!success)
@@ -180,12 +182,12 @@ namespace Niga_Domain.API.Controllers
         {
             try
             {
-                if (!ModelState.IsValid)
-                {
-                    return ThreeDBodyPartApiResponseHelper.PaginatedFailure(GetValidationMessage());
-                }
-
+                request ??= new GetReceptionStaffListRequest();
                 BindDoctorUserId(request);
+                if (request.DoctorUserID <= 0)
+                    return ThreeDBodyPartApiResponseHelper.PaginatedFailure("DoctorUserID is required.");
+                if (request.PageNumber < 1) request.PageNumber = 1;
+                if (request.PageSize < 1) request.PageSize = 10;
 
                 var (success, message, result) = await _receptionStaffService.GetReceptionStaffListAsync(request);
                 if (!success || result == null)

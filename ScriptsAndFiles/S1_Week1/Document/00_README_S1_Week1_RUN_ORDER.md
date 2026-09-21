@@ -19,7 +19,8 @@ Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 | 6 | `06_VERIFY_S1_Week1.sql` | Read-only proof queries. |
 | 7 | `07_UNIT_TEST_S1_Week1_Guards.sql` | Guard unit tests (create-if-missing, add-column, insert-if-absent) plus live schema assertions. |
 | 8 | `08_DEV_Seed_S1_NewTables_Sample_Tested.sql` | Sample TESTED rows in new S1 tables (family, caregiver, consent, OTP, audit, device, prefs). Run after 05. |
-| 9 | `Test sample data insert.sql` (this folder) | **TEST/UAT only — do not run on production.** 10 sample rows in each new S1 table. |
+| 9 | `09_ADM_B04_Doctor_Clinic_Menus.sql` | Doctor RoleDetails + clinic MenuMaster so GetMenuByRole is 200 for Doctor. |
+| 10 | `Test sample data insert.sql` (this folder) | **TEST/UAT only — do not run on production.** 10 sample rows in each new S1 table. |
 
 No extra OTP table script: caregiver grant OTP reuses `OtpChallenge` from step 1 (`Action = GrantCaregiver`). Login OTP uses `Action = Login` (anonymous).
 
@@ -31,6 +32,7 @@ No extra OTP table script: caregiver grant OTP reuses `OtpChallenge` from step 1
 4. Share these API text files (USE / HOST / TOKEN / SAMPLE / INPUTS / OUTPUT on every URL):
    - `../S1_Week1_API_DOC.txt` — full Week 1 web + security + dual-API hosts
    - `../S1_Week1_MOBILE_API_DOC.txt` — patient/doctor app HTTP contracts
+   Combined Week 1+2 Excel catalog: `NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx`
    Copies also live in this `Document` folder and repo `Documents/`.
 
 Login / Rx-write / Razorpay stay on classic (Old-API) paths. New HTTP for S1 security/family/OTP/menu is New-API.

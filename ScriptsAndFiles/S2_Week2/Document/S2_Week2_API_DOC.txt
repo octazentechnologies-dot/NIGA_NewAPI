@@ -1,5 +1,6 @@
 S2 WEEK 2 — API DOCUMENT
 Date       : 18-Sep-2026
+Catalog    : NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
 Database   : HomeoCentrum_Dev
 Auth       : Bearer JWT unless TOKEN = no. DoctorOnly = treating doctor only.
              Reception and Patient JWTs get 403 on clipboard / COG / audio / clinical mutate.
@@ -40,8 +41,17 @@ DOCTOR APP (New-API)
 
 DOCTOR REGISTER (New-API)
   POST /api/users/RegisterDoctor
+  POST /api/users/RegisterDoctorWithDocuments   (multipart qualificationDoc + registrationDoc)
+  GET  /api/users/RegistrationStatus?emailId=
   POST /api/users/ActivateByToken
   POST /api/users/ResendActivation
+
+WEB UI ROUTES (CRA :3000, public landing)
+  /book  /book/:doctorId  /book/:doctorId/slots  /book/:doctorId/confirm
+  /book/success?token=  /book/pay/:bookingId  /book/pay/:bookingId/success|/failure
+  /register  /register/pending  /register/status  /activate?token=
+  /privacy  /terms  /pricing  /contact  /admin is /enquiries (auth)
+  /doctor/reception-staff  /profile (doctor tabs)
 
 CLINIC CASE-TAKING (Old-API — UI still uses `api`)
   clipboard / questions / subsection / MM / lab / notes / repertorize
@@ -366,6 +376,26 @@ TOKEN      : no
 SAMPLE PAYLOAD: existing DoctorRegistrationModel (name, email, password, country, qualification, companyName)
 INPUTS     : registration fields as today
 OUTPUT     : { success, message: "Registration successful. Check your email..." }
+
+--------------------------------------------------------------------------------
+URL        : POST /api/users/RegisterDoctorWithDocuments
+USE        : WEB-09.03 /register multipart. Same fields as RegisterDoctor plus
+             qualificationDoc and registrationDoc (PDF/JPG/PNG). Practice stays Pending.
+HOST       : New-API
+TOKEN      : no
+SAMPLE     : POST http://localhost:5038/api/users/RegisterDoctorWithDocuments
+             Content-Type: multipart/form-data
+INPUTS     : form fields = DoctorRegistrationModel; files qualificationDoc, registrationDoc
+OUTPUT     : { success, message, documentsSaved, verificationStatus: Pending, directoryVisible: false }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/users/RegistrationStatus?emailId=
+USE        : /register/status page. Returns activation + verification flags, no extra PII.
+HOST       : New-API
+TOKEN      : no
+SAMPLE     : GET http://localhost:5038/api/users/RegistrationStatus?emailId=doctor@example.com
+INPUTS     : emailId query
+OUTPUT     : { success, found, activated, verificationStatus, directoryVisible, practiceActivated }
 
 --------------------------------------------------------------------------------
 URL        : POST /api/users/ActivateByToken

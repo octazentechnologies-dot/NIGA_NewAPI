@@ -1,5 +1,6 @@
 S1 WEEK 1 — API DOCUMENT (shareable)
 Date       : 20-Sep-2026
+Catalog    : NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
 Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
 Auth       : Authorization: Bearer <JWT> unless TOKEN = no
 Dev OTP    : Development responses include data.devCode (never in production)

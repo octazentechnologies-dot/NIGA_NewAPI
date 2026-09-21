@@ -23,6 +23,7 @@ Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 | 10 | `10_TODAY_SLOTS_POLICY_DIRECTORY.sql` | Dev-only: today + tomorrow DoctorDailySchedule for every Verified directory doctor; Booking policy 2026.09 if missing. |
 | 11 | `11_FAMILY_RELATION_MASTER.sql` | FamilyRelationMaster + PatientFamilyMember.RelationId. Seed Spouse/Father/Mother/... |
 | 12 | `12_DEV_Seed_Role_Users.sql` | Dev logins for Account (`s2.account`) and PharmacyPartner (`s2.pharmacy`), password hash from tufanpowar001@gmail.com (123456). |
+| 13 | `13_DOC_Reception_Profile_Menus.sql` | Doctor menus: Reception Staff `/doctor/reception-staff`, Profile `/profile`. |
 
 Scripts are idempotent (IF COL_LENGTH / IF NOT EXISTS). Safe to re-run. Scripts 07, 08 and 10 are Dev/test data only.
 
@@ -31,6 +32,7 @@ Scripts are idempotent (IF COL_LENGTH / IF NOT EXISTS). Safe to re-run. Scripts 
 1. Point New-API Development connection at `HomeoCentrum_Dev` (same as Old-API). Restart **NIGA_NewAPI** and **NIGA_OldAPI**.
 2. Follow `S2_Week2_STATUS_REPORT.md` in this Document folder.
 3. API contract: `../S2_Week2_API_DOC.txt`
+   Combined Week 1+2 Excel catalog: `NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx`
 
 Login / Rx-write / Razorpay stay on Old-API. New HTTP for S2 is New-API only. No third API.
 

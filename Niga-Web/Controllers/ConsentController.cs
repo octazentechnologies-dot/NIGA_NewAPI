@@ -45,6 +45,30 @@ namespace Niga_Domain.API.Controllers
                 return Forbid();
             }
 
+            var existing = await _context.ConsentRecords
+                .Where(r => r.ConsentTypeId == type.ConsentTypeId
+                    && r.SubjectType == subjectType
+                    && r.SubjectId == subjectId
+                    && r.WithdrawnAt == null)
+                .OrderByDescending(r => r.GrantedAt)
+                .FirstOrDefaultAsync();
+            if (existing != null)
+            {
+                return Ok(new
+                {
+                    success = true,
+                    alreadyGranted = true,
+                    data = new
+                    {
+                        existing.ConsentRecordId,
+                        ConsentTypeCode = type.Code,
+                        existing.SubjectType,
+                        existing.SubjectId,
+                        existing.GrantedAt
+                    }
+                });
+            }
+
             var record = new ConsentRecord
             {
                 ConsentTypeId = type.ConsentTypeId,
@@ -181,15 +205,16 @@ namespace Niga_Domain.API.Controllers
             });
         }
 
-        /// <summary>PAT-05.02 — Grant Privacy consent for the caller.</summary>
+        /// <summary>PAT-05.02 — Grant Privacy consent for the caller. Idempotent if already granted.</summary>
         [HttpPost("GrantPrivacy")]
-        public async Task<IActionResult> GrantPrivacy([FromBody] ConsentGrantRequest? request)
+        public Task<IActionResult> GrantPrivacy()
         {
-            request ??= new ConsentGrantRequest();
-            request.ConsentTypeCode = "Privacy";
-            request.SubjectType = "User";
-            request.SubjectId = User.GetUserId();
-            return await Grant(request);
+            return Grant(new ConsentGrantRequest
+            {
+                ConsentTypeCode = "Privacy",
+                SubjectType = "User",
+                SubjectId = User.GetUserId()
+            });
         }
     }
 }

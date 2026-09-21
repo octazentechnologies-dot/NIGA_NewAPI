@@ -12,6 +12,7 @@ Shareable API text (give these to test / mobile):
 
 - `NIGA_NewAPI/ScriptsAndFiles/S1_Week1/S1_Week1_API_DOC.txt`
 - `NIGA_NewAPI/ScriptsAndFiles/S1_Week1/S1_Week1_MOBILE_API_DOC.txt`
+- Combined Week 1+2 catalog: `NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx`
 
 ## SQL pack (you run)
 

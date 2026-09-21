@@ -89,11 +89,16 @@ namespace Niga_Domain.API.Controllers
                 user.MobileNo = PhoneNormalizer.Digits(request.MobileNo);
             if (!string.IsNullOrWhiteSpace(request.Email))
                 user.EmailId = request.Email.Trim();
-            if (!string.IsNullOrWhiteSpace(request.PatientName) && string.IsNullOrWhiteSpace(user.FirstName))
+            if (!string.IsNullOrWhiteSpace(request.FirstName))
+                user.FirstName = request.FirstName.Trim();
+            if (!string.IsNullOrWhiteSpace(request.LastName))
+                user.LastName = request.LastName.Trim();
+            if (!string.IsNullOrWhiteSpace(request.PatientName))
             {
                 var parts = request.PatientName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-                user.FirstName = parts[0];
-                if (parts.Length > 1)
+                if (string.IsNullOrWhiteSpace(request.FirstName))
+                    user.FirstName = parts[0];
+                if (parts.Length > 1 && string.IsNullOrWhiteSpace(request.LastName))
                     user.LastName = parts[1];
             }
             user.ChangedDate = DateTime.Now;

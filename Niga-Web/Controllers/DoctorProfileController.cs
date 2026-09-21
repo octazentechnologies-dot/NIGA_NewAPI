@@ -60,6 +60,25 @@ namespace Niga_Domain.API.Controllers
             if (request.EmailId != null) doctor.EmailId = request.EmailId.Trim();
             if (request.MobileNo != null) doctor.MobileNo = request.MobileNo.Trim();
             if (request.City != null) doctor.City = request.City.Trim();
+            if (request.AddressLine1 != null || request.AddressLine2 != null || request.Pincode != null)
+            {
+                doctor.PermanantAddress = FormatClinicAddress(
+                    request.AddressLine1 ?? ParseClinicAddress(doctor.PermanantAddress).Line1,
+                    request.AddressLine2 ?? ParseClinicAddress(doctor.PermanantAddress).Line2,
+                    request.Pincode ?? ParseClinicAddress(doctor.PermanantAddress).Pincode);
+            }
+            if (request.StateId.HasValue)
+                doctor.StateId = request.StateId;
+            else if (!string.IsNullOrWhiteSpace(request.State))
+            {
+                var stateName = request.State.Trim();
+                var stateId = await _context.StateMasters.AsNoTracking()
+                    .Where(s => s.StateName != null && s.StateName.ToLower() == stateName.ToLower())
+                    .Select(s => (int?)s.StateId)
+                    .FirstOrDefaultAsync();
+                if (stateId.HasValue)
+                    doctor.StateId = stateId;
+            }
             if (request.QualificationId.HasValue) doctor.QualificationId = request.QualificationId;
             if (request.PassingUniversity != null) doctor.PassingUniversity = request.PassingUniversity.Trim();
             if (request.PassingCertNo != null) doctor.PassingCertNo = request.PassingCertNo.Trim();
@@ -67,6 +86,20 @@ namespace Niga_Domain.API.Controllers
             if (request.ConsultFeeTele.HasValue) doctor.ConsultFeeTele = request.ConsultFeeTele;
             if (request.WorkingHoursNote != null) doctor.WorkingHoursNote = request.WorkingHoursNote.Trim();
             doctor.ChangedDate = DateTime.UtcNow;
+
+            if (doctor.UserId.HasValue)
+            {
+                var user = await _context.UserMasters.FirstOrDefaultAsync(u => u.UserId == doctor.UserId.Value && !u.DeleteStatus);
+                if (user != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(request.FirstName)) user.FirstName = request.FirstName.Trim();
+                    if (!string.IsNullOrWhiteSpace(request.LastName)) user.LastName = request.LastName.Trim();
+                    if (request.EmailId != null) user.EmailId = request.EmailId.Trim();
+                    if (request.MobileNo != null) user.MobileNo = PhoneNormalizer.Digits(request.MobileNo);
+                    if (doctor.StateId.HasValue) user.StateId = doctor.StateId;
+                    user.ChangedDate = DateTime.UtcNow;
+                }
+            }
 
             if (request.Kyc != null)
             {
@@ -271,6 +304,15 @@ namespace Niga_Domain.API.Controllers
                     .FirstOrDefaultAsync();
             var kyc = await _context.DoctorPayeeKycs.AsNoTracking()
                 .FirstOrDefaultAsync(k => k.DoctorId == doctor.DoctorId && !k.DeleteStatus);
+            var parsed = ParseClinicAddress(doctor.PermanantAddress);
+            string? stateName = null;
+            if (doctor.StateId.HasValue)
+            {
+                stateName = await _context.StateMasters.AsNoTracking()
+                    .Where(s => s.StateId == doctor.StateId.Value)
+                    .Select(s => s.StateName)
+                    .FirstOrDefaultAsync();
+            }
             return new DoctorProfileMeDto
             {
                 DoctorId = doctor.DoctorId,
@@ -282,6 +324,11 @@ namespace Niga_Domain.API.Controllers
                 EmailId = doctor.EmailId,
                 MobileNo = doctor.MobileNo,
                 City = doctor.City,
+                AddressLine1 = parsed.Line1,
+                AddressLine2 = parsed.Line2,
+                State = stateName,
+                StateId = doctor.StateId,
+                Pincode = parsed.Pincode,
                 QualificationId = doctor.QualificationId,
                 QualificationName = qual,
                 PassingUniversity = doctor.PassingUniversity,
@@ -302,6 +349,36 @@ namespace Niga_Domain.API.Controllers
                     Pan = kyc.Pan
                 }
             };
+        }
+
+        private static (string Line1, string Line2, string Pincode) ParseClinicAddress(string? raw)
+        {
+            var text = (raw ?? string.Empty).Replace("\r\n", "\n").Trim();
+            if (text.Length == 0)
+                return ("", "", "");
+            var lines = text.Split('\n', StringSplitOptions.None).Select(x => x.Trim()).ToList();
+            var pin = "";
+            var pinLine = lines.LastOrDefault(l => l.StartsWith("PIN:", StringComparison.OrdinalIgnoreCase));
+            if (pinLine != null)
+            {
+                pin = pinLine[4..].Trim();
+                lines.Remove(pinLine);
+            }
+            var line1 = lines.Count > 0 ? lines[0] : "";
+            var line2 = lines.Count > 1 ? string.Join(" ", lines.Skip(1).Where(l => l.Length > 0)) : "";
+            return (line1, line2, pin);
+        }
+
+        private static string FormatClinicAddress(string? line1, string? line2, string? pincode)
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(line1))
+                parts.Add(line1.Trim());
+            if (!string.IsNullOrWhiteSpace(line2))
+                parts.Add(line2.Trim());
+            if (!string.IsNullOrWhiteSpace(pincode))
+                parts.Add("PIN:" + pincode.Trim());
+            return string.Join("\n", parts);
         }
     }
 }

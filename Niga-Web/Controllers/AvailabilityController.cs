@@ -31,8 +31,22 @@ namespace Niga_Domain.API.Controllers
                 return NotFound(new { success = false, message = "Doctor not found." });
 
             var today = DateTime.Today;
-            var schedule = await _context.DoctorDailySchedules.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.DoctorId == doctor.DoctorId && s.ScheduleDate == today);
+            var until = today.AddDays(13);
+            var week = await _context.DoctorDailySchedules.AsNoTracking()
+                .Where(s => s.DoctorId == doctor.DoctorId && s.ScheduleDate >= today && s.ScheduleDate <= until)
+                .OrderBy(s => s.ScheduleDate)
+                .ToListAsync();
+            var todayRow = week.FirstOrDefault(s => s.ScheduleDate == today);
+
+            DoctorDailyScheduleModel MapRow(DoctorDailySchedule s) => new()
+            {
+                DoctorDailyScheduleId = s.DoctorDailyScheduleId,
+                DoctorId = s.DoctorId,
+                ScheduleDate = s.ScheduleDate,
+                SlotIntervalMinutes = s.SlotIntervalMinutes,
+                WorkStartTime = s.WorkStartTime,
+                WorkEndTime = s.WorkEndTime
+            };
 
             return Ok(new
             {
@@ -42,15 +56,8 @@ namespace Niga_Domain.API.Controllers
                     DoctorId = doctor.DoctorId,
                     IsOnline = doctor.IsOnline,
                     WorkingHoursNote = doctor.WorkingHoursNote,
-                    TodaySchedule = schedule == null ? null : new DoctorDailyScheduleModel
-                    {
-                        DoctorDailyScheduleId = schedule.DoctorDailyScheduleId,
-                        DoctorId = schedule.DoctorId,
-                        ScheduleDate = schedule.ScheduleDate,
-                        SlotIntervalMinutes = schedule.SlotIntervalMinutes,
-                        WorkStartTime = schedule.WorkStartTime,
-                        WorkEndTime = schedule.WorkEndTime
-                    }
+                    TodaySchedule = todayRow == null ? null : MapRow(todayRow),
+                    WeekSchedules = week.Select(MapRow).ToList()
                 }
             });
         }
@@ -74,6 +81,10 @@ namespace Niga_Domain.API.Controllers
             var hoursError = await UpsertTodayHoursAsync(doctor, request);
             if (hoursError != null)
                 return hoursError;
+
+            var daysError = await UpsertWeekHoursAsync(doctor, request);
+            if (daysError != null)
+                return daysError;
 
             await _context.SaveChangesAsync();
             return await Me();
@@ -150,6 +161,55 @@ namespace Niga_Domain.API.Controllers
                 existing.SlotIntervalMinutes = interval;
                 existing.WorkStartTime = request.WorkStartTime.Value;
                 existing.WorkEndTime = request.WorkEndTime.Value;
+            }
+
+            return null;
+        }
+
+        private async Task<IActionResult?> UpsertWeekHoursAsync(Master.Doctor doctor, AvailabilityUpdateRequest? request)
+        {
+            if (request?.Days == null || request.Days.Count == 0)
+                return null;
+
+            long createdBy = doctor.UserId ?? 0;
+            try { createdBy = User.GetUserId(); } catch { }
+
+            foreach (var day in request.Days)
+            {
+                var scheduleDate = day.ScheduleDate.Date;
+                if (scheduleDate < DateTime.Today)
+                    continue;
+                var interval = day.SlotIntervalMinutes <= 0 ? 15 : day.SlotIntervalMinutes;
+                if (!AppointmentSlotHelper.IsAllowedInterval(interval))
+                {
+                    return BadRequest(new { success = false, message = $"Invalid slot interval on {scheduleDate:yyyy-MM-dd}." });
+                }
+                if (day.WorkEndTime <= day.WorkStartTime)
+                {
+                    return BadRequest(new { success = false, message = $"Work end time must be after start on {scheduleDate:yyyy-MM-dd}." });
+                }
+
+                var existing = await _context.DoctorDailySchedules
+                    .FirstOrDefaultAsync(s => s.DoctorId == doctor.DoctorId && s.ScheduleDate == scheduleDate);
+                if (existing == null)
+                {
+                    _context.DoctorDailySchedules.Add(new DoctorDailySchedule
+                    {
+                        DoctorId = doctor.DoctorId,
+                        ScheduleDate = scheduleDate,
+                        SlotIntervalMinutes = interval,
+                        WorkStartTime = day.WorkStartTime,
+                        WorkEndTime = day.WorkEndTime,
+                        CreatedByUserId = createdBy,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                    existing.SlotIntervalMinutes = interval;
+                    existing.WorkStartTime = day.WorkStartTime;
+                    existing.WorkEndTime = day.WorkEndTime;
+                }
             }
 
             return null;

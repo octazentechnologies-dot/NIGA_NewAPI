@@ -1,10 +1,15 @@
 using System;
+using System.IO;
+using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Interfaces;
+using Niga_Domain.Master;
 
 namespace Niga_Domain.API.Controllers
 {
@@ -17,11 +22,19 @@ namespace Niga_Domain.API.Controllers
     {
         private readonly IUserService _userService;
         private readonly IOptions<SmtpSettingsModel> _mailSettings;
+        private readonly NIGACentrumContext _context;
+        private readonly IWebHostEnvironment _env;
 
-        public UsersController(IUserService userService, IOptions<SmtpSettingsModel> mailSettings)
+        public UsersController(
+            IUserService userService,
+            IOptions<SmtpSettingsModel> mailSettings,
+            NIGACentrumContext context,
+            IWebHostEnvironment env)
         {
             _userService = userService;
             _mailSettings = mailSettings;
+            _context = context;
+            _env = env;
         }
 
         /// <summary>
@@ -63,6 +76,84 @@ namespace Niga_Domain.API.Controllers
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
             }
+        }
+
+        /// <summary>WEB-09.03 — same RegisterDoctor fields plus qualification/registration files.</summary>
+        [HttpPost("RegisterDoctorWithDocuments")]
+        [AllowAnonymous]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> RegisterDoctorWithDocuments(
+            [FromForm] DoctorRegistrationModel model,
+            [FromForm] IFormFile? qualificationDoc,
+            [FromForm] IFormFile? registrationDoc)
+        {
+            if (model == null || !ModelState.IsValid)
+                return BadRequest("Invalid request, please verify details");
+
+            try
+            {
+                var errorMessage = new ErrorResponseModel();
+                var result = _userService.RegisterDoctor(model, _mailSettings.Value, ref errorMessage);
+
+                if (result == "User already exists" || result == "User name already exists")
+                    return BadRequest(result);
+
+                if (string.IsNullOrWhiteSpace(result))
+                    return ReturnErrorResponse(errorMessage);
+
+                var doctor = await _context.Doctors
+                    .OrderByDescending(d => d.DoctorId)
+                    .FirstOrDefaultAsync(d => d.EmailId == model.EmailId.Trim() && !d.DeleteStatus);
+
+                var saved = 0;
+                if (doctor != null)
+                {
+                    saved += await SaveRegistrationDocumentAsync(doctor, qualificationDoc, "Qualification");
+                    saved += await SaveRegistrationDocumentAsync(doctor, registrationDoc, "Registration");
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = result,
+                    documentsSaved = saved,
+                    verificationStatus = "Pending",
+                    directoryVisible = false
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }
+
+        /// <summary>WEB-09.03 — public registration status by email (no extra PII).</summary>
+        [HttpGet("RegistrationStatus")]
+        [AllowAnonymous]
+        public async Task<IActionResult> RegistrationStatus([FromQuery] string emailId)
+        {
+            if (string.IsNullOrWhiteSpace(emailId))
+                return BadRequest(new { success = false, message = "emailId is required." });
+
+            var email = emailId.Trim();
+            var user = await _context.UserMasters.AsNoTracking()
+                .FirstOrDefaultAsync(u => u.EmailId == email && !u.DeleteStatus);
+            if (user == null)
+                return Ok(new { success = true, found = false, message = "No registration found for that email." });
+
+            var doctorUserId = Convert.ToInt32(user.UserId);
+            var doctor = await _context.Doctors.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.UserId == doctorUserId && !d.DeleteStatus);
+
+            return Ok(new
+            {
+                success = true,
+                found = true,
+                activated = user.IsUserActivated == true,
+                verificationStatus = doctor?.VerificationStatus ?? "Pending",
+                directoryVisible = doctor?.DirectoryVisible == true,
+                practiceActivated = doctor?.PracticeActivated == true
+            });
         }
 
         [HttpGet("{userId}")]
@@ -277,6 +368,52 @@ namespace Niga_Domain.API.Controllers
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
             }
+        }
+
+        private async Task<int> SaveRegistrationDocumentAsync(Doctor doctor, IFormFile? file, string documentType)
+        {
+            if (file == null || file.Length == 0)
+                return 0;
+
+            var ext = Path.GetExtension(file.FileName)?.ToLowerInvariant() ?? string.Empty;
+            if (ext is not (".pdf" or ".jpg" or ".jpeg" or ".png"))
+                return 0;
+
+            var verification = await _context.DoctorVerifications
+                .FirstOrDefaultAsync(v => v.DoctorId == doctor.DoctorId && !v.DeleteStatus);
+            if (verification == null)
+            {
+                verification = new DoctorVerification
+                {
+                    DoctorId = doctor.DoctorId,
+                    Status = "Pending",
+                    EnteredDate = DateTime.UtcNow,
+                    DeleteStatus = false
+                };
+                _context.DoctorVerifications.Add(verification);
+                await _context.SaveChangesAsync();
+            }
+
+            var folder = Path.Combine(_env.ContentRootPath, "Data", "DoctorCredentials");
+            Directory.CreateDirectory(folder);
+            var name = $"doc_{doctor.DoctorId}_{Guid.NewGuid():N}{ext}";
+            var path = Path.Combine(folder, name);
+            await using (var stream = System.IO.File.Create(path))
+                await file.CopyToAsync(stream);
+
+            _context.DoctorCredentialDocuments.Add(new DoctorCredentialDocument
+            {
+                DoctorId = doctor.DoctorId,
+                DoctorVerificationId = verification.DoctorVerificationId,
+                DocumentType = documentType,
+                FileName = Path.GetExtension(file.FileName) != null ? Path.GetFileName(file.FileName) : name,
+                FilePath = Path.Combine("DoctorCredentials", name).Replace("\\", "/"),
+                ContentType = file.ContentType,
+                EnteredDate = DateTime.UtcNow,
+                DeleteStatus = false
+            });
+            await _context.SaveChangesAsync();
+            return 1;
         }
     }
 }

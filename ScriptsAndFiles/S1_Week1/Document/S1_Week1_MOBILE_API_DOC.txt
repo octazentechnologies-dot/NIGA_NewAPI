@@ -1,5 +1,6 @@
 S1 WEEK 1 — MOBILE APP API DOCUMENT
 Date       : 20-Sep-2026
+Catalog    : NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
 Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
 Host       : New-API  http://localhost:5038/api   (nigahomeoAPI)
 Auth       : Authorization: Bearer <JWT> unless TOKEN = no
@@ -132,6 +133,8 @@ HOST       : New-API
 TOKEN      : patient JWT
 SAMPLE PAYLOAD:
 {
+  "firstName": "Tufan",
+  "lastName": "Powar",
   "patientName": "Tufan Powar",
   "mobileNo": "7768046064",
   "preferredLanguageId": 1

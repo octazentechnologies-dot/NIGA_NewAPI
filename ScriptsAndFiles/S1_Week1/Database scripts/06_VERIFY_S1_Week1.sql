@@ -67,14 +67,20 @@ ELSE
     WHERE RoleName IN (N'Patient', N'Account', N'PharmacyPartner')
       AND ISNULL(DeleteStatus, 0) = 0;
 
-PRINT '--- ADM-B04 Account/Pharmacy menus ---';
+PRINT '--- ADM-B04 Account/Pharmacy/Doctor menus ---';
 IF OBJECT_ID(N'dbo.MenuMaster', N'U') IS NULL
     PRINT 'SKIP: MenuMaster missing';
 ELSE
     SELECT MenuId, MenuName, MenuUrl, MenuIcon, SeqNo
     FROM dbo.MenuMaster
     WHERE ISNULL(DeleteStatus, 0) = 0
-      AND (MenuUrl LIKE N'/account/%' OR MenuUrl LIKE N'/pharmacy/%')
+      AND (
+            MenuUrl LIKE N'/account/%'
+         OR MenuUrl LIKE N'/pharmacy/%'
+         OR MenuUrl LIKE N'/doctor%'
+         OR MenuUrl = N'/doctordashboard'
+         OR MenuUrl = N'/enquiries'
+      )
     ORDER BY SeqNo, MenuName;
 
 PRINT '--- RoleDetails IsView counts ---';
@@ -84,7 +90,7 @@ ELSE
     SELECT r.RoleName, COUNT(*) AS ViewableMenus
     FROM dbo.RoleDetails rd
     INNER JOIN dbo.RoleMaster r ON r.RoleId = rd.RoleId
-    WHERE r.RoleName IN (N'Account', N'PharmacyPartner')
+    WHERE r.RoleName IN (N'Account', N'PharmacyPartner', N'Doctor', N'Patient')
       AND rd.IsView = 1
     GROUP BY r.RoleName;
 
