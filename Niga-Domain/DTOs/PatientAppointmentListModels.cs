@@ -67,5 +67,9 @@ namespace Niga_Domain.DTOs
         public string? VisitType { get; set; }
 
         public string? ConsultMode { get; set; }
+
+        public string? PaymentMethod { get; set; }
+
+        public bool? PayAtClinicAllowed { get; set; }
     }
 }

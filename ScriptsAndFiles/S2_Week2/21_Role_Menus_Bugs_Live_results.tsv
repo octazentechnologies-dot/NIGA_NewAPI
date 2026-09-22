@@ -5,13 +5,13 @@ SEC-01.02	OLD login Tufan_Reception	200	PASS	{"success":true,"message":"Login su
 SEC-01.02	OLD login Tufan_Account	200	PASS	{"success":true,"message":"Login successful","data":{"userId":10029,"userName":"Tufan Account","firstName":null,"lastName":null,"isSuperUser":false,"role":"Account","token":"eyJhbG
 SEC-01.02	OLD login Tufan_Pharmacy	200	PASS	{"success":true,"message":"Login successful","data":{"userId":10034,"userName":"Tufan Pharmacy","firstName":null,"lastName":null,"isSuperUser":false,"role":"PharmacyPartner","token
 SEC-01.02	OLD login Tufan_Patient	200	PASS	{"success":true,"message":"Login successful","data":{"userId":10033,"userName":"Tufan Patient","firstName":null,"lastName":null,"isSuperUser":false,"role":"Patient","token":"eyJhbG
-ADM-B04.02	GetMenuByRole Tufan_Admin count=49	200	PASS	[{"menuId":16,"moduleId":5,"moduleName":null,"menuName":"Dashboard","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/dashboard","description":"Role menu seed 
-ADM-B04.02	GetMenuByRole Tufan_Doctor count=66	200	PASS	[{"menuId":10,"moduleId":4,"moduleName":null,"menuName":"Dashboard","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/doctordashboard","description":"Clinic do
-ADM-B04.02	GetMenuByRole Tufan_Doctor extras count=66	200	PASS	[{"menuId":10,"moduleId":4,"moduleName":null,"menuName":"Dashboard","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/doctordashboard","description":"Clinic do
-ADM-B04.02	GetMenuByRole Tufan_Reception count=1	200	PASS	[{"menuId":10,"moduleId":4,"moduleName":null,"menuName":"Dashboard","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/doctordashboard","description":"Clinic do
-ADM-B04.02	GetMenuByRole Tufan_Reception no /doctor/patientboard	200	PASS	/doctordashboard
-ADM-B04.02	GetMenuByRole Tufan_Reception no /enquiries	200	PASS	/doctordashboard
-ADM-B04.02	GetMenuByRole Tufan_Reception no /admin/enquiries	200	PASS	/doctordashboard
+ADM-B04.02	GetMenuByRole Tufan_Admin count=50	200	PASS	[{"menuId":16,"moduleId":5,"moduleName":null,"menuName":"Dashboard","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/dashboard","description":"Role menu seed 
+ADM-B04.02	GetMenuByRole Tufan_Doctor count=69	200	PASS	[{"menuId":10,"moduleId":4,"moduleName":null,"menuName":"Dashboard","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/doctordashboard","description":"Clinic do
+ADM-B04.02	GetMenuByRole Tufan_Doctor extras count=69	200	PASS	[{"menuId":10,"moduleId":4,"moduleName":null,"menuName":"Dashboard","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/doctordashboard","description":"Clinic do
+ADM-B04.02	GetMenuByRole Tufan_Reception count=5	200	PASS	[{"menuId":70,"moduleId":4,"moduleName":null,"menuName":"Reception","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/reception","description":"S3 Week 3","men
+ADM-B04.02	GetMenuByRole Tufan_Reception no /doctor/patientboard	200	PASS	/reception /reception/schedule /reception/case-paper /doctordashboard /profile
+ADM-B04.02	GetMenuByRole Tufan_Reception no /enquiries	200	PASS	/reception /reception/schedule /reception/case-paper /doctordashboard /profile
+ADM-B04.02	GetMenuByRole Tufan_Reception no /admin/enquiries	200	PASS	/reception /reception/schedule /reception/case-paper /doctordashboard /profile
 ADM-B04.02	GetMenuByRole Tufan_Account count=6	200	PASS	[{"menuId":1,"moduleId":1,"moduleName":null,"menuName":"Account Home","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/account/home","description":"Account st
 ADM-B04.02	GetMenuByRole Tufan_Account no /family	200	PASS	/account/home /account/ledger /account/earnings /account/payouts /account/invoices /account/reports
 ADM-B04.02	GetMenuByRole Tufan_Pharmacy count=4	200	PASS	[{"menuId":7,"moduleId":2,"moduleName":null,"menuName":"Pharmacy Home","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/pharmacy/home","description":"HomeoMed
@@ -19,11 +19,11 @@ ADM-B04.02	GetMenuByRole Tufan_Pharmacy no /family	200	PASS	/pharmacy/home /phar
 ADM-B04.02	GetMenuByRole Tufan_Patient count=2	200	PASS	[{"menuId":8,"moduleId":3,"moduleName":null,"menuName":"Family","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/family","description":"Patient app (M16/M17)"
 BUG-S2-01	Reception backup empty 403	403	PASS	{"success":false,"message":"Only the treating doctor can run case taking."}
 BUG-S2-01	Reception backup payload 403	403	PASS	{"success":false,"message":"Only the treating doctor can run case taking."}
-BUG-S2-03	Reception GetPatientStatsCharts	200	PASS	{"period":"ALL","fromDate":"2026-01-01T00:00:00","toDate":"2026-09-22T00:00:00+05:30","pieChart":{"waiting":2,"walkIn":1,"notArrived":1,"eConsult":1,"remaining":1,"completed":2,"to
-BUG-S2-03	Reception GetPatientStats	200	PASS	{"patientAppId":0,"appointmentDate":null,"status":null,"userId":0,"doctorId":0,"patientApp":8,"walkInpatientApp":0,"patientAppComplated":25,"patientAppWaiting":25,"patientAppNotArr
+BUG-S2-03	Reception GetPatientStatsCharts	200	PASS	{"period":"ALL","fromDate":"2026-01-01T00:00:00","toDate":"2026-09-22T00:00:00+05:30","pieChart":{"waiting":2,"walkIn":3,"notArrived":1,"eConsult":1,"remaining":1,"completed":2,"to
+BUG-S2-03	Reception GetPatientStats	200	PASS	{"patientAppId":0,"appointmentDate":null,"status":null,"userId":0,"doctorId":0,"patientApp":81,"walkInpatientApp":0,"patientAppComplated":2,"patientAppWaiting":34,"patientAppNotArr
 CON-01.02	Family Relations	200	PASS	{"success":true,"data":[{"relationId":15,"relationName":"Spouse","sortOrder":10},{"relationId":5,"relationName":"Father","sortOrder":20},{"relationId":9,"relationName":"Mother","so
 CON-01.03	Family name-only 400	400	PASS	{"success":false,"message":"Relation is required."}
-CON-01.02	Family create with relation	200	PASS	{"success":true,"data":{"familyMemberId":34,"ownerPatientId":3046,"memberPatientId":3070,"relationId":15,"relation":"Spouse","patientName":"Anita Live","mobileNo":null,"email":null
+CON-01.02	Family create with relation	200	PASS	{"success":true,"data":{"familyMemberId":39,"ownerPatientId":3046,"memberPatientId":3076,"relationId":15,"relation":"Spouse","patientName":"Anita Live","mobileNo":null,"email":null
 ADM-B01.03	Qualifications list New-API Admin	200	PASS	[{"qualificationId":2,"qualificationName":"BHMS","qualificationAlias":"BHMS","description":"","degreeLevel":"UG","enteredBy":"gourav nikam","enteredDate":"2026-08-15T11:48:47.05","
 ADM-B01.02	Tufan_Doctor qualification extra-rights	400	PASS	{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or more validation errors occurred.","status":400,"errors":{"QualificationName":["Qualification Name is re
 ADM-B01.02	testdoctor qualification mutate forbidden	403	PASS	
@@ -46,10 +46,10 @@ BUG-S2-01	Backup invalid JWT 401	401	PASS
 BUG-S2-01	Account backup empty 403	403	PASS	{"success":false,"message":"Only the treating doctor can run case taking."}
 BUG-S2-01	Patient backup empty 403	403	PASS	{"success":false,"message":"Only the treating doctor can run case taking."}
 BUG-S2-01	Doctor backup empty 400	400	PASS	{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or more validation errors occurred.","status":400,"errors":{"BackupPayload":["The BackupPayload field is r
-BUG-S2-01	Doctor backup valid 200	200	PASS	{"success":true,"message":"Patient board backup saved successfully.","resultObject":{"backupId":20003,"patientCount":0,"savedAt":"2026-09-22T03:28:29.871331Z"}}
-BUG-S2-03	Doctor GetPatientStatsCharts	200	PASS	{"period":"ALL","fromDate":"2026-01-01T00:00:00","toDate":"2026-09-22T00:00:00+05:30","pieChart":{"waiting":2,"walkIn":1,"notArrived":1,"eConsult":1,"remaining":1,"completed":2,"to
+BUG-S2-01	Doctor backup valid 200	200	PASS	{"success":true,"message":"Patient board backup saved successfully.","resultObject":{"backupId":20003,"patientCount":0,"savedAt":"2026-09-22T12:29:28.0876042Z"}}
+BUG-S2-03	Doctor GetPatientStatsCharts	200	PASS	{"period":"ALL","fromDate":"2026-01-01T00:00:00","toDate":"2026-09-22T00:00:00+05:30","pieChart":{"waiting":2,"walkIn":3,"notArrived":1,"eConsult":1,"remaining":1,"completed":2,"to
 BUG-S2-03	Account GetPatientStatsCharts 403	403	PASS	{"success":false,"message":"Clinic dashboard is for the treating doctor or their reception staff."}
-BUG-S2-03	Reception charts without userId	200	PASS	{"period":"ALL","fromDate":"2026-01-01T00:00:00","toDate":"2026-09-22T00:00:00+05:30","pieChart":{"waiting":2,"walkIn":1,"notArrived":1,"eConsult":1,"remaining":1,"completed":2,"to
+BUG-S2-03	Reception charts without userId	200	PASS	{"period":"ALL","fromDate":"2026-01-01T00:00:00","toDate":"2026-09-22T00:00:00+05:30","pieChart":{"waiting":2,"walkIn":3,"notArrived":1,"eConsult":1,"remaining":1,"completed":2,"to
 CON-01.03	Family relation-only 400	400	PASS	{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or more validation errors occurred.","status":400,"errors":{"PatientName":["The PatientName field is requi
 CON-01.03	Family empty 400	400	PASS	{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or more validation errors occurred.","status":400,"errors":{"PatientName":["The PatientName field is requi
 CON-01.02	Account Family 403	403	PASS	{"success":false,"message":"Account and Pharmacy roles cannot access patient personal data."}

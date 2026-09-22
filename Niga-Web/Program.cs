@@ -153,7 +153,10 @@ builder.AllowAnyOrigin()
     .AllowAnyMethod()
     );
 app.UseResponseCompression();
-app.UseHttpsRedirection();
+var listenUrls = app.Configuration["ASPNETCORE_URLS"] ?? Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "";
+var httpsPort = app.Configuration["HTTPS_PORT"] ?? Environment.GetEnvironmentVariable("HTTPS_PORT");
+if (listenUrls.Contains("https://", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(httpsPort))
+    app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseMiddleware<AppDiagnosticsMiddleware>();

@@ -32,6 +32,11 @@ namespace Niga_Domain.DTOs
         public string? PaymentStatus { get; set; }
         public bool? IsTele { get; set; }
         public string? BookingToken { get; set; }
+        public string? PaymentMethod { get; set; }
+        public bool? PayAtClinicAllowed { get; set; }
+        public string? CancelReasonCode { get; set; }
+        public decimal? ConsultFee { get; set; }
+        public string? BookingChannel { get; set; }
         }
 
 

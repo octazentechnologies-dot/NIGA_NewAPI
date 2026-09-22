@@ -50,6 +50,14 @@ namespace Niga_Domain.Repositories
                 DeleteStatus = PatientAppEntity.DeleteStatus,
                 IsWhatsAppOptIn = PatientAppEntity.Patient.IsWhatsAppOptIn,
                 WhatsAppOptInDate = PatientAppEntity.Patient.WhatsAppOptInDate,
+                VisitType = PatientAppEntity.VisitType,
+                ConsultMode = PatientAppEntity.ConsultMode,
+                PaymentStatus = PatientAppEntity.PaymentStatus,
+                IsTele = PatientAppEntity.IsTele,
+                PaymentMethod = PatientAppEntity.PaymentMethod,
+                PayAtClinicAllowed = PatientAppEntity.PayAtClinicAllowed,
+                CancelReasonCode = PatientAppEntity.CancelReasonCode,
+                BookingChannel = PatientAppEntity.BookingChannel,
             };
         }
 
@@ -79,6 +87,7 @@ namespace Niga_Domain.Repositories
                 var slotTaken = _context.PatientAppointments.Any(x =>
                     x.DoctorId == PatientAppointmentModel.DoctorId &&
                     x.DeleteStatus == false &&
+                    x.Status != S3AppointmentRules.Cancelled &&
                     x.AppointmentDate.HasValue &&
                     x.AppointmentDate.Value.Date == PatientAppointmentModel.AppointmentDate.Value.Date &&
                     x.AppointmentTime.HasValue &&
@@ -87,10 +96,13 @@ namespace Niga_Domain.Repositories
 
                 if (slotTaken)
                 {
-                    errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                    errorResponseModel.StatusCode = HttpStatusCode.Conflict;
                     errorResponseModel.Message = "This time slot is already booked. Please select another time.";
                     return string.Empty;
                 }
+
+                var mode = S3AppointmentRules.NormalizeMode(
+                    PatientAppointmentModel.ConsultMode ?? PatientAppointmentModel.VisitType);
 
                 var patientAppEntity = new PatientAppointment
                 {
@@ -99,8 +111,18 @@ namespace Niga_Domain.Repositories
                     DoctorId = PatientAppointmentModel.DoctorId,
                     AppointmentDate = PatientAppointmentModel.AppointmentDate,
                     AppointmentTime = PatientAppointmentModel.AppointmentTime,
-                    Status = PatientAppointmentModel.Status,
-                    DeleteStatus = PatientAppointmentModel.DeleteStatus
+                    Status = string.IsNullOrWhiteSpace(PatientAppointmentModel.Status)
+                        ? "WAITING"
+                        : PatientAppointmentModel.Status,
+                    DeleteStatus = PatientAppointmentModel.DeleteStatus ?? false,
+                    VisitType = mode,
+                    ConsultMode = mode,
+                    IsTele = mode == S3AppointmentRules.Tele,
+                    PaymentStatus = S3AppointmentRules.Unpaid,
+                    PayAtClinicAllowed = true,
+                    BookingChannel = string.IsNullOrWhiteSpace(PatientAppointmentModel.BookingChannel)
+                        ? "Staff"
+                        : PatientAppointmentModel.BookingChannel.Trim()
                 };
                 _context.PatientAppointments.Add(patientAppEntity);
                 _context.SaveChanges();
@@ -114,6 +136,13 @@ namespace Niga_Domain.Repositories
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Appointment not found.";
+                return string.Empty;
+            }
+
+            if (S3AppointmentRules.IsCancelled(PatientAppointmentModel.Status))
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "Use CancelAppointment. A cancel reason is required.";
                 return string.Empty;
             }
 
@@ -211,6 +240,13 @@ namespace Niga_Domain.Repositories
         "COMPLETED"
     };
 
+            if (S3AppointmentRules.IsCancelled(model.Status))
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "Use CancelAppointment. A cancel reason is required.";
+                return null;
+            }
+
             if (!allowedStatus.Contains(model.Status.ToUpper()))
             {
                 errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
@@ -285,7 +321,8 @@ namespace Niga_Domain.Repositories
             var slotTaken = _context.PatientAppointments.Any(x =>
                 x.PatientAppId != model.PatientAppId &&
                 x.DoctorId == appointment.DoctorId &&
-                x.DeleteStatus == false &&
+                x.DeleteStatus != true &&
+                x.Status != S3AppointmentRules.Cancelled &&
                 x.AppointmentDate.HasValue &&
                 x.AppointmentDate.Value.Date == appointmentDate.Value &&
                 x.AppointmentTime.HasValue &&
@@ -316,7 +353,7 @@ namespace Niga_Domain.Repositories
                 DeleteStatus = appointment.DeleteStatus,
                 IsWhatsAppOptIn = appointment.Patient.IsWhatsAppOptIn,
                 WhatsAppOptInDate = appointment.Patient.WhatsAppOptInDate,
-                Message = "Appointment time updated successfully"
+                Message = "Appointment time updated. This does not notify the patient. Use Reschedule for the patient-notified path."
             };
         }
 
@@ -350,6 +387,14 @@ namespace Niga_Domain.Repositories
                 Status = appointment.Status,
                 UserId = appointment.UserId,
                 DeleteStatus = appointment.DeleteStatus,
+                VisitType = appointment.VisitType,
+                ConsultMode = appointment.ConsultMode,
+                PaymentStatus = appointment.PaymentStatus,
+                IsTele = appointment.IsTele,
+                PaymentMethod = appointment.PaymentMethod,
+                PayAtClinicAllowed = appointment.PayAtClinicAllowed,
+                CancelReasonCode = appointment.CancelReasonCode,
+                BookingChannel = appointment.BookingChannel,
                 Address = appointment.Patient.Address,
                 Age = appointment.Patient.Age,
                 Gender = appointment.Patient.Gender,
@@ -439,6 +484,8 @@ namespace Niga_Domain.Repositories
                 IsTele = entity.IsTele,
                 VisitType = entity.VisitType,
                 ConsultMode = entity.ConsultMode,
+                PaymentMethod = entity.PaymentMethod,
+                PayAtClinicAllowed = entity.PayAtClinicAllowed,
             };
         }
 
@@ -487,6 +534,19 @@ namespace Niga_Domain.Repositories
                 return (null, errorResponseModel);
             }
 
+            if (request.BreakStartTime.HasValue || request.BreakEndTime.HasValue)
+            {
+                if (!request.BreakStartTime.HasValue || !request.BreakEndTime.HasValue
+                    || request.BreakEndTime <= request.BreakStartTime
+                    || request.BreakStartTime < request.WorkStartTime
+                    || request.BreakEndTime > request.WorkEndTime)
+                {
+                    errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                    errorResponseModel.Message = "Break must sit inside working hours and end after it starts.";
+                    return (null, errorResponseModel);
+                }
+            }
+
             var doctorExists = await _context.Doctors
                 .AsNoTracking()
                 .AnyAsync(x => x.DoctorId == request.DoctorId && x.DeleteStatus == false);
@@ -517,6 +577,8 @@ namespace Niga_Domain.Repositories
                 SlotIntervalMinutes = request.SlotIntervalMinutes,
                 WorkStartTime = request.WorkStartTime,
                 WorkEndTime = request.WorkEndTime,
+                BreakStartTime = request.BreakStartTime,
+                BreakEndTime = request.BreakEndTime,
                 CreatedByUserId = request.CreatedByUserId,
                 CreatedAt = DateTime.UtcNow,
             };
@@ -559,6 +621,7 @@ namespace Niga_Domain.Repositories
                 .Where(x =>
                     x.DoctorId == request.DoctorId &&
                     x.DeleteStatus == false &&
+                    x.Status != S3AppointmentRules.Cancelled &&
                     x.AppointmentDate.HasValue &&
                     x.AppointmentDate.Value.Date == appointmentDate &&
                     x.AppointmentTime.HasValue)
@@ -594,6 +657,13 @@ namespace Niga_Domain.Repositories
                     patientAppId = bookedAppointment.PatientAppId;
                     patientName = bookedAppointment.Patient?.PatientName;
                 }
+                else if (schedule.BreakStartTime.HasValue
+                    && schedule.BreakEndTime.HasValue
+                    && slotTime >= schedule.BreakStartTime.Value
+                    && slotTime < schedule.BreakEndTime.Value)
+                {
+                    status = "break";
+                }
                 else if (AppointmentSlotHelper.IsPastSlot(appointmentDate, slotTime, now))
                 {
                     status = "past";
@@ -621,6 +691,8 @@ namespace Niga_Domain.Repositories
                 SlotIntervalMinutes = schedule.SlotIntervalMinutes,
                 WorkStartTime = schedule.WorkStartTime,
                 WorkEndTime = schedule.WorkEndTime,
+                BreakStartTime = schedule.BreakStartTime,
+                BreakEndTime = schedule.BreakEndTime,
                 IsLocked = true,
             };
 
@@ -680,6 +752,16 @@ namespace Niga_Domain.Repositories
                 return false;
             }
 
+            if (schedule.BreakStartTime.HasValue
+                && schedule.BreakEndTime.HasValue
+                && appointmentTime >= schedule.BreakStartTime.Value
+                && appointmentTime < schedule.BreakEndTime.Value)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "Selected time falls in the break.";
+                return false;
+            }
+
             if (AppointmentSlotHelper.IsPastSlot(appointmentDate, appointmentTime, DateTime.Now))
             {
                 errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
@@ -689,6 +771,7 @@ namespace Niga_Domain.Repositories
 
             var slotTaken = _context.PatientAppointments.Any(x =>
                 x.DeleteStatus == false &&
+                x.Status != S3AppointmentRules.Cancelled &&
                 x.DoctorId == doctorId &&
                 x.AppointmentDate.HasValue &&
                 x.AppointmentDate.Value.Date == appointmentDate.Date &&
@@ -698,12 +781,291 @@ namespace Niga_Domain.Repositories
 
             if (slotTaken)
             {
-                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.StatusCode = HttpStatusCode.Conflict;
                 errorResponseModel.Message = "This time slot is already booked. Please select another time.";
                 return false;
             }
 
             return true;
+        }
+
+        private void CopyS3Fields(PatientAppointment entity, PatientAppointmentModel model)
+        {
+            model.VisitType = entity.VisitType;
+            model.ConsultMode = entity.ConsultMode;
+            model.PaymentStatus = entity.PaymentStatus;
+            model.IsTele = entity.IsTele;
+            model.PaymentMethod = entity.PaymentMethod;
+            model.PayAtClinicAllowed = entity.PayAtClinicAllowed;
+            model.CancelReasonCode = entity.CancelReasonCode;
+            model.BookingChannel = entity.BookingChannel;
+        }
+
+        public async Task<AppointmentMutationResult> RescheduleAppointmentAsync(
+            RescheduleAppointmentRequest request,
+            long byUserId,
+            string? byRole)
+        {
+            var result = new AppointmentMutationResult();
+            var appointment = await _context.PatientAppointments
+                .Include(x => x.Patient)
+                .FirstOrDefaultAsync(x => x.PatientAppId == request.PatientAppId && x.DeleteStatus != true);
+
+            if (appointment == null)
+            {
+                result.StatusCode = 404;
+                result.Message = "Appointment not found";
+                return result;
+            }
+
+            if (S3AppointmentRules.IsCancelled(appointment.Status))
+            {
+                result.StatusCode = 409;
+                result.Message = "A cancelled appointment cannot be rescheduled.";
+                return result;
+            }
+
+            if (!request.AppointmentTime.HasValue || !request.AppointmentDate.HasValue)
+            {
+                result.StatusCode = 400;
+                result.Message = "Appointment date and time are required.";
+                return result;
+            }
+
+            var error = new ErrorResponseModel();
+            if (!TryValidateAppointmentSlot(
+                    appointment.DoctorId,
+                    request.AppointmentDate.Value.Date,
+                    request.AppointmentTime.Value,
+                    request.PatientAppId,
+                    ref error))
+            {
+                result.StatusCode = error.StatusCode == HttpStatusCode.Conflict ? 409 : (int)(error.StatusCode == 0 ? HttpStatusCode.BadRequest : error.StatusCode);
+                if (result.StatusCode == 400 && error.Message != null && error.Message.Contains("already booked", StringComparison.OrdinalIgnoreCase))
+                    result.StatusCode = 409;
+                result.Message = error.Message;
+                result.Alternatives = await NextOpenSlotsAsync(appointment.DoctorId, request.AppointmentDate.Value.Date, request.PatientAppId);
+                return result;
+            }
+
+            var patientBusy = await _context.PatientAppointments.AnyAsync(x =>
+                x.PatientId == appointment.PatientId &&
+                x.PatientAppId != appointment.PatientAppId &&
+                x.DeleteStatus != true &&
+                x.Status != S3AppointmentRules.Cancelled &&
+                x.AppointmentDate.HasValue &&
+                x.AppointmentDate.Value.Date == request.AppointmentDate.Value.Date &&
+                x.AppointmentTime.HasValue &&
+                x.AppointmentTime.Value == request.AppointmentTime.Value);
+
+            if (patientBusy)
+            {
+                result.StatusCode = 409;
+                result.Message = "This patient is already booked at that time.";
+                result.Alternatives = await NextOpenSlotsAsync(appointment.DoctorId, request.AppointmentDate.Value.Date, request.PatientAppId);
+                return result;
+            }
+
+            var oldValue = $"{appointment.AppointmentDate:yyyy-MM-dd} {appointment.AppointmentTime}";
+            var newValue = $"{request.AppointmentDate:yyyy-MM-dd} {request.AppointmentTime}";
+            appointment.AppointmentDate = request.AppointmentDate.Value.Date;
+            appointment.AppointmentTime = request.AppointmentTime;
+            await _context.SaveChangesAsync();
+            await WriteChangeLogAsync(appointment.PatientAppId, "Reschedule", oldValue, newValue, byUserId, byRole, request.Reason);
+
+            result.StatusCode = 200;
+            result.Message = "Appointment rescheduled.";
+            result.Appointment = MapCore(appointment);
+            result.Appointment.Message = result.Message;
+            return result;
+        }
+
+        public async Task<AppointmentMutationResult> CancelAppointmentAsync(
+            CancelAppointmentRequest request,
+            long byUserId,
+            string? byRole)
+        {
+            var result = new AppointmentMutationResult();
+            if (request == null || string.IsNullOrWhiteSpace(request.ReasonCode)
+                || !S3AppointmentRules.CancelReasons.Contains(request.ReasonCode, StringComparer.OrdinalIgnoreCase))
+            {
+                result.StatusCode = 400;
+                result.Message = "ReasonCode must be PatientRequest, DoctorUnavailable, Duplicate, or Other.";
+                return result;
+            }
+
+            if (request.ReasonCode.Equals("Other", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(request.ReasonText))
+            {
+                result.StatusCode = 400;
+                result.Message = "ReasonText is required when ReasonCode is Other.";
+                return result;
+            }
+
+            var appointment = await _context.PatientAppointments
+                .Include(x => x.Patient)
+                .FirstOrDefaultAsync(x => x.PatientAppId == request.PatientAppId && x.DeleteStatus != true);
+
+            if (appointment == null)
+            {
+                result.StatusCode = 404;
+                result.Message = "Appointment not found";
+                return result;
+            }
+
+            if (S3AppointmentRules.IsCancelled(appointment.Status))
+            {
+                result.StatusCode = 409;
+                result.Message = "Appointment is already cancelled.";
+                return result;
+            }
+
+            var oldStatus = appointment.Status;
+            appointment.Status = S3AppointmentRules.Cancelled;
+            appointment.CancelReasonCode = request.ReasonCode;
+            appointment.CancelReasonText = request.ReasonText;
+            appointment.CancelledBy = byUserId;
+            appointment.CancelledAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+            await WriteChangeLogAsync(
+                appointment.PatientAppId,
+                "Cancel",
+                oldStatus,
+                S3AppointmentRules.Cancelled,
+                byUserId,
+                byRole,
+                request.ReasonCode);
+
+            result.StatusCode = 200;
+            result.Message = "Appointment cancelled. The slot is free. No refund was sent.";
+            result.Appointment = MapCore(appointment);
+            return result;
+        }
+
+        public async Task<List<AppointmentChangeLogItem>> GetChangeLogAsync(int patientAppId)
+        {
+            return await _context.Database.SqlQuery<AppointmentChangeLogItem>(
+                $@"SELECT AppointmentChangeLogId, PatientAppId, Action, OldValue, NewValue, ByUserId, ByRole, Reason, At
+                   FROM dbo.AppointmentChangeLog
+                   WHERE PatientAppId = {patientAppId}
+                   ORDER BY At DESC").ToListAsync();
+        }
+
+        public async Task<AppointmentMutationResult> PatchVisitTypeAsync(int patientAppId, string? visitType, string? consultMode)
+        {
+            var result = new AppointmentMutationResult();
+            var appointment = await _context.PatientAppointments
+                .Include(x => x.Patient)
+                .FirstOrDefaultAsync(x => x.PatientAppId == patientAppId && x.DeleteStatus != true);
+            if (appointment == null)
+            {
+                result.StatusCode = 404;
+                result.Message = "Appointment not found";
+                return result;
+            }
+
+            var mode = S3AppointmentRules.NormalizeMode(consultMode ?? visitType, appointment.ConsultMode ?? S3AppointmentRules.InClinic);
+            appointment.VisitType = mode;
+            appointment.ConsultMode = mode;
+            appointment.IsTele = mode == S3AppointmentRules.Tele;
+            await _context.SaveChangesAsync();
+            result.StatusCode = 200;
+            result.Appointment = MapCore(appointment);
+            result.Message = "Visit type updated for this appointment only.";
+            return result;
+        }
+
+        public async Task<AppointmentMutationResult> CallNextAsync(int doctorId)
+        {
+            var result = new AppointmentMutationResult();
+            var today = DateTime.Today;
+            var next = await _context.PatientAppointments
+                .Include(x => x.Patient)
+                .Where(x =>
+                    x.DoctorId == doctorId &&
+                    x.DeleteStatus != true &&
+                    x.Status == "WAITING" &&
+                    x.CalledAt == null &&
+                    x.AppointmentDate.HasValue &&
+                    x.AppointmentDate.Value.Date == today)
+                .OrderBy(x => x.AppointmentTime)
+                .ThenBy(x => x.PatientAppId)
+                .FirstOrDefaultAsync();
+
+            if (next == null)
+            {
+                result.StatusCode = 404;
+                result.Message = "No waiting patient to call.";
+                return result;
+            }
+
+            // REC-08.02 — calling the next waiting patient stamps the time and moves them onto the board status.
+            next.CalledAt = DateTime.Now;
+            if (string.Equals(next.Status, "WAITING", StringComparison.OrdinalIgnoreCase))
+                next.Status = next.IsTele == true ? "E-CONSULT" : "WALK-IN";
+            await _context.SaveChangesAsync();
+            result.StatusCode = 200;
+            result.Message = "Next patient called.";
+            result.Appointment = MapCore(next);
+            return result;
+        }
+
+        public async Task<List<PatientAppointmentModel>> GetQueueAsync(int doctorId)
+        {
+            var today = DateTime.Today;
+            var rows = await _context.PatientAppointments
+                .AsNoTracking()
+                .Include(x => x.Patient)
+                .Where(x =>
+                    x.DoctorId == doctorId &&
+                    x.DeleteStatus != true &&
+                    x.Status != S3AppointmentRules.Cancelled &&
+                    x.AppointmentDate.HasValue &&
+                    x.AppointmentDate.Value.Date == today &&
+                    (x.Status == "WAITING" || x.Status == "WALK-IN" || x.Status == "E-CONSULT"))
+                .OrderBy(x => x.AppointmentTime)
+                .ThenBy(x => x.PatientAppId)
+                .ToListAsync();
+
+            return rows.Select(MapCore).ToList();
+        }
+
+        private async Task<List<AppointmentSlotModel>> NextOpenSlotsAsync(int doctorId, DateTime date, long currentId)
+        {
+            var slots = await GetAppointmentSlotsAsync(new GetAppointmentSlotsRequest
+            {
+                DoctorId = doctorId,
+                AppointmentDate = date,
+                CurrentPatientAppId = currentId
+            });
+            return slots.Slots.Where(s => s.Status == "available").Take(3).ToList();
+        }
+
+        private async Task WriteChangeLogAsync(int patientAppId, string action, string? oldValue, string? newValue, long byUserId, string? byRole, string? reason)
+        {
+            var at = DateTime.Now;
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.AppointmentChangeLog (PatientAppId, Action, OldValue, NewValue, ByUserId, ByRole, Reason, At)
+                VALUES ({patientAppId}, {action}, {oldValue}, {newValue}, {byUserId}, {byRole}, {reason}, {at})");
+        }
+
+        private PatientAppointmentModel MapCore(PatientAppointment appointment)
+        {
+            var model = new PatientAppointmentModel
+            {
+                PatientAppId = appointment.PatientAppId,
+                PatientId = appointment.PatientId,
+                PatientName = appointment.Patient?.PatientName,
+                MobileNo = appointment.Patient?.MobileNo,
+                DoctorId = appointment.DoctorId,
+                AppointmentDate = appointment.AppointmentDate,
+                AppointmentTime = appointment.AppointmentTime,
+                Status = appointment.Status,
+                UserId = appointment.UserId,
+                DeleteStatus = appointment.DeleteStatus,
+            };
+            CopyS3Fields(appointment, model);
+            return model;
         }
     }
 }

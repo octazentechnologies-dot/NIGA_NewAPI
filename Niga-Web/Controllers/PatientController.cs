@@ -341,14 +341,26 @@ namespace Niga_Domain.API.Controllers
                 "PatientId: " + patient.PatientID + "  CaseId: " + caseId,
                 "Mobile: " + (patient.MobileNo ?? string.Empty),
                 "Diagnosis: " + (patient.DiagnosisIds ?? string.Empty),
-                "Complaints: " + string.Join("; ", complaints.Where(x => !string.IsNullOrWhiteSpace(x))),
+                "Complaints: " + string.Join("; ", complaints.Where(x => !string.IsNullOrWhiteSpace(x)).Select(PlainExportText)),
                 "Rubrics:",
             };
-            lines.AddRange(details);
+            lines.AddRange(details.Select(PlainExportText));
+            var remedies = await (
+                from remedy in _context.PrescriptionRemedyDetails.AsNoTracking()
+                join visit in _context.PatientAppointments.AsNoTracking() on remedy.AppointmentId equals visit.PatientAppId
+                join master in _context.RemedyMasters.AsNoTracking() on remedy.RemedyId equals master.RemedyId into masters
+                from master in masters.DefaultIfEmpty()
+                where visit.PatientId == patientId && remedy.DeletedStatus != true
+                orderby remedy.PrescriptionRemedyId
+                select (master != null ? master.RemedyName : "Remedy " + remedy.RemedyId)
+                    + (string.IsNullOrWhiteSpace(remedy.Dose) ? "" : " - " + remedy.Dose)
+            ).ToListAsync();
+            lines.Add("Prescription:");
+            lines.AddRange(remedies.Select(PlainExportText));
             lines.Add("Notes:");
-            lines.AddRange(notes.Where(x => !string.IsNullOrWhiteSpace(x))!);
+            lines.AddRange(notes.Where(x => !string.IsNullOrWhiteSpace(x)).Select(PlainExportText)!);
 
-            var bytes = ClinicalCasePdfBuilder.Build("Clinical case — doctor copy", lines);
+            var bytes = ClinicalCasePdfBuilder.Build("Clinical case - doctor copy", lines);
             return File(bytes, "application/pdf", $"Case_{patientId}_{caseId}.pdf");
         }
 
@@ -530,6 +542,19 @@ namespace Niga_Domain.API.Controllers
             {
                 return false;
             }
+        }
+
+        private static string PlainExportText(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+            var text = System.Text.RegularExpressions.Regex.Replace(value, "<[^>]+>", " ");
+            text = System.Net.WebUtility.HtmlDecode(text);
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+            var safe = new System.Text.StringBuilder(text.Length);
+            foreach (var ch in text)
+                safe.Append(ch <= 255 ? ch : ' ');
+            return safe.ToString();
         }
 
     }

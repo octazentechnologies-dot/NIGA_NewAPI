@@ -18,10 +18,10 @@ SEC-01.02	OLD login empty	400	PASS	{"errors":{"Password":["Password is required"
 CON-01.02	Family/Me no token	401	PASS	
 CON-01.02	Family/Me patient	200	PASS	{"success":true,"data":{"ownerPatientId":3046,"ownerPatientName":"Tufan Patient","linked":true,"isActingAsCaregiver":false}}
 PAT-06.02	Family/Relations	200	PASS	{"success":true,"data":[{"relationId":15,"relationName":"Spouse","sortOrder":10},{"relationId":5,"relationName":"Father","sortOrder":20},{"relationId":9,"relati
-CON-02.02	Caregiver/ListMine patient	200	PASS	{"success":true,"data":[{"caregiverAuthorizationId":15,"patientId":3046,"patientName":"Tufan Patient","caregiverUserId":10031,"caregiverName":"Tufan Caregiver",
+CON-02.02	Caregiver/ListMine patient	200	PASS	{"success":true,"data":[{"caregiverAuthorizationId":16,"patientId":3046,"patientName":"Tufan Patient","caregiverUserId":10009,"caregiverName":"S1 CaregiverTeste
 CON-02.04	Caregiver/Grant without OTP	400	PASS	{"success":false,"message":"OTP is required to grant caregiver access. Request OTP first (Action=GrantCaregiver)."}
-PAT-08.02	PatientPortal/Home	200	PASS	{"success":true,"data":{"patientId":3046,"patientName":"Tufan Patient","familyCount":13,"caregiverCount":1,"upcomingAppointments":1,"nextAppointments":[{"patien
-PAT-05.02	Consent/PrivacyStatus	200	PASS	{"success":true,"data":{"required":true,"granted":false,"consentRecordId":null,"grantedAt":null,"withdrawnAt":null}}
+PAT-08.02	PatientPortal/Home	200	PASS	{"success":true,"data":{"patientId":3046,"patientName":"Tufan Patient","familyCount":17,"caregiverCount":2,"upcomingAppointments":5,"nextAppointments":[{"patien
+PAT-05.02	Consent/PrivacyStatus	200	PASS	{"success":true,"data":{"required":true,"granted":true,"consentRecordId":45,"grantedAt":"2026-09-22T12:15:07.59","withdrawnAt":null}}
 PAT-04.02	PatientProfile/Me	200	PASS	{"success":true,"data":{"userId":10033,"firstName":"Tufan","lastName":"Patient","email":"tufanpowar001@gmail.com","mobileNo":"7768046064","patientId":3046,"pati
 SEC-07.03	Otp/Audit as patient (admin/account only)	403	PASS	
 CON-02.02	Caregiver/ListActingFor	200	PASS	{"success":true,"data":[{"caregiverAuthorizationId":15,"patientId":3046,"patientName":"Tufan Patient","caregiverUserId":10031,"caregiverName":"Tufan Caregiver",
@@ -30,7 +30,7 @@ CON-01.02	Family/Me caregiver acts for Tufan_Patient	200	PASS	{"success":true,"d
 CON-01.02	Family list caregiver	200	PASS	{"success":true,"ownerPatientId":3046,"ownerPatientName":"Tufan Patient","isActingAsCaregiver":true,"data":[{"familyMemberId":22,"ownerPatientId":3046,"memberPa
 CON-01.02	Family list caregiver sees patient members	200	PASS	{"success":true,"ownerPatientId":3046,"ownerPatientName":"Tufan Patient","isActingAsCaregiver":true,"data":[{"familyMemberId":22,"ownerPatientId":3046,"memberPa
 SEC-04.01	Family/Me account 403	403	PASS	{"success":false,"message":"Account and Pharmacy roles cannot access patient personal data."}
-SEC-07.03	Otp/Audit account	200	PASS	{"success":true,"data":[{"otpAuditLogId":36,"action":"RequestOtp","entityType":"Mobile","entityId":"7768046064","toMasked":"******6064","success":true,"at":"202
+SEC-07.03	Otp/Audit account	200	PASS	{"success":true,"data":[{"otpAuditLogId":45,"action":"VerifyOtp","entityType":"Patient","entityId":"3046","toMasked":"t***@gmail.com","success":true,"at":"2026-
 SEC-04.01	Family pharmacy 403	403	PASS	{"success":false,"message":"Account and Pharmacy roles cannot access patient personal data."}
 CLN-02.02	COG reception blocked	403	PASS	{"success":false,"message":"Only the treating doctor can run case taking."}
 CLN-19.02	board backup reception blocked	403	PASS	{"success":false,"message":"Only the treating doctor can run case taking."}
@@ -41,13 +41,13 @@ DOC-09.01	ReceptionStaff list	200	PASS	{"success":false,"message":"DoctorUserID 
 CLN-19.03	PatientBoardBackup/Summary	200	PASS	{"success":true,"message":"Backup summary retrieved.","resultObject":{"hasBackup":true,"backupId":20003,"patientCount":0,"schemaVersion":1,"savedAt":"2026-09-22
 CLN-16.02	GetComplaints	403	PASS	{"success":false,"message":"Access denied for this doctor resource."}
 DMO-02.02	ConfirmMobile	200	PASS	{"success":true,"data":{"matched":true,"profileMasked":"******0202","role":"Doctor"}}
-DMO-06.02	Device/Register FCM	200	PASS	{"success":true,"data":{"devicePushTokenId":27,"platform":"FCM","deviceId":"s2-audit-doc","updatedAt":"2026-09-22T03:28:33.566313Z"}}
+DMO-06.02	Device/Register FCM	200	PASS	{"success":true,"data":{"devicePushTokenId":27,"platform":"FCM","deviceId":"s2-audit-doc","updatedAt":"2026-09-22T12:29:18.176878Z"}}
 ADM-B04.02	GetMenuByRole doctor	200	PASS	[{"menuId":10,"moduleId":4,"moduleName":null,"menuName":"Dashboard","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/doctordashboard","des
 CLN-18.01	ExportCaseToPdf	403	PASS	{"success":false,"message":"Access denied for this doctor resource."}
-WEB-06.02	Enquiry list admin	200	PASS	{"success":true,"data":[{"enquiryId":40,"enquiryName":"S2 Live Old","enquiryDate":"2026-09-22T00:00:00","emailId":"s2.old@example.com","mobileNo":"9000011123","
+WEB-06.02	Enquiry list admin	200	PASS	{"success":true,"data":[{"enquiryId":47,"enquiryName":"S2 Live Old","enquiryDate":"2026-09-22T00:00:00","emailId":"s2.old@example.com","mobileNo":"9000011123","
 ADM-B04.02	GetMenuByRole admin	200	PASS	[{"menuId":16,"moduleId":5,"moduleName":null,"menuName":"Dashboard","menuNameMarathi":"","menuType":"Menu","parentMenuId":null,"menuUrl":"/dashboard","descripti
-SEC-07.03	Otp/Audit admin	200	PASS	{"success":true,"data":[{"otpAuditLogId":36,"action":"RequestOtp","entityType":"Mobile","entityId":"7768046064","toMasked":"******6064","success":true,"at":"202
-SEC-06.02	Consent/AdminAudit	200	PASS	{"success":true,"data":[{"consentRecordId":22,"consentTypeCode":"Marketing","subjectType":"User","subjectId":10020,"grantedByUserId":10020,"grantedAt":"2026-09-
+SEC-07.03	Otp/Audit admin	200	PASS	{"success":true,"data":[{"otpAuditLogId":45,"action":"VerifyOtp","entityType":"Patient","entityId":"3046","toMasked":"t***@gmail.com","success":true,"at":"2026-
+SEC-06.02	Consent/AdminAudit	200	PASS	{"success":true,"data":[{"consentRecordId":52,"consentTypeCode":"TeleRecording","subjectType":"Patient","subjectId":3064,"grantedByUserId":10032,"grantedAt":"20
 WEB-03.02	Public/Doctors	200	PASS	{"success":true,"pageNumber":1,"pageSize":5,"totalRecords":9,"data":[{"doctorId":4,"displayName":"demo test user demo test user","qualification":null,"city":"Pu
 WEB-03.02	Public/Doctors missing	404	PASS	{"success":false,"message":"Doctor not found or not verified for directory."}
 WEB-07.01	Policies/Privacy	200	PASS	{"success":true,"data":{"policyType":"Privacy","version":"2026.09","title":"Privacy policy","bodyHtml":"<p>Homeocentrum processes clinical, booking and pharmacy
@@ -56,15 +56,15 @@ WEB-12.01	Public/Articles	200	PASS	{"success":true,"pageNumber":1,"pageSize":20,
 PAT-02.02	Welcome/Patient	200	PASS	{"success":true,"data":{"version":"1","audience":"Patient","slides":[{"welcomeSlideId":1,"sortOrder":1,"title":"Welcome to Homeocentrum","body":"Your homeopathy
 PAT-01.02	GetLanguages	200	PASS	[{"languageId":1,"languageName":"English","description":"English Language ","isDeleted":false},{"languageId":2,"languageName":"Marathi ","description":"Marathi 
 PAT-09.02	CareCategories	200	PASS	{"success":true,"data":[{"id":9,"name":"Abdomen","description":"S2-TESTED abdomen"},{"id":7,"name":"Chest","description":"S2-TESTED chest / respiration"},{"id":
-WEB-04.02	PatientAuth/RequestOtp 7768046064	200	PASS	{"success":true,"otpChallengeId":55,"expiresAt":"2026-09-22T03:38:33.9427795Z","destinationMasked":"******6064","devCode":"122250"}
-WEB-04.02	PatientAuth/VerifyOtp	200	PASS	{"success":true,"bookingSessionId":55,"mobile":"7768046064"}
-PAT-03.02	Otp/RequestOtp Login	200	PASS	{"success":true,"data":{"otpChallengeId":56,"destinationMasked":"******6064","expiresAt":"2026-09-22T03:38:33.9932121Z","message":"OTP sent (SMS stub — provider
+WEB-04.02	PatientAuth/RequestOtp 7768046064	200	PASS	{"success":true,"otpChallengeId":72,"expiresAt":"2026-09-22T12:39:18.3428671Z","destinationMasked":"******6064","devCode":"149948"}
+WEB-04.02	PatientAuth/VerifyOtp	200	PASS	{"success":true,"bookingSessionId":72,"mobile":"7768046064"}
+PAT-03.02	Otp/RequestOtp Login	200	PASS	{"success":true,"data":{"otpChallengeId":73,"destinationMasked":"******6064","expiresAt":"2026-09-22T12:39:18.3811762Z","message":"OTP sent (SMS stub — provider
 PAT-03.02	LoginWithOtp Tufan_Patient mobile	200	PASS	{"success":true,"message":"Login successful","data":{"userId":10033,"userName":"Tufan Patient","firstName":null,"lastName":null,"isSuperUser":false,"role":"Pati
 PAT-03.02	LoginWithOtp role Patient	200	PASS	Patient
 SEC-02.02	ForgotPassword Tufan_Patient email	200	PASS	{"success":true,"message":"If an account exists for that email, a password reset link has been sent.","resetLink":null,"mailSent":false,"smtpError":null}
 SEC-02.02	ForgotPassword unknown generic 200	200	PASS	{"success":true,"message":"If an account exists for that email, a password reset link has been sent.","resetLink":null,"mailSent":false,"smtpError":null}
 WEB-06.02	Enquiry empty 400	400	PASS	{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or more validation errors occurred.","status":400,"errors":{"EnquiryName":["The Enquir
-WEB-06.02	Enquiry create	200	PASS	{"success":true,"data":{"enquiryId":41,"ticketStatus":"New"}}
+WEB-06.02	Enquiry create	200	PASS	{"success":true,"data":{"enquiryId":48,"ticketStatus":"New"}}
 FND-01.03	New-API swagger	200	PASS	{   "openapi": "3.0.1",   "info": {     "title": "MyAPI",     "version": "v1"   },   "paths": {     "/api/Account/Login": {       "post": {         "tags": [   
 SEC-03.01	OLD Logout doctor	200	PASS	{"success":true,"message":"Logged out"}
 SEC-03.01	Profile/Me after logout (denylist or still valid until expiry)	200	PASS	{"success":true,"data":{"doctorId":1010,"userId":10032,"firstName":"Tufan","middleName":null,"lastName":"Doctor","clinicName":"Tufan Homeopathy Clinic","emailId

@@ -73,17 +73,16 @@ DECLARE @Users TABLE
     MobileNo NVARCHAR(20) NOT NULL
 );
 
--- Email/mobile cannot be shared across UserMaster rows: LoginWithOtp and
--- ForgotPassword resolve FirstOrDefault by MobileNo / EmailId.
--- Shared team contact (tufanpowar001@gmail.com / 7768046064) is on Tufan_Patient only.
+-- Newly created Tufan role users share tufanpowar001@gmail.com.
+-- Existing clinic users (admin, NIGA HOMEOPATHY, demotestuser, and the other named doctors) are not in this list.
 INSERT INTO @Users (RoleName, UserName, EmailId, FirstName, LastName, MobileNo) VALUES
-    (N'Admin',            N'Tufan_Admin',     N'tufan.admin@homeocentrum.dev',     N'Tufan', N'Admin',     N'9000000201'),
-    (N'Doctor',           N'Tufan_Doctor',    N'tufan.doctor@homeocentrum.dev',    N'Tufan', N'Doctor',    N'9000000202'),
-    (N'Account',          N'Tufan_Account',   N'tufan.account@homeocentrum.dev',   N'Tufan', N'Account',   N'9000000203'),
-    (N'PharmacyPartner',  N'Tufan_Pharmacy',  N'tufan.pharmacy@homeocentrum.dev',  N'Tufan', N'Pharmacy',  N'9000000204'),
-    (N'Patient',          N'Tufan_Patient',   N'tufanpowar001@gmail.com',             N'Tufan', N'Patient',   N'7768046064'),
-    (N'Patient',          N'Tufan_Caregiver', N'tufan.caregiver@homeocentrum.dev', N'Tufan', N'Caregiver', N'9000000206'),
-    (N'EmptyMenuProbe',   N'Tufan_NoMenu',    N'tufan.nomenu@homeocentrum.dev',    N'Tufan', N'NoMenu',    N'9000000207');
+    (N'Admin',            N'Tufan_Admin',     N'tufanpowar001@gmail.com', N'Tufan', N'Admin',     N'9000000201'),
+    (N'Doctor',           N'Tufan_Doctor',    N'tufanpowar001@gmail.com', N'Tufan', N'Doctor',    N'9000000202'),
+    (N'Account',          N'Tufan_Account',   N'tufanpowar001@gmail.com', N'Tufan', N'Account',   N'9000000203'),
+    (N'PharmacyPartner',  N'Tufan_Pharmacy',  N'tufanpowar001@gmail.com', N'Tufan', N'Pharmacy',  N'9000000204'),
+    (N'Patient',          N'Tufan_Patient',   N'tufanpowar001@gmail.com', N'Tufan', N'Patient',   N'7768046064'),
+    (N'Patient',          N'Tufan_Caregiver', N'tufanpowar001@gmail.com', N'Tufan', N'Caregiver', N'9000000206'),
+    (N'EmptyMenuProbe',   N'Tufan_NoMenu',    N'tufanpowar001@gmail.com', N'Tufan', N'NoMenu',    N'9000000207');
 
 BEGIN TRAN;
 
@@ -95,7 +94,7 @@ BEGIN
     IF @HasLastName = 1
         UPDATE dbo.UserMaster SET LastName = N'Doctor' WHERE UserName = N'Tufan_Doctor' AND ISNULL(DeleteStatus,0)=0;
     IF @HasEmail = 1
-        UPDATE dbo.UserMaster SET EmailId = N'tufan.doctor@homeocentrum.dev' WHERE UserName = N'Tufan_Doctor' AND ISNULL(DeleteStatus,0)=0;
+        UPDATE dbo.UserMaster SET EmailId = N'tufanpowar001@gmail.com' WHERE UserName = N'Tufan_Doctor' AND ISNULL(DeleteStatus,0)=0;
     PRINT 'RENAMED UserMaster Tufan_Doctore → Tufan_Doctor';
 END
 
@@ -201,7 +200,7 @@ BEGIN
         )
         VALUES (
             N'Tufan', N'Doctor', @QualId, N'Tufan team clinic',
-            N'9000000202', N'tufan.doctor@homeocentrum.dev',
+            N'9000000202', N'tufanpowar001@gmail.com',
             N'Pune', N'TUFAN-TEAM', GETDATE(), 0, CAST(@DocUserId AS INT),
             N'Tufan Homeopathy Clinic', 550, 420,
             1, 1, N'Verified', 1,
@@ -214,7 +213,7 @@ BEGIN
     BEGIN
         UPDATE dbo.Doctor
         SET LastName = N'Doctor',
-            EmailId = N'tufan.doctor@homeocentrum.dev',
+            EmailId = N'tufanpowar001@gmail.com',
             DirectoryVisible = 1,
             VerificationStatus = N'Verified',
             PracticeActivated = 1,

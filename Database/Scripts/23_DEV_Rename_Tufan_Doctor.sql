@@ -22,7 +22,7 @@ BEGIN
     UPDATE dbo.UserMaster
     SET UserName = N'Tufan_Doctor',
         LastName = N'Doctor',
-        EmailId = N'tufan.doctor@homeocentrum.dev',
+        EmailId = N'tufanpowar001@gmail.com',
         ChangedBy = N'TUFAN-TEAM',
         ChangedDate = GETUTCDATE()
     WHERE UserName = N'Tufan_Doctore' AND ISNULL(DeleteStatus,0)=0;
@@ -32,9 +32,9 @@ ELSE IF EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserName = N'Tufan_Doctor' AN
 BEGIN
     UPDATE dbo.UserMaster
     SET LastName = N'Doctor',
-        EmailId = N'tufan.doctor@homeocentrum.dev'
+        EmailId = N'tufanpowar001@gmail.com'
     WHERE UserName = N'Tufan_Doctor' AND ISNULL(DeleteStatus,0)=0
-      AND (LastName <> N'Doctor' OR EmailId <> N'tufan.doctor@homeocentrum.dev');
+      AND (LastName <> N'Doctor' OR EmailId <> N'tufanpowar001@gmail.com');
     PRINT 'UserMaster Tufan_Doctor already present';
 END
 ELSE
@@ -50,7 +50,7 @@ IF @DocUserId IS NOT NULL AND OBJECT_ID(N'dbo.Doctor', N'U') IS NOT NULL
 BEGIN
     UPDATE dbo.Doctor
     SET LastName = N'Doctor',
-        EmailId = N'tufan.doctor@homeocentrum.dev'
+        EmailId = N'tufanpowar001@gmail.com'
     WHERE UserId = @DocUserId AND ISNULL(DeleteStatus,0)=0;
     PRINT CONCAT('UPDATED Doctor LastName/Email for UserId=', @DocUserId);
 END

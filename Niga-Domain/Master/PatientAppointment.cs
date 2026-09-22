@@ -35,6 +35,24 @@ public partial class PatientAppointment
 
     public string? ConsentPolicyVersion { get; set; }
 
+    public string? CancelReasonCode { get; set; }
+
+    public string? CancelReasonText { get; set; }
+
+    public long? CancelledBy { get; set; }
+
+    public DateTime? CancelledAt { get; set; }
+
+    public string? PaymentMethod { get; set; }
+
+    public bool? PayAtClinicAllowed { get; set; }
+
+    public int? QueuePosition { get; set; }
+
+    public string? BookingChannel { get; set; }
+
+    public DateTime? CalledAt { get; set; }
+
     public virtual ICollection<AppointmentHistoryNote> AppointmentHistoryNotes { get; set; } = new List<AppointmentHistoryNote>();
 
     public virtual Doctor Doctor { get; set; } = null!;

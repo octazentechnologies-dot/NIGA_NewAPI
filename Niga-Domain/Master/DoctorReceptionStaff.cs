@@ -36,5 +36,7 @@ public partial class DoctorReceptionStaff
 
     public bool DeleteStatus { get; set; }
 
+    public bool IsActive { get; set; } = true;
+
     public virtual Doctor Doctor { get; set; } = null!;
 }

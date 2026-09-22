@@ -5,8 +5,8 @@ Created      : 22-09-2026
 Script       : 26_DEV_Replace_Tufanpowar_Email.sql
 Purpose      : Use tufanpowar001@gmail.com everywhere tufanpowar@gmail.com was.
                Tufan_Patient UserMaster keeps OTP uniqueness on 001 / 7768046064.
-               The leftover UserName tufanpowar001@gmail.com row gets a unique
-               EmailId so LoginWithOtp is not ambiguous.
+               Newly created Tufan users keep EmailId tufanpowar001@gmail.com.
+               tufan.seed001@homeocentrum.dev is not used.
 Use          : HomeoCentrum_Dev. Idempotent.
 Do not run   : Production.
 ================================================================================
@@ -19,20 +19,11 @@ SET XACT_ABORT ON;
 
 BEGIN TRAN;
 
--- Seed user whose UserName is tufanpowar001@gmail.com already had EmailId 001.
--- Move that EmailId so Tufan_Patient can own 001 for OTP.
-IF EXISTS (
-    SELECT 1 FROM dbo.UserMaster
-    WHERE UserName = N'tufanpowar001@gmail.com'
-      AND ISNULL(DeleteStatus, 0) = 0
-      AND EmailId = N'tufanpowar001@gmail.com'
-)
-BEGIN
-    UPDATE dbo.UserMaster
-    SET EmailId = N'tufan.seed001@homeocentrum.dev'
-    WHERE UserName = N'tufanpowar001@gmail.com' AND ISNULL(DeleteStatus, 0) = 0;
-    PRINT 'UPDATED seed UserName tufanpowar001@gmail.com EmailId -> tufan.seed001@homeocentrum.dev';
-END
+UPDATE dbo.UserMaster
+SET EmailId = N'tufanpowar001@gmail.com'
+WHERE ISNULL(DeleteStatus, 0) = 0
+  AND EmailId = N'tufan.seed001@homeocentrum.dev';
+PRINT CONCAT('REMOVED seed001 EmailId rows=', @@ROWCOUNT);
 
 UPDATE dbo.UserMaster
 SET EmailId = N'tufanpowar001@gmail.com'

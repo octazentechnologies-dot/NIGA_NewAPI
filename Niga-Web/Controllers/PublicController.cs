@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Niga_Domain.Data;
+using Niga_Domain.Helpers;
 using Niga_Domain.DTOs;
+using Niga_Domain.Interfaces;
 using Niga_Domain.Enums;
 using Niga_Domain.Master;
 using Niga_Domain.Security;
@@ -20,11 +22,13 @@ namespace Niga_Domain.API.Controllers
     {
         private readonly NIGACentrumContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly IPatientAppointmentService _appointments;
 
-        public PublicController(NIGACentrumContext context, IWebHostEnvironment env)
+        public PublicController(NIGACentrumContext context, IWebHostEnvironment env, IPatientAppointmentService appointments)
         {
             _context = context;
             _env = env;
+            _appointments = appointments;
         }
 
         [HttpGet("Doctors")]
@@ -154,47 +158,22 @@ namespace Niga_Domain.API.Controllers
                 return NotFound(new { success = false, message = "Doctor not found." });
 
             var day = date.Date;
-            var schedule = await _context.DoctorDailySchedules.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.DoctorId == id && s.ScheduleDate == day);
-
-            var booked = await _context.PatientAppointments.AsNoTracking()
-                .Where(a => a.DoctorId == id
-                            && a.AppointmentDate.HasValue
-                            && a.AppointmentDate.Value.Date == day
-                            && a.DeleteStatus != true
-                            && a.AppointmentTime != null)
-                .Select(a => a.AppointmentTime!.Value)
-                .ToListAsync();
-            var bookedSet = booked.Select(t => t.ToString("HH:mm")).ToHashSet(StringComparer.Ordinal);
-
-            var slots = new List<object>();
-            if (schedule != null)
+            var engine = await _appointments.GetAppointmentSlotsAsync(new GetAppointmentSlotsRequest
             {
-                var cursor = schedule.WorkStartTime;
-                var interval = schedule.SlotIntervalMinutes <= 0 ? 15 : schedule.SlotIntervalMinutes;
-                while (cursor < schedule.WorkEndTime)
-                {
-                    var key = cursor.ToString("HH:mm");
-                    slots.Add(new
-                    {
-                        time = key,
-                        label = key,
-                        status = bookedSet.Contains(key) ? "booked" : "available"
-                    });
-                    cursor = cursor.AddMinutes(interval);
-                }
-            }
+                DoctorId = id,
+                AppointmentDate = day
+            });
 
             return Ok(new
             {
                 success = true,
                 data = new
                 {
-                    doctorId = id,
-                    appointmentDate = day,
-                    hasSchedule = schedule != null,
-                    intervalMinutes = schedule?.SlotIntervalMinutes ?? 0,
-                    slots
+                    doctorId = engine.DoctorId,
+                    appointmentDate = engine.AppointmentDate,
+                    hasSchedule = engine.HasSchedule,
+                    intervalMinutes = engine.IntervalMinutes,
+                    slots = engine.Slots.Select(s => new { time = s.Time, label = s.Label, status = s.Status })
                 }
             });
         }
@@ -226,14 +205,23 @@ namespace Niga_Domain.API.Controllers
                 return BadRequest(new { success = false, message = "AppointmentTime must be HH:mm." });
 
             var day = request.AppointmentDate.Date;
-            var clash = await _context.PatientAppointments.AnyAsync(a =>
-                a.DoctorId == id
-                && a.DeleteStatus != true
-                && a.AppointmentDate.HasValue
-                && a.AppointmentDate.Value.Date == day
-                && a.AppointmentTime == time);
-            if (clash)
-                return Conflict(new { success = false, message = "That slot is already booked." });
+            // Same slot engine as the staff calendar. A cancelled visit does not keep the slot.
+            var engine = await _appointments.GetAppointmentSlotsAsync(new GetAppointmentSlotsRequest
+            {
+                DoctorId = id,
+                AppointmentDate = day
+            });
+            if (!engine.HasSchedule)
+                return BadRequest(new { success = false, message = "Daily appointment schedule is not configured for this date." });
+            var match = engine.Slots.FirstOrDefault(s => TimeOnly.TryParse(s.Time, out var slotTime) && slotTime == time);
+            if (match == null)
+                return BadRequest(new { success = false, message = "Selected time is not a valid appointment slot." });
+            if (!string.Equals(match.Status, "available", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(match.Status, "booked", StringComparison.OrdinalIgnoreCase))
+                    return Conflict(new { success = false, message = "That slot is already booked." });
+                return BadRequest(new { success = false, message = "Selected time is " + match.Status + "." });
+            }
 
             var patient = await _context.Patients.FirstOrDefaultAsync(p =>
                 p.MobileNo == mobile && p.DeleteStatus != true);
@@ -268,10 +256,11 @@ namespace Niga_Domain.API.Controllers
                 Status = PatientsStatus.NotArrived.GetDisplayName(),
                 DeleteStatus = false,
                 BookingToken = token,
-                VisitType = string.IsNullOrWhiteSpace(request.VisitType) ? "InClinic" : request.VisitType.Trim(),
-                ConsultMode = string.IsNullOrWhiteSpace(request.ConsultMode) ? "InClinic" : request.ConsultMode.Trim(),
-                IsTele = request.IsTele,
+                VisitType = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType),
+                ConsultMode = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType),
+                IsTele = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType) == S3AppointmentRules.Tele,
                 PaymentStatus = "PENDING",
+                PayAtClinicAllowed = true,
                 HoldExpiresAt = DateTime.UtcNow.AddMinutes(15),
                 ConsentPolicyVersion = request.ConsentPolicyVersion ?? policy
             };
@@ -287,7 +276,9 @@ namespace Niga_Domain.API.Controllers
                     bookingToken = appt.BookingToken,
                     paymentStatus = appt.PaymentStatus,
                     holdExpiresAt = appt.HoldExpiresAt,
-                    consentPolicyVersion = appt.ConsentPolicyVersion
+                    consentPolicyVersion = appt.ConsentPolicyVersion,
+                    consultMode = appt.ConsultMode,
+                    consultFee = appt.IsTele == true ? doctor.ConsultFeeTele : doctor.ConsultFeeInClinic
                 }
             });
         }
@@ -302,6 +293,9 @@ namespace Niga_Domain.API.Controllers
                 .FirstOrDefaultAsync(a => a.BookingToken == bookingToken && a.DeleteStatus != true);
             if (appt == null)
                 return NotFound(new { success = false, message = "Booking not found." });
+
+            var feeDoctor = await _context.Doctors.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.DoctorId == appt.DoctorId);
 
             return Ok(new
             {
@@ -320,7 +314,8 @@ namespace Niga_Domain.API.Controllers
                     appt.IsTele,
                     appt.BookingToken,
                     appt.HoldExpiresAt,
-                    appt.ConsentPolicyVersion
+                    appt.ConsentPolicyVersion,
+                    consultFee = appt.IsTele == true ? feeDoctor?.ConsultFeeTele : feeDoctor?.ConsultFeeInClinic
                 }
             });
         }

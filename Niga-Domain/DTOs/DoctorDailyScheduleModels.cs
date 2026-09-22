@@ -18,6 +18,10 @@ namespace Niga_Domain.DTOs
         public TimeOnly WorkEndTime { get; set; }
 
         public bool IsLocked { get; set; } = true;
+
+        public TimeOnly? BreakStartTime { get; set; }
+
+        public TimeOnly? BreakEndTime { get; set; }
     }
 
     public class SaveDoctorDailyScheduleRequest
@@ -33,6 +37,10 @@ namespace Niga_Domain.DTOs
         public TimeOnly WorkEndTime { get; set; }
 
         public long CreatedByUserId { get; set; }
+
+        public TimeOnly? BreakStartTime { get; set; }
+
+        public TimeOnly? BreakEndTime { get; set; }
     }
 
     public class GetDoctorDailyScheduleRequest

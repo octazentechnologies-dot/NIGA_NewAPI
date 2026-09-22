@@ -16,6 +16,10 @@ public partial class DoctorDailySchedule
 
     public TimeOnly WorkEndTime { get; set; }
 
+    public TimeOnly? BreakStartTime { get; set; }
+
+    public TimeOnly? BreakEndTime { get; set; }
+
     public long CreatedByUserId { get; set; }
 
     public DateTime CreatedAt { get; set; }

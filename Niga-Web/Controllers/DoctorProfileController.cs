@@ -35,7 +35,15 @@ namespace Niga_Domain.API.Controllers
 
             var dto = await MapAsync(doctor);
             if (deny != null)
+            {
                 dto.Kyc = null;
+                dto.ConsultFeeInClinic = null;
+                dto.ConsultFeeTele = null;
+                dto.QualificationId = null;
+                dto.QualificationName = null;
+                dto.PassingUniversity = null;
+                dto.PassingCertNo = null;
+            }
             return Ok(new { success = true, data = dto });
         }
 

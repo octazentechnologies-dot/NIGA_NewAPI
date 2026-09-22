@@ -17,9 +17,9 @@ Skipped: QA, Mobile UI, Mobile Frontend. Excel status ignored.
 | SEC-04 | Old-API | `POST /api/Account/Login pharmacy` | 200 | 200 | PASS | Tufan_Pharmacy |
 | CLN-02.02 | Old-API | `POST /api/Account/Login` | 200 | 200 | PASS | reception Tufan_Reception ok |
 | ADM-B04.02 | New-API | `GET /api/mastersAPI/GetMenuByRole Tufan_Doctor` | 200 | 200 | PASS | [{"menuId":10,"moduleId":4,"moduleName":null,"menuName":"Dashboard","menuNameMar |
-| ADM-B04.02 | New-API | `GET GetMenuByRole Tufan_Doctor extras` | >=20 | 66 | PASS | menus=66 |
+| ADM-B04.02 | New-API | `GET GetMenuByRole Tufan_Doctor extras` | >=20 | 69 | PASS | menus=69 |
 | ADM-B04.02 | New-API | `GET /api/mastersAPI/GetMenuByRole testdoctor` | 200 | 200 | PASS | [{"menuId":10,"moduleId":4,"moduleName":null,"menuName":"Dashboard","menuNameMar |
-| ADM-B04.02 | New-API | `GET GetMenuByRole testdoctor core-only` | <20 | 5 | PASS | menus=5 |
+| ADM-B04.02 | New-API | `GET GetMenuByRole testdoctor core-only` | <20 | 8 | PASS | menus=8 |
 | SEC-09 | New-API | `POST /api/Diagnostics/ClientError` | 200 | 200 | PASS | {"success":true} |
 | SEC-09 | New-API | `FILE ErrorAlert who/when/where log` | user+browser+device | 200 | PASS | who=True device=True |
 | WEB-03.02 | New-API | `GET /api/Public/Doctors` | 200 | 200 | PASS | {"success":true,"pageNumber":1,"pageSize":20,"totalRecords":9,"data":[{"doctorId |
@@ -42,16 +42,16 @@ Skipped: QA, Mobile UI, Mobile Frontend. Excel status ignored.
 | PAT-09.02 | New-API | `GET /api/PatientPortal/CareCategories` | 200 | 200 | PASS | {"success":true,"data":[{"id":9,"name":"Abdomen","description":"S2-TESTED abdome |
 | PAT-02.02 | New-API | `GET /api/Welcome/Patient` | 200 | 200 | PASS | {"success":true,"data":{"version":"1","audience":"Patient","slides":[{"welcomeSl |
 | PAT-01.02 | New-API | `GET /api/mastersAPI/GetLanguages` | 200 | 200 | PASS | [{"languageId":1,"languageName":"English","description":"English Language ","isD |
-| WEB-04.02 | New-API | `POST /api/PatientAuth/RequestOtp` | 200 | 200 | PASS | {"success":true,"otpChallengeId":54,"expiresAt":"2026-09-22T03:36:54.3961486Z"," |
-| WEB-04.02 | New-API | `POST /api/PatientAuth/VerifyOtp` | 200 | 200 | PASS | {"success":true,"bookingSessionId":54,"mobile":"9000011122"} |
-| WEB-04.02 | New-API | `POST /api/Public/Doctors/4/Bookings` | [200, 201, 409, 400] | 409 | PASS | {"success":false,"message":"That slot is already booked."} |
-| WEB-04.02 | New-API | `POST Bookings` | token | 409 | PASS | {"success":false,"message":"That slot is already booked."} |
+| WEB-04.02 | New-API | `POST /api/PatientAuth/RequestOtp` | 200 | 200 | PASS | {"success":true,"otpChallengeId":71,"expiresAt":"2026-09-22T12:38:31.2269981Z"," |
+| WEB-04.02 | New-API | `POST /api/PatientAuth/VerifyOtp` | 200 | 200 | PASS | {"success":true,"bookingSessionId":71,"mobile":"9000011122"} |
+| WEB-04.02 | New-API | `POST /api/Public/Doctors/4/Bookings` | [200, 201, 409, 400] | 400 | PASS | {"success":false,"message":"Daily appointment schedule is not configured for thi |
+| WEB-04.02 | New-API | `POST Bookings` | token | 400 | PASS | {"success":false,"message":"Daily appointment schedule is not configured for thi |
 | WEB-09.02 | New-API | `GET /api/users/RegistrationStatus` | 200 | 200 | PASS | {"success":true,"found":true,"activated":true,"verificationStatus":"Pending","di |
 | WEB-09.02 | New-API | `POST /api/users/RegisterDoctor` | 400 | 400 | PASS | {"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or mor |
 | WEB-10.02 | New-API | `POST /api/users/ActivateByToken` | [400, 410] | 400 | PASS | "Invalid or already used activation link" |
 | WEB-10.02 | New-API | `POST /api/users/ResendActivation` | 200 | 200 | PASS | {"success":true,"message":"If the account exists and is not activated, an email  |
-| WEB-06.02 | New-API | `POST /api/Enquiry` | [200, 201] | 200 | PASS | {"success":true,"data":{"enquiryId":39,"ticketStatus":"New"}} |
-| WEB-06.02 | New-API | `GET /api/Enquiry` | [200, 401, 403] | 200 | PASS | {"success":true,"data":[{"enquiryId":39,"enquiryName":"S2 Live","enquiryDate":"2 |
+| WEB-06.02 | New-API | `POST /api/Enquiry` | [200, 201] | 200 | PASS | {"success":true,"data":{"enquiryId":46,"ticketStatus":"New"}} |
+| WEB-06.02 | New-API | `GET /api/Enquiry` | [200, 401, 403] | 200 | PASS | {"success":true,"data":[{"enquiryId":46,"enquiryName":"S2 Live","enquiryDate":"2 |
 | WEB-06.02 | Old-API | `POST /api/EnquiryDetail` | [200, 201, 400] | 200 | PASS | "Enquiry Details saved Successfully" |
 | DOC-10.02 | New-API | `GET /api/Profile/Me` | 200 | 200 | PASS | {"success":true,"data":{"doctorId":1010,"userId":10032,"firstName":"Tufan","midd |
 | DOC-10.02 | New-API | `GET /api/Profile/Me/Credentials` | [200, 404] | 200 | PASS | {"success":true,"data":{"doctorId":1010,"doctorVerificationId":10,"status":"Appr |
@@ -62,7 +62,7 @@ Skipped: QA, Mobile UI, Mobile Frontend. Excel status ignored.
 | CLN-13.02 | New-API | `POST /api/Repertorization/CenterOfGravity` | 200 | 200 | PASS | {"success":true,"data":[],"message":"Empty clipboard."} |
 | CLN-13.02 | New-API | `POST /api/RepertorizationPage/CenterOfGravity` | 200 | 200 | PASS | {"success":true,"data":[],"message":"Empty clipboard."} |
 | DOC-09.01 | New-API | `GET /api/ReceptionStaff/GetReceptionStaffList` | 200 | 200 | PASS | {"success":false,"message":"DoctorUserID is required."} |
-| CLN-18.01 | New-API | `GET /api/patient/ExportCasesToExcel` | [200, 404] | 200 | PASS | PK    G6]����   �     xl/workbook.xml�PMo�0�+��#��TQ8��i��v�C#����� |
+| CLN-18.01 | New-API | `GET /api/patient/ExportCasesToExcel` | [200, 404] | 200 | PASS | PK    Q�6]����   �     xl/workbook.xml�PMo�0�+��#��TQ8��i��v�C#����� |
 | CLN-18.01 | New-API | `GET /api/patient/ExportCaseToPdf/1/1` | [200, 403, 404] | 403 | PASS | {"success":false,"message":"Access denied for this doctor resource."} |
 | CLN-18.01 | New-API | `GET /api/doctorDashBoard/ExportPatients` | [200, 400, 404] | 200 | PASS | ﻿Patient ID,Case ID,Patient Name,Date of Birth,Age,Gender,Address,State,Country, |
 | DOC-06.01 | New-API | `NOTE ExportPatients formats` | csv/excel/pdf | csv | PASS | csv today exercised; excel/pdf skipped (large export can stall Kestrel) |
@@ -70,7 +70,7 @@ Skipped: QA, Mobile UI, Mobile Frontend. Excel status ignored.
 | CLN-19.03 | New-API | `GET /api/PatientBoardBackup/Summary` | [200, 404, 405] | 200 | PASS | {"success":true,"message":"Backup summary retrieved.","resultObject":{"hasBackup |
 | CLN-19.03 | New-API | `GET /api/PatientBoardBackup/Latest` | [200, 404, 405] | 200 | PASS | {"success":true,"message":"Backup retrieved successfully.","resultObject":{"back |
 | DMO-06.02 | New-API | `POST /api/Device/Register` | [200, 201, 400] | 400 | PASS | {"success":false,"message":"Platform must be FCM or APNs."} |
-| DMO-06.02 | New-API | `POST /api/Device/Register FCM` | [200, 201] | 200 | PASS | {"success":true,"data":{"devicePushTokenId":32,"platform":"FCM","deviceId":"s2-l |
+| DMO-06.02 | New-API | `POST /api/Device/Register FCM` | [200, 201] | 200 | PASS | {"success":true,"data":{"devicePushTokenId":36,"platform":"FCM","deviceId":"s2-l |
 | DMO-06.02 | New-API | `POST /api/Device/Unregister` | [200, 400, 404] | 200 | PASS | {"success":true,"message":"Unregistered."} |
 | DOC-08.03 | New-API | `GET /api/doctorDashBoard/GetPatientStats` | [200, 400, 404] | 200 | PASS | {"patientAppId":0,"appointmentDate":null,"status":null,"userId":0,"doctorId":0," |
 | WEB-09.02 | New-API | `POST /api/users/RegisterDoctorWithDocuments` | [400, 415] | 415 | PASS |  |
@@ -89,9 +89,9 @@ Skipped: QA, Mobile UI, Mobile Frontend. Excel status ignored.
 | PAT-06.02 | New-API | `GET /api/Family/CanBookAs/3047` | [200, 400, 404] | 200 | PASS | {"success":true,"allowed":true,"reason":"family"} |
 | PAT-07.02 | New-API | `GET /api/Caregiver/Me` | [200, 404] | 200 | PASS | {"success":true,"data":{"ownerPatientId":3046,"ownerPatientName":"Tufan Patient" |
 | PAT-07.02 | New-API | `GET /api/Caregiver/Lookup` | [200, 400, 404] | 200 | PASS | {"success":true,"data":{"caregiverUserId":10020,"displayName":"Tufan Powar","con |
-| PAT-07.02 | New-API | `GET /api/Caregiver/ListMine` | [200, 404] | 200 | PASS | {"success":true,"data":[{"caregiverAuthorizationId":15,"patientId":3046,"patient |
+| PAT-07.02 | New-API | `GET /api/Caregiver/ListMine` | [200, 404] | 200 | PASS | {"success":true,"data":[{"caregiverAuthorizationId":16,"patientId":3046,"patient |
 | PAT-07.02 | New-API | `GET /api/Caregiver/ListActingFor` | [200, 404] | 200 | PASS | {"success":true,"data":[]} |
-| PAT-05.02 | New-API | `GET /api/Consent/PrivacyStatus` | [200, 404] | 200 | PASS | {"success":true,"data":{"required":true,"granted":false,"consentRecordId":null," |
+| PAT-05.02 | New-API | `GET /api/Consent/PrivacyStatus` | [200, 404] | 200 | PASS | {"success":true,"data":{"required":true,"granted":true,"consentRecordId":45,"gra |
 | PAT-04.02 | New-API | `GET /api/PatientProfile/Me` | [200, 404] | 200 | PASS | {"success":true,"data":{"userId":10033,"firstName":"Tufan","lastName":"Patient", |
 | CLN-02.02 | New-API | `POST /api/Repertorization/CenterOfGravity` | 403 | 403 | PASS | {"success":false,"message":"Only the treating doctor can run case taking."} |
 | DOC-10.02 | New-API | `GET /api/Profile/Me` | [200, 403, 404] | 404 | PASS | {"success":false,"message":"Doctor profile not found for this user."} |

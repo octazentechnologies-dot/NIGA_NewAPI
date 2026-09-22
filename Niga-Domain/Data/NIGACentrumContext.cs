@@ -654,6 +654,7 @@ namespace Niga_Domain.Data
             entity.ToTable("CaseEntryChiefComplaint");
 
             entity.Property(e => e.ChiefComplaintName).HasMaxLength(500);
+            entity.Property(e => e.CreatedByRole).HasMaxLength(30);
 
             entity.HasOne(d => d.Case).WithMany(p => p.CaseEntryChiefComplaints)
                 .HasForeignKey(d => d.CaseId)
@@ -1085,6 +1086,8 @@ namespace Niga_Domain.Data
             entity.Property(e => e.ScheduleDate).HasColumnType("date");
             entity.Property(e => e.WorkStartTime).HasColumnType("time(0)");
             entity.Property(e => e.WorkEndTime).HasColumnType("time(0)");
+            entity.Property(e => e.BreakStartTime).HasColumnType("time(0)");
+            entity.Property(e => e.BreakEndTime).HasColumnType("time(0)");
             entity.Property(e => e.CreatedAt).HasColumnType("datetime2(0)");
 
             entity.HasOne(d => d.Doctor).WithMany()
@@ -2412,6 +2415,12 @@ namespace Niga_Domain.Data
             entity.Property(e => e.ConsultMode).HasMaxLength(50);
             entity.Property(e => e.PaymentStatus).HasMaxLength(30);
             entity.Property(e => e.ConsentPolicyVersion).HasMaxLength(20);
+            entity.Property(e => e.CancelReasonCode).HasMaxLength(40);
+            entity.Property(e => e.CancelReasonText).HasMaxLength(500);
+            entity.Property(e => e.CancelledAt).HasColumnType("datetime");
+            entity.Property(e => e.PaymentMethod).HasMaxLength(30);
+            entity.Property(e => e.BookingChannel).HasMaxLength(30);
+            entity.Property(e => e.CalledAt).HasColumnType("datetime");
 
             entity.HasOne(d => d.Doctor).WithMany(p => p.PatientAppointments)
                 .HasForeignKey(d => d.DoctorId)

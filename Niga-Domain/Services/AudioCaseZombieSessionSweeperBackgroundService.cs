@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -61,6 +62,10 @@ public class AudioCaseZombieSessionSweeperBackgroundService : BackgroundService
                         _options.ZombieSessionStaleMinutes);
                 }
             }
+            catch (Exception ex) when (IsSqlTimeout(ex))
+            {
+                _logger.LogWarning("Audio case zombie session sweep skipped because SQL was busy. The next interval will retry.");
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Audio case zombie session sweep failed.");
@@ -75,5 +80,15 @@ public class AudioCaseZombieSessionSweeperBackgroundService : BackgroundService
                 break;
             }
         }
+    }
+
+    private static bool IsSqlTimeout(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            if (current is SqlException sql && sql.Number == -2)
+                return true;
+        }
+        return false;
     }
 }

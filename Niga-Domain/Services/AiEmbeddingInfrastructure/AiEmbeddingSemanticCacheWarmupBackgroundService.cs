@@ -52,20 +52,41 @@ public class AiEmbeddingSemanticCacheWarmupBackgroundService : BackgroundService
             "Semantic embedding cache warmup scheduled in {DelaySeconds}s. Audio analysis will wait until warmup completes.",
             delay.TotalSeconds);
 
+        Exception? lastError = null;
         try
         {
             await Task.Delay(delay, stoppingToken);
-            await WarmupAsync(stoppingToken);
+            for (var attempt = 1; attempt <= 2; attempt++)
+            {
+                try
+                {
+                    await WarmupAsync(stoppingToken);
+                    lastError = null;
+                    break;
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                    if (attempt == 2)
+                        break;
+                    _logger.LogWarning(ex, "Semantic embedding cache warmup attempt 1 failed. Retrying once.");
+                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                }
+            }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // shutdown
+            return;
         }
-        catch (Exception ex)
+
+        if (lastError != null)
         {
-            // Warmup is best-effort. ERROR here emails ErrorAlert and can starve login SQL.
-            _logger.LogWarning(ex, "Semantic embedding cache warmup failed.");
-            _readiness.MarkFailed(ex.Message);
+            _logger.LogWarning(lastError, "Semantic embedding cache warmup failed.");
+            _readiness.MarkFailed(lastError.Message);
         }
     }
 

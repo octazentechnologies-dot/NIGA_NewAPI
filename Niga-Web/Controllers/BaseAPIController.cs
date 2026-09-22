@@ -33,6 +33,8 @@ namespace Niga_Domain.API.Controllers
                         return StatusCode(StatusCodes.Status503ServiceUnavailable, "Service  not available for this user");
                     case HttpStatusCode.NotFound:
                         return StatusCode(StatusCodes.Status404NotFound, "Record Not found");
+                    case HttpStatusCode.Conflict:
+                        return StatusCode(StatusCodes.Status409Conflict, errorMessage);
                     default:
                         return BadRequest(errorMessage);
                 }

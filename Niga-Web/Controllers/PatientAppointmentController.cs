@@ -147,12 +147,16 @@ namespace Niga_Domain.API.Controllers
                 if (jwtDoctorId.HasValue && (PatientAppointmentModel.DoctorId <= 0))
                     PatientAppointmentModel.DoctorId = jwtDoctorId.Value;
 
-                var forbid = DoctorOwnership.ForbidIfNotOwner(User, PatientAppointmentModel.DoctorId);
-                if (forbid != null)
-                    return forbid;
-
-                // CON-01.02 / CON-02.02 — patient/caregiver booking authorisation
+                // CON-01.02 — a patient books only their own record. Doctor ownership applies to clinic staff.
                 var roleName = AdminAuthorizationPolicies.GetRoleName(User) ?? string.Empty;
+                var isPatientSide = roleName.Equals("Patient", StringComparison.OrdinalIgnoreCase)
+                    || roleName.Equals("Caregiver", StringComparison.OrdinalIgnoreCase);
+                if (!isPatientSide)
+                {
+                    var forbid = DoctorOwnership.ForbidIfNotOwner(User, PatientAppointmentModel.DoctorId);
+                    if (forbid != null)
+                        return forbid;
+                }
                 var isClinicStaff =
                     DoctorOwnership.IsAdminPortalUser(User)
                     || roleName.Equals("Doctor", StringComparison.OrdinalIgnoreCase)
@@ -286,6 +290,10 @@ namespace Niga_Domain.API.Controllers
                     return BadRequest("Invalid request data");
                 }
 
+                var timeGuard = GuardAppointment(model.PatientAppId, allowPatient: false);
+                if (timeGuard != null)
+                    return timeGuard;
+
                 var result = _PatientAppointmentService.UpdateAppointmentTime(model, ref errorResponseModel);
 
                 if (result != null)
@@ -366,6 +374,14 @@ namespace Niga_Domain.API.Controllers
                     return BadRequest("ScheduleDate is required");
                 }
 
+                var scheduleRole = DoctorOwnership.GetRoleName(User);
+                if (!string.IsNullOrWhiteSpace(scheduleRole)
+                    && scheduleRole.Equals("Reception", StringComparison.OrdinalIgnoreCase))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { success = false, message = "Reception schedule is read-only." });
+                }
+
                 if (request.CreatedByUserId <= 0)
                 {
                     return BadRequest("CreatedByUserId is required");
@@ -435,6 +451,10 @@ namespace Niga_Domain.API.Controllers
                     return BadRequest("Invalid request data");
                 }
 
+                var statusGuard = GuardAppointment(model.PatientAppId, allowPatient: false);
+                if (statusGuard != null)
+                    return statusGuard;
+
                 var result = _PatientAppointmentService
                     .UpdateAppointmentStatus(model, ref errorResponseModel);
 
@@ -449,6 +469,99 @@ namespace Niga_Domain.API.Controllers
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
             }
+        }
+
+        [HttpPost("/api/PatientAppointment/RescheduleAppointment")]
+        public async Task<IActionResult> RescheduleAppointment([FromBody] RescheduleAppointmentRequest request)
+        {
+            if (request == null || request.PatientAppId <= 0)
+                return BadRequest(new { success = false, message = "PatientAppId is required." });
+            var guard = GuardAppointment(request.PatientAppId, allowPatient: true);
+            if (guard != null)
+                return guard;
+            var result = await _PatientAppointmentService.RescheduleAppointmentAsync(
+                request, User.GetUserId(), DoctorOwnership.GetRoleName(User));
+            return StatusCode(result.StatusCode, result);
+        }
+
+        [HttpPost("/api/PatientAppointment/CancelAppointment")]
+        public async Task<IActionResult> CancelAppointment([FromBody] CancelAppointmentRequest request)
+        {
+            if (request == null || request.PatientAppId <= 0)
+                return BadRequest(new { success = false, message = "PatientAppId is required." });
+            var guard = GuardAppointment(request.PatientAppId, allowPatient: true);
+            if (guard != null)
+                return guard;
+            var result = await _PatientAppointmentService.CancelAppointmentAsync(
+                request, User.GetUserId(), DoctorOwnership.GetRoleName(User));
+            return StatusCode(result.StatusCode, result);
+        }
+
+        [HttpGet("/api/PatientAppointment/ChangeLog/{patientAppId:int}")]
+        public async Task<IActionResult> ChangeLog(int patientAppId)
+        {
+            var guard = GuardAppointment(patientAppId, allowPatient: true);
+            if (guard != null)
+                return guard;
+            var rows = await _PatientAppointmentService.GetChangeLogAsync(patientAppId);
+            return Ok(new { success = true, data = rows });
+        }
+
+        [HttpPatch("/api/PatientAppointment/{patientAppId:int}/VisitType")]
+        public async Task<IActionResult> PatchVisitType(int patientAppId, [FromBody] PatchVisitTypeRequest request)
+        {
+            var guard = GuardAppointment(patientAppId, allowPatient: false);
+            if (guard != null)
+                return guard;
+            var result = await _PatientAppointmentService.PatchVisitTypeAsync(
+                patientAppId, request?.VisitType, request?.ConsultMode);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        [HttpGet("/api/PatientAppointment/Queue")]
+        public async Task<IActionResult> Queue()
+        {
+            var doctorId = DoctorOwnership.GetDoctorId(User);
+            if (!doctorId.HasValue)
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Doctor context is required." });
+            var rows = await _PatientAppointmentService.GetQueueAsync(doctorId.Value);
+            return Ok(new { success = true, data = rows });
+        }
+
+        [HttpPost("/api/PatientAppointment/CallNext")]
+        public async Task<IActionResult> CallNext()
+        {
+            var doctorId = DoctorOwnership.GetDoctorId(User);
+            if (!doctorId.HasValue)
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Doctor context is required." });
+            var result = await _PatientAppointmentService.CallNextAsync(doctorId.Value);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        private IActionResult? GuardAppointment(long patientAppId, bool allowPatient)
+        {
+            var row = _context.PatientAppointments.AsNoTracking()
+                .Where(a => a.PatientAppId == patientAppId && a.DeleteStatus != true)
+                .Select(a => new { a.DoctorId, a.PatientId })
+                .FirstOrDefault();
+            if (row == null)
+                return NotFound(new { success = false, message = "Appointment not found" });
+            if (DoctorOwnership.EnsureDoctorOwns(User, row.DoctorId))
+                return null;
+            if (allowPatient)
+            {
+                var role = DoctorOwnership.GetRoleName(User) ?? string.Empty;
+                if (role.Equals("Patient", StringComparison.OrdinalIgnoreCase))
+                {
+                    var userId = (long)User.GetUserId();
+                    var owns = _context.PatientUserMaps.Any(m =>
+                        m.UserId == userId && m.PatientId == row.PatientId && !m.DeleteStatus);
+                    if (owns)
+                        return null;
+                }
+            }
+
+            return DoctorOwnership.ForbidIfNotOwner(User, row.DoctorId);
         }
 
         private bool TryValidateAppointmentListPagination(

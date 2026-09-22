@@ -4,9 +4,8 @@ Author       : Tufan Powar
 Created      : 21-09-2026
 Script       : 17_DEV_Tufan_Contact_Email_Mobile.sql
 Purpose      : Put tufanpowar001@gmail.com / 7768046064 on Tufan_Patient (and
-               Tufan_Reception staff row). Other Tufan_* UserMaster rows keep
-               unique emails/mobiles because LoginWithOtp and ForgotPassword
-               resolve the first matching UserMaster row.
+               Tufan_Reception staff row). Newly created Tufan role users use
+               tufanpowar001@gmail.com. Do not write tufan.seed001@homeocentrum.dev.
 Use          : HomeoCentrum_Dev only. Idempotent.
 Do not run   : Production.
 ================================================================================
@@ -34,18 +33,16 @@ BEGIN
     PRINT 'UPDATED tufanpowar001@gmail.com MobileNo -> 9000000101 (OTP uniqueness)';
 END
 
-IF EXISTS (
-    SELECT 1 FROM dbo.UserMaster
-    WHERE UserName = N'tufanpowar001@gmail.com'
-      AND ISNULL(DeleteStatus, 0) = 0
-      AND EmailId = N'tufanpowar001@gmail.com'
-)
-BEGIN
-    UPDATE dbo.UserMaster
-    SET EmailId = N'tufan.seed001@homeocentrum.dev'
-    WHERE UserName = N'tufanpowar001@gmail.com' AND ISNULL(DeleteStatus, 0) = 0;
-    PRINT 'UPDATED tufanpowar001@gmail.com EmailId -> tufan.seed001@homeocentrum.dev (OTP uniqueness)';
-END
+UPDATE dbo.UserMaster
+SET EmailId = N'tufanpowar001@gmail.com'
+WHERE ISNULL(DeleteStatus, 0) = 0
+  AND (
+        UserName IN (N'Tufan_Admin', N'Tufan_Doctor', N'Tufan_Account', N'Tufan_Pharmacy', N'Tufan_Caregiver', N'Tufan_Patient', N'Tufan_NoMenu', N'tufanpowar001@gmail.com')
+        OR EmailId = N'tufan.seed001@homeocentrum.dev'
+        OR EmailId LIKE N'tufan.%@homeocentrum.dev'
+      )
+  AND UserName NOT IN (N'admin', N'NIGA HOMEOPATHY', N'demotestuser', N'NikamGourav', N'riyasawalkar', N'string1', N'Gourav7468', N'testdoctor');
+PRINT CONCAT('UPDATED Tufan role EmailId rows=', @@ROWCOUNT);
 
 IF OBJECT_ID(N'dbo.Patient', N'U') IS NOT NULL
    AND EXISTS (SELECT 1 FROM dbo.Patient WHERE PatientId = 3033 AND MobileNo = N'7768046064')
@@ -92,6 +89,6 @@ END
 COMMIT TRAN;
 
 PRINT '17_DEV_Tufan_Contact_Email_Mobile.sql completed.';
-PRINT 'Shared contact on Tufan_Patient (+ reception staff Email/Contact).';
-PRINT 'Other Tufan_* UserMaster emails/mobiles stay unique.';
+PRINT 'Tufan role users and reception staff use tufanpowar001@gmail.com.';
+PRINT 'Listed existing users were not changed.';
 GO

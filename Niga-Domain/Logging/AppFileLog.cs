@@ -16,6 +16,13 @@ namespace Niga_Domain.Logging
     {
         /// <summary>When false, runtime alert emails are not sent.</summary>
         public bool Enabled { get; set; } = true;
+
+        /// <summary>
+        /// When true, one matrix email is sent at local midnight for the calendar day that just ended.
+        /// Independent of <see cref="Enabled"/>: instant alerts and the daily matrix can be switched separately.
+        /// </summary>
+        public bool DailyMatrixEnabled { get; set; } = true;
+
         public string[] Recipients { get; set; } = Array.Empty<string>();
         public int CooldownMinutes { get; set; } = 10;
     }
@@ -44,6 +51,9 @@ namespace Niga_Domain.Logging
         public static string LogsDirectory => _root;
         public static bool IsFileEnabled => _file?.Enabled == true;
         public static bool IsAlertEnabled => _alert?.Enabled == true;
+
+        /// <summary>ErrorAlert:DailyMatrixEnabled. Default on when the section is missing.</summary>
+        public static bool IsDailyMatrixEnabled => _alert?.DailyMatrixEnabled == true;
 
         public static void SetRequestSnapshot(Dictionary<string, string>? details)
             => RequestSnapshot.Value = details;
@@ -193,18 +203,9 @@ namespace Niga_Domain.Logging
                 }
             }
 
-            var who = First(merged, "UserName", "DisplayName", "User", "ClientUserName");
-            var browser = First(merged, "Browser");
-            var device = First(merged, "DeviceName");
-            var subject = "[" + _application + "] " + level + " — " + category;
-            if (!string.IsNullOrWhiteSpace(who))
-                subject += " user=" + who;
-            if (!string.IsNullOrWhiteSpace(browser))
-                subject += " " + browser;
-            if (!string.IsNullOrWhiteSpace(device))
-                subject += " / " + device;
-            if (merged.TryGetValue("Method", out var method) && merged.TryGetValue("Path", out var path))
-                subject += " " + method + " " + Truncate(path, 80);
+            var source = string.Equals(category, "UI", StringComparison.OrdinalIgnoreCase) ? "UI" : "New API";
+            merged["Source"] = source;
+            var subject = "Homeocentrum Runtime ERROR - " + source + " - " + DateTime.Now.ToString("dd-MMM-yyyy HH:mm:ss");
 
             var body = BuildAlertHtml(level, category, message, ex, merged);
             var sender = new EmailSenderService();
@@ -221,6 +222,37 @@ namespace Niga_Domain.Logging
                 {
                     Write("errors", "WARN", "ErrorAlert",
                         "Alert email failed to " + to + ": " + sender.LastError,
+                        sendAlert: false);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Midnight matrix. Subject stays "Homeocentrum Runtime ERROR - {host} - {local time}".
+        /// The type split (UI vs this API) and the counts are in the body.
+        /// </summary>
+        public static void SendDailyMatrix(DateTime day, string hostSource)
+        {
+            if (!IsDailyMatrixEnabled || _alert.Recipients == null || _alert.Recipients.Length == 0 || _smtp == null)
+                return;
+
+            var rows = DailyIssueMatrix.Read(_root, day, hostSource);
+            var body = DailyIssueMatrix.ToHtml(day, hostSource, rows);
+            var subject = "Homeocentrum Runtime ERROR - " + hostSource + " - " + DateTime.Now.ToString("dd-MMM-yyyy HH:mm:ss");
+            var sender = new EmailSenderService();
+            foreach (var to in _alert.Recipients.Where(x => !string.IsNullOrWhiteSpace(x)))
+            {
+                var ok = sender.SendMail(new EmailSenderModel
+                {
+                    ToAddress = to.Trim(),
+                    Subject = subject,
+                    Body = body,
+                    isHtml = true
+                }, _smtp);
+                if (!ok)
+                {
+                    Write("errors", "WARN", "ErrorAlert",
+                        "Daily matrix email failed to " + to + ": " + sender.LastError,
                         sendAlert: false);
                 }
             }
@@ -267,6 +299,7 @@ namespace Niga_Domain.Logging
             OpenSectionCell(sb);
             RenderKvTable(sb, "Summary", new[]
             {
+                Kv("Source", Val(details, "Source", "New API")),
                 Kv("Level", Val(details, "Level", level)),
                 Kv("Category", Val(details, "Category", category)),
                 Kv("Application", Dash(Val(details, "Application"))),

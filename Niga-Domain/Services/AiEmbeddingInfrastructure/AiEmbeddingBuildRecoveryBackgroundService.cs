@@ -50,6 +50,10 @@ public class AiEmbeddingBuildRecoveryBackgroundService : BackgroundService
         {
             return;
         }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Embedding build recovery startup check failed. Periodic checks will retry.");
+        }
 
         if (!_options.EnableAutoResumeEmbeddingBuildOnStartup
             || _options.AutoResumeCheckIntervalHours <= 0)
@@ -142,10 +146,21 @@ public class AiEmbeddingBuildRecoveryBackgroundService : BackgroundService
 
             if (!rubricResult.Success)
             {
-                _logger.LogWarning(
-                    "Auto-resume rubric build failed ({Trigger}): {Error}",
-                    trigger,
-                    rubricResult.Error);
+                if (string.Equals(rubricResult.Error, "Embedding API is not configured.", StringComparison.Ordinal))
+                {
+                    _logger.LogInformation(
+                        "Embedding auto-resume skipped ({Trigger}): API key is not set. {RubricCount} of {CatalogCount} rubrics are already stored.",
+                        trigger,
+                        rubricCount,
+                        catalogCount);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Auto-resume rubric build failed ({Trigger}): {Error}",
+                        trigger,
+                        rubricResult.Error);
+                }
                 return;
             }
 

@@ -11,5 +11,7 @@ public partial class CaseEntryChiefComplaint
 
     public string? ChiefComplaintName { get; set; }
 
+    public string? CreatedByRole { get; set; }
+
     public virtual CaseEntryDetail? Case { get; set; }
 }

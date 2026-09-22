@@ -10,7 +10,8 @@ namespace Niga_Domain.Helpers
         public static byte[] Build(string title, IEnumerable<string> lines)
         {
             using var stream = new MemoryStream();
-            using var writer = new PdfWriter(stream);
+            var writer = new PdfWriter(stream);
+            writer.SetCloseStream(false);
             using var pdf = new PdfDocument(writer);
             using var document = new Document(pdf, PageSize.A4);
             document.SetMargins(36, 36, 36, 36);

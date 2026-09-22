@@ -45,5 +45,17 @@ namespace Niga_Domain.Interfaces
             SaveDoctorDailyScheduleRequest request);
 
         Task<AppointmentSlotsResponse> GetAppointmentSlotsAsync(GetAppointmentSlotsRequest request);
+
+        Task<AppointmentMutationResult> RescheduleAppointmentAsync(RescheduleAppointmentRequest request, long byUserId, string? byRole);
+
+        Task<AppointmentMutationResult> CancelAppointmentAsync(CancelAppointmentRequest request, long byUserId, string? byRole);
+
+        Task<List<AppointmentChangeLogItem>> GetChangeLogAsync(int patientAppId);
+
+        Task<AppointmentMutationResult> PatchVisitTypeAsync(int patientAppId, string? visitType, string? consultMode);
+
+        Task<AppointmentMutationResult> CallNextAsync(int doctorId);
+
+        Task<List<PatientAppointmentModel>> GetQueueAsync(int doctorId);
     }
 }
