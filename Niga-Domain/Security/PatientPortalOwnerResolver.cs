@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Niga_Domain.Data;
 using Niga_Domain.Master;
@@ -18,6 +20,8 @@ public sealed class PatientPortalOwner
 
 public static class PatientPortalOwnerResolver
 {
+    private static readonly ConcurrentDictionary<long, SemaphoreSlim> CreateGates = new();
+
     public static async Task<PatientPortalOwner?> ResolveAsync(
         NIGACentrumContext db,
         long userId,
@@ -35,23 +39,9 @@ public static class PatientPortalOwnerResolver
                 return acting;
         }
 
-        var map = await db.PatientUserMaps
-            .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus && m.IsPrimary, cancellationToken)
-            ?? await db.PatientUserMaps
-                .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus, cancellationToken);
-
-        if (map != null)
-        {
-            var linked = await db.Patients.AsNoTracking()
-                .FirstOrDefaultAsync(p => p.PatientId == map.PatientId && p.DeleteStatus != true, cancellationToken);
-            return new PatientPortalOwner
-            {
-                PatientId = map.PatientId,
-                PatientName = linked?.PatientName,
-                OwnerUserId = userId,
-                IsActingAsCaregiver = false
-            };
-        }
+        var existing = await FindMappedOwnerAsync(db, userId, cancellationToken);
+        if (existing != null)
+            return existing;
 
         if (!preferActingFor)
         {
@@ -100,7 +90,53 @@ public static class PatientPortalOwnerResolver
         };
     }
 
+    private static async Task<PatientPortalOwner?> FindMappedOwnerAsync(
+        NIGACentrumContext db,
+        long userId,
+        CancellationToken cancellationToken)
+    {
+        var map = await db.PatientUserMaps
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus && m.IsPrimary, cancellationToken)
+            ?? await db.PatientUserMaps
+                .AsNoTracking()
+                .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus, cancellationToken);
+        if (map == null)
+            return null;
+
+        var linked = await db.Patients.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.PatientId == map.PatientId && p.DeleteStatus != true, cancellationToken);
+        return new PatientPortalOwner
+        {
+            PatientId = map.PatientId,
+            PatientName = linked?.PatientName,
+            OwnerUserId = userId,
+            IsActingAsCaregiver = false
+        };
+    }
+
     private static async Task<PatientPortalOwner?> CreatePrimaryAsync(
+        NIGACentrumContext db,
+        long userId,
+        CancellationToken cancellationToken)
+    {
+        var gate = CreateGates.GetOrAdd(userId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var raced = await FindMappedOwnerAsync(db, userId, cancellationToken);
+            if (raced != null)
+                return raced;
+
+            return await InsertPrimaryAsync(db, userId, cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static async Task<PatientPortalOwner?> InsertPrimaryAsync(
         NIGACentrumContext db,
         long userId,
         CancellationToken cancellationToken)
@@ -177,7 +213,18 @@ public static class PatientPortalOwnerResolver
             EnteredBy = userId.ToString(),
             EnteredDate = DateTime.UtcNow
         });
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsPrimaryMapDuplicate(ex))
+        {
+            db.ChangeTracker.Clear();
+            var existing = await FindMappedOwnerAsync(db, userId, cancellationToken);
+            if (existing != null)
+                return existing;
+            throw;
+        }
 
         return new PatientPortalOwner
         {
@@ -186,5 +233,17 @@ public static class PatientPortalOwnerResolver
             OwnerUserId = userId,
             IsActingAsCaregiver = false
         };
+    }
+
+    private static bool IsPrimaryMapDuplicate(Exception ex)
+    {
+        for (var inner = ex; inner != null; inner = inner.InnerException)
+        {
+            if (inner is SqlException sql && (sql.Number == 2601 || sql.Number == 2627))
+                return true;
+            if (inner.Message.IndexOf("UX_PatientUserMap_User_Primary", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+        }
+        return false;
     }
 }

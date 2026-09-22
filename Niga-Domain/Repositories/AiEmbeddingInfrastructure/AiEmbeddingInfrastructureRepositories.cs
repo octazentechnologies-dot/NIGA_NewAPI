@@ -241,25 +241,49 @@ public class AiRubricEmbeddingRepository : IAiRubricEmbeddingRepository
         Guid embeddingVersionId,
         CancellationToken cancellationToken = default)
     {
-        var rows = await _context.AiRubricEmbeddings
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted
-                && x.EmbeddingVersionId == embeddingVersionId
-                && x.Status == AiEmbeddingStatuses.Active
-                && x.EmbeddingPayloadJson != null
-                && x.EmbeddingPayloadJson != "")
-            .Select(x => new { x.RubricId, x.SourceText, x.EmbeddingPayloadJson })
-            .ToListAsync(cancellationToken);
-
-        return rows
-            .Select(row => new AiEnterpriseRubricEmbeddingCacheEntry
+        var previousTimeout = _context.Database.GetCommandTimeout();
+        _context.Database.SetCommandTimeout(120);
+        try
+        {
+            const int pageSize = 2000;
+            var lastId = 0;
+            var result = new List<AiEnterpriseRubricEmbeddingCacheEntry>();
+            while (true)
             {
-                RubricId = row.RubricId,
-                SourceText = row.SourceText,
-                Vector = AiEmbeddingVectorSerializer.Deserialize(row.EmbeddingPayloadJson!),
-            })
-            .Where(x => x.Vector.Length > 0)
-            .ToList();
+                var rows = await _context.AiRubricEmbeddings
+                    .AsNoTracking()
+                    .Where(x => !x.IsDeleted
+                        && x.EmbeddingVersionId == embeddingVersionId
+                        && x.Status == AiEmbeddingStatuses.Active
+                        && x.EmbeddingPayloadJson != null
+                        && x.EmbeddingPayloadJson != ""
+                        && x.RubricId > lastId)
+                    .OrderBy(x => x.RubricId)
+                    .Select(x => new { x.RubricId, x.SourceText, x.EmbeddingPayloadJson })
+                    .Take(pageSize)
+                    .ToListAsync(cancellationToken);
+                if (rows.Count == 0)
+                    break;
+                lastId = rows[rows.Count - 1].RubricId;
+                foreach (var row in rows)
+                {
+                    var vector = AiEmbeddingVectorSerializer.Deserialize(row.EmbeddingPayloadJson!);
+                    if (vector.Length == 0)
+                        continue;
+                    result.Add(new AiEnterpriseRubricEmbeddingCacheEntry
+                    {
+                        RubricId = row.RubricId,
+                        SourceText = row.SourceText,
+                        Vector = vector,
+                    });
+                }
+            }
+            return result;
+        }
+        finally
+        {
+            _context.Database.SetCommandTimeout(previousTimeout);
+        }
     }
 }
 
@@ -315,34 +339,58 @@ public class AiConceptEmbeddingRepository : IAiConceptEmbeddingRepository
         Guid embeddingVersionId,
         CancellationToken cancellationToken = default)
     {
-        var rows = await _context.AiConceptEmbeddings
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted
-                && x.EmbeddingVersionId == embeddingVersionId
-                && x.Status == AiEmbeddingStatuses.Active
-                && x.EmbeddingPayloadJson != null
-                && x.EmbeddingPayloadJson != "")
-            .Select(x => new
+        var previousTimeout = _context.Database.GetCommandTimeout();
+        _context.Database.SetCommandTimeout(120);
+        try
+        {
+            const int pageSize = 2000;
+            var lastId = 0L;
+            var result = new List<AiConceptEmbeddingCacheEntry>();
+            while (true)
             {
-                x.ConceptEmbeddingId,
-                x.ConceptKey,
-                x.ConceptType,
-                x.SourceText,
-                x.EmbeddingPayloadJson,
-            })
-            .ToListAsync(cancellationToken);
-
-        return rows
-            .Select(row => new AiConceptEmbeddingCacheEntry
-            {
-                ConceptEmbeddingId = row.ConceptEmbeddingId,
-                ConceptKey = row.ConceptKey,
-                ConceptType = row.ConceptType,
-                SourceText = row.SourceText,
-                Vector = AiEmbeddingVectorSerializer.Deserialize(row.EmbeddingPayloadJson!),
-            })
-            .Where(x => x.Vector.Length > 0)
-            .ToList();
+                var rows = await _context.AiConceptEmbeddings
+                    .AsNoTracking()
+                    .Where(x => !x.IsDeleted
+                        && x.EmbeddingVersionId == embeddingVersionId
+                        && x.Status == AiEmbeddingStatuses.Active
+                        && x.EmbeddingPayloadJson != null
+                        && x.EmbeddingPayloadJson != ""
+                        && x.ConceptEmbeddingId > lastId)
+                    .OrderBy(x => x.ConceptEmbeddingId)
+                    .Select(x => new
+                    {
+                        x.ConceptEmbeddingId,
+                        x.ConceptKey,
+                        x.ConceptType,
+                        x.SourceText,
+                        x.EmbeddingPayloadJson,
+                    })
+                    .Take(pageSize)
+                    .ToListAsync(cancellationToken);
+                if (rows.Count == 0)
+                    break;
+                lastId = rows[rows.Count - 1].ConceptEmbeddingId;
+                foreach (var row in rows)
+                {
+                    var vector = AiEmbeddingVectorSerializer.Deserialize(row.EmbeddingPayloadJson!);
+                    if (vector.Length == 0)
+                        continue;
+                    result.Add(new AiConceptEmbeddingCacheEntry
+                    {
+                        ConceptEmbeddingId = row.ConceptEmbeddingId,
+                        ConceptKey = row.ConceptKey,
+                        ConceptType = row.ConceptType,
+                        SourceText = row.SourceText,
+                        Vector = vector,
+                    });
+                }
+            }
+            return result;
+        }
+        finally
+        {
+            _context.Database.SetCommandTimeout(previousTimeout);
+        }
     }
 
     public async Task<Dictionary<string, string>> GetActiveTextHashesAsync(

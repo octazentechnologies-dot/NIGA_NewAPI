@@ -34,6 +34,10 @@ Docs: `NIGA_NewAPI/ScriptsAndFiles/S1_Week1/Document`
 
 Database is shared. Run once on `HomeoCentrum_*`. Do **not** run 07 / 08 / Test sample insert on production.
 
+## Sequential review (one task at a time)
+
+Not started. Week 1 in-scope rows: **102**. Skipped (QA / Mobile UI / Mobile Frontend): **76**. Sequential pass on 22 Sep 2026 is currently on **S2 Week 2** (2 of 107 in-scope closed: CLN-01.01, CLN-01.02). Week 1 one-by-one description-vs-code review comes after Week 2 in-scope rows, unless you reverse that order.
+
 ## Re-audit 21 Sep 2026 (after upper-branch pull)
 
 Excel Done/Not Started ignored. In-scope 102 rows checked against code. Five portals (FND-02.04) documented. Dummy Account/Pharmacy tokens removed. S3–S5 not in this branch delivery.

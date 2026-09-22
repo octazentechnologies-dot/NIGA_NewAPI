@@ -43,6 +43,17 @@ Do **not** run 07 / 08 / 10 sample scripts on production.
 19. `19_DEV_Seed_Role_Menus.sql`
 22. `22_DEV_Role_Menu_Consistency.sql` (read-only)
 
+## Sequential review (one task at a time)
+
+Started **22 Sep 2026**. Excel Done/Not Started ignored. Skip QA, Mobile UI, Mobile Frontend. Each in-scope row is inspected against the intern description, then closed before the next row.
+
+Waiting on you: numbered list `S1_S2_DECISIONS_NEEDED.md` (items 1–26). Do not implement those until you comment.
+
+| SubID | Verdict | Closed |
+|-------|---------|--------|
+| CLN-01.01 | **DONE for Week 2** — Patient Board header always shows Appointment / Visit / Consult placeholders. Live `VisitType` / `ConsultMode` bind is Phase 4 and 6. See `S2_Week2_SEQUENTIAL_REVIEW.md`. | 22 Sep 2026 |
+| CLN-01.02 | **DONE for Week 2** — One Patient Board SPA; `/patientboard` is an alias. No doctor-mobile case-taking in this workspace. Doc: `NIGAHomeopathy_UI/docs/CLN-01.02_SINGLE_CLINICAL_BOARD.md`. | 22 Sep 2026 |
+
 ## Re-audit 21 Sep 2026 (after upper-branch pull)
 
 Excel Done/Not Started ignored. In-scope 107 rows checked against code (skip QA / Mobile UI / Mobile Frontend / PRE). Dummy Account/Pharmacy SPA tokens removed; use `s2.account` / `s2.pharmacy` on Old-API Login. Dashboard users verified on `HomeoCentrum_Dev`. S3–S5 week sheets are not in this branch delivery.
@@ -79,8 +90,8 @@ Excel Done/Not Started ignored. In-scope 107 rows checked against code (skip QA 
 
 | Sub Task ID | Track | Module | Bifurcation | Excel FE / BE / API / DB | S2 status | Notes |
 |-------------|-------|--------|-------------|--------------------------|-----------|-------|
-| CLN-01.01 | A-ClinicWeb | M03 | UI | Done/N/A/N/A/N/A | DONE | Web UI on NIGAHomeopathy_UI (landing /board /profile /reception-staff) |
-| CLN-01.02 | C-Mobile | M03 | Web Other | N/A/N/A/N/A/N/A | DONE | Implemented this week (code + docs) |
+| CLN-01.01 | A-ClinicWeb | M03 | UI | Done/N/A/N/A/N/A | DONE | Header always shows Appointment / Visit / Consult placeholders (`PatientBoard.js`). Dashboard path forwards visit/consult when present. Live booking flags stay Phase 4/6. |
+| CLN-01.02 | C-Mobile | M03 | Web Other | N/A/N/A/N/A/N/A | DONE | One Patient Board; no doctor-mobile case-taking. Architecture: `NIGAHomeopathy_UI/docs/CLN-01.02_SINGLE_CLINICAL_BOARD.md` |
 | CLN-01.03 | D-QA | M03 | QA | Not Started/N/A/N/A/N/A | SKIPPED | QA track skipped |
 | CLN-02.01 | D-QA | M03 | QA | Not Started/Not Started/Not Started/N/A | SKIPPED | QA track skipped |
 | CLN-02.02 | A-ClinicWeb | M03 | Security | Done/Done/Done/N/A | DONE | DoctorOnly / ownership / reception block on live host |

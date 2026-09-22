@@ -54,8 +54,8 @@ Legend: **P** present in this week’s source/schema/UI. **T** tested as noted. 
 
 | SubID | Demo proves | Present | Test |
 |---|---|---|---|
-| CLN-01.01 | Patient Board header appointment / visit / consult placeholders | **P** chips `Visit:` / `Consult:` in `PatientBoard.js` | UI grep |
-| CLN-01.02 | Do not split board; doctor mobile will NOT get case-taking | **P** no doctor-app case-taking added; board stays one web screen | source/policy |
+| CLN-01.01 | Patient Board header appointment / visit / consult placeholders | **P** always-visible chips `Appointment:` / `Visit:` / `Consult:` in `PatientBoard.js`; empty shows `—`; dashboard path forwards query params | UI + dashboard path |
+| CLN-01.02 | Do not split board; doctor mobile will NOT get case-taking | **P** one `PatientBoardRoute`; alias `/patientboard`; no RN doctor app here; `docs/CLN-01.02_SINGLE_CLINICAL_BOARD.md` | source + architecture doc |
 | CLN-01.03 | Regression: dashboard remounts via PatientBoardRoute | SKIP QA | — |
 | CLN-02.01 | Regression: create case, rubrics, repertorize | SKIP QA | — |
 | CLN-02.02 | ACL: only treating doctor (not Reception) | **P** `[DoctorOnly]` + `ForbidIfReception` on Old-API clipboard/questions/MM/lab/Rx/notes/repertorize | source+DLL; live reception 403 **unproven** (need restart + reception JWT) |

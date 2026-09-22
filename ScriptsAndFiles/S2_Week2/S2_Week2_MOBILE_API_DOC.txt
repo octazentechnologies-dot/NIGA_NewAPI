@@ -44,6 +44,10 @@ DOCTOR APP FLOW (DMO-01 … DMO-06)  — no case-taking
   4. GET  /Availability/Me
      PUT  /Availability/Me                         online + hours
   5. GET  /Profile/Me  PUT /Profile/Me             optional profile
+  6. GET  /AppointmentHistoryNote/GetAllAppointmentHistoryNotes?AppointmentId=
+     POST /AppointmentHistoryNote/SaveUpdateAppointmentHistoryNote
+     HOST=Old-API. Same as doctor web dashboard Add / View Case Notes.
+     Do not use Patient Board Global Search, clipboard, COG, or audio from doctor mobile.
 Doctor mobile MUST NOT call clipboard / COG / audio / diagnosis mutate.
 
 ================================================================================

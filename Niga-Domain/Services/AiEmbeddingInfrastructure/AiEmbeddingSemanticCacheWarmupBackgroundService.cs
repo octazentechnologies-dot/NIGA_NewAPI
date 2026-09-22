@@ -63,7 +63,8 @@ public class AiEmbeddingSemanticCacheWarmupBackgroundService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Semantic embedding cache warmup failed.");
+            // Warmup is best-effort. ERROR here emails ErrorAlert and can starve login SQL.
+            _logger.LogWarning(ex, "Semantic embedding cache warmup failed.");
             _readiness.MarkFailed(ex.Message);
         }
     }
@@ -107,7 +108,7 @@ public class AiEmbeddingSemanticCacheWarmupBackgroundService : BackgroundService
         if (conceptCount == 0 || rubricCount == 0)
         {
             var error = $"Semantic cache warmup incomplete: concepts={conceptCount}, rubrics={rubricCount}.";
-            _logger.LogError(error);
+            _logger.LogWarning(error);
             _readiness.MarkFailed(error);
             return;
         }

@@ -140,7 +140,6 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 AppFileLog.Initialize(app.Environment.ContentRootPath, app.Configuration, "NIGA New-API (Niga-Web :5038)");
-app.UseMiddleware<AppDiagnosticsMiddleware>();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
@@ -157,6 +156,7 @@ app.UseResponseCompression();
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
+app.UseMiddleware<AppDiagnosticsMiddleware>();
 app.UseAuthorization();
 app.UseMiddleware<Niga_Domain.Services.MutatingAuditMiddleware>();
 app.UseCorsPolicy()

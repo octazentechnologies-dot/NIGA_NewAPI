@@ -39,7 +39,9 @@ New-API JWT section in appsettings (not used the same way as Old-API TokenKey):
   (legacy Angular ports — clinic SPA is :3000, New-API is :5038)
 
 Old-API UserService welcome email HTML
-  Hardcoded: http://ui.homeocentrum.com/Login/login?UserId=...
+  Configurable 22-Sep-2026: ConfigurationModel:SiteUrl (then HostName, then AppSettings:UiBaseUrl).
+  Dev: http://localhost:3000/login?UserId=...
+  Other env: set SiteUrl to that UI origin. No ui.homeocentrum.com hardcode.
 
 Old-API OrderService Razorpay
   Hardcoded live key+secret in C# (not appsettings):
@@ -59,7 +61,11 @@ New-API Program.cs / launchSettings
 Old-API launchSettings
   http://localhost:5001  (Old-API)
 
-C. What I need from you (all tasks / go-live)
+C. Numbered decisions (22-Sep-2026) — comment in chat, then I implement
+-----------------------------------------------------------------------
+See S1_S2_DECISIONS_NEEDED.md items 1–26 (confirmations, inputs, suggestions).
+
+C2. What I need from you (all tasks / go-live)  [detail behind 14–21]
 ---------------------------------------------
 1. SQL
    - Confirm Dev SQL: localhost\MSSQLSERVER25 + HomeoCentrum_Dev
