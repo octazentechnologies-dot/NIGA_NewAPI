@@ -74,6 +74,7 @@ namespace Niga_Domain.DTOs
         public int OwnerPatientId { get; set; }
         public string? OwnerPatientName { get; set; }
         public bool Linked { get; set; }
+        public bool IsActingAsCaregiver { get; set; }
     }
 
     public class CaregiverGrantRequest
@@ -105,6 +106,7 @@ namespace Niga_Domain.DTOs
         public string? OwnerPatientName { get; set; }
         public string? OtpDestination { get; set; }
         public bool Linked { get; set; }
+        public bool IsActingAsCaregiver { get; set; }
     }
 
     public class CaregiverLookupDto

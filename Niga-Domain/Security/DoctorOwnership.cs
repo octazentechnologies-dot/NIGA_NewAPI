@@ -29,6 +29,13 @@ namespace Niga_Domain.Security
         public static bool IsAdminPortalUser(ClaimsPrincipal? user)
             => AdminAuthorizationPolicies.IsAdminPortalUser(user);
 
+        /// <summary>
+        /// True Admin / Management only. Tufan_Doctor extra Dev menus keep AdminPortal
+        /// for masters, but must not bypass clinic patient ownership (DOC-04.02).
+        /// </summary>
+        public static bool IsGlobalAdminPortalUser(ClaimsPrincipal? user)
+            => IsAdminPortalUser(user) && !AdminAuthorizationPolicies.IsDevPrivilegedDoctor(user);
+
         public static int? GetDoctorUserId(ClaimsPrincipal? user)
         {
             var value = user?.FindFirst("DoctorUserID")?.Value
@@ -44,11 +51,11 @@ namespace Niga_Domain.Security
 
         /// <summary>
         /// Returns true when the caller may access a resource owned by <paramref name="resourceDoctorId"/>.
-        /// AdminPortal always allowed. Otherwise JWT DoctorID must match.
+        /// Global AdminPortal always allowed. Tufan_Doctor extra menus do not unlock other clinics.
         /// </summary>
         public static bool EnsureDoctorOwns(ClaimsPrincipal? user, int resourceDoctorId)
         {
-            if (IsAdminPortalUser(user))
+            if (IsGlobalAdminPortalUser(user))
                 return true;
 
             var jwtDoctorId = GetDoctorId(user);
@@ -58,7 +65,7 @@ namespace Niga_Domain.Security
         public static bool EnsureDoctorOwns(ClaimsPrincipal? user, int? resourceDoctorId)
         {
             if (!resourceDoctorId.HasValue || resourceDoctorId.Value <= 0)
-                return IsAdminPortalUser(user);
+                return IsGlobalAdminPortalUser(user);
 
             return EnsureDoctorOwns(user, resourceDoctorId.Value);
         }
@@ -140,11 +147,12 @@ namespace Niga_Domain.Security
         }
 
         /// <summary>
-        /// JWT user id or reception DoctorUserID must match the doctor UserMaster id. AdminPortal bypass.
+        /// JWT user id or reception DoctorUserID must match the doctor UserMaster id.
+        /// Global AdminPortal bypass only — not Tufan_Doctor extra-menu rights.
         /// </summary>
         public static bool EnsureCallerIsUserOrAdmin(ClaimsPrincipal? user, long targetUserId)
         {
-            if (IsAdminPortalUser(user))
+            if (IsGlobalAdminPortalUser(user))
                 return true;
 
             try

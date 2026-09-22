@@ -40,6 +40,9 @@ namespace Niga_Domain.Authorization
             if (user?.Identity?.IsAuthenticated != true)
                 return false;
 
+            if (IsDevPrivilegedDoctor(user))
+                return true;
+
             var roleIdValue = user.FindFirst("RoleId")?.Value
                 ?? user.FindFirst("roleId")?.Value;
             if (int.TryParse(roleIdValue, out var roleId) && roleId == SuperUserRoleId)
@@ -54,6 +57,42 @@ namespace Niga_Domain.Authorization
             var roleName = user.FindFirst("RoleName")?.Value
                 ?? user.FindFirst("role")?.Value;
             return IsAdminPortalRoleName(roleName);
+        }
+
+        /// <summary>
+        /// Dev-only: Tufan_Doctor (UserId 10032) gets Admin-portal rights other Doctor
+        /// logins do not have. Do not copy this to production doctors.
+        /// </summary>
+        public const int TufanDoctorUserId = 10032;
+
+        public static bool IsDevPrivilegedDoctor(ClaimsPrincipal? user)
+        {
+            if (user?.Identity?.IsAuthenticated != true)
+                return false;
+
+            var roleName = GetRoleName(user);
+            if (!string.Equals(roleName, "Doctor", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            foreach (var claim in user.Claims)
+            {
+                if (claim.Type != ClaimTypes.NameIdentifier
+                    && claim.Type != "nameid"
+                    && claim.Type != "UserId"
+                    && claim.Type != "userId"
+                    && claim.Type != "sub")
+                    continue;
+                if (int.TryParse(claim.Value, out var id) && id == TufanDoctorUserId)
+                    return true;
+            }
+
+            var name = user.FindFirst(ClaimTypes.Name)?.Value
+                ?? user.FindFirst("unique_name")?.Value
+                ?? user.FindFirst("UserName")?.Value;
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+            return name.Equals("Tufan_Doctor", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("Tufan Doctor", StringComparison.OrdinalIgnoreCase);
         }
 
         public static bool IsAdminPortalRoleName(string? roleName)

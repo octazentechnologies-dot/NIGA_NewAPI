@@ -651,10 +651,11 @@ USE        : Reuse ConsentRecord + AudioCaseConsentLog. Do not fork a second tel
 DEV LOGINS (HomeoCentrum_Dev)
 ================================================================================
 Team (script 15, password 123456 for all) — clinic SPA uses Old-API Login:
-  Tufan_Admin / Tufan_Doctore / Tufan_Reception / Tufan_Account /
-  Tufan_Pharmacy / Tufan_Patient / Tufan_Caregiver
-  Shared email/mobile tufanpowar@gmail.com / 7768046064 is Tufan_Patient only
-  (plus Reception staff row). Catalog sheet "Logins" has the full table.
+  Tufan_Admin / Tufan_Doctor / Tufan_Reception / Tufan_Account /
+  Tufan_Pharmacy / Tufan_Patient / Tufan_Caregiver / Tufan_NoMenu
+  Shared email/mobile tufanpowar001@gmail.com / 7768046064 is Tufan_Patient only
+  (plus Reception staff row). Catalog sheet "Users & Login Details" has the full table.
+  Tufan_NoMenu is EmptyMenuProbe — GetMenuByRole must be 200 [].
 
 Older still valid:
 Doctor     : niga homeopathy / nik123                         Old-API Login
@@ -681,7 +682,9 @@ NIGA_NewAPI/ScriptsAndFiles/S1_Week1/Database scripts
   ../Test sample data insert.sql           DEV/TEST only — 10 rows per new table (18-09-2026)
 S2 team users + role menus (after S1 pack):
   NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/15_DEV_Seed_Tufan_Role_Logins.sql
+  NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/16_DEV_Tufan_Role_Logins_Verify.sql (read-only)
   NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/19_DEV_Seed_Role_Menus.sql
+  NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/22_DEV_Role_Menu_Consistency.sql (read-only)
 
 Mobile-only copy of patient/doctor app URLs:
   S1_Week1_MOBILE_API_DOC.txt

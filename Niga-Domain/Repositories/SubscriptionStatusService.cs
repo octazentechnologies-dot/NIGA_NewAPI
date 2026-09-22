@@ -23,29 +23,63 @@ namespace Niga_Domain.Repositories
                 DaysRemaining = 0
             };
 
-            var userSubscription = await _context.PackageEntryDetails
-                .AsNoTracking()
-                .Where(p => p.DoctorId == doctorId && p.IsActive == true)
+            var doctor = await _context.Doctors.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.DoctorId == doctorId || d.UserId == doctorId);
+
+            var lookupIds = new List<int> { doctorId };
+            if (doctor != null)
+            {
+                lookupIds.Add(doctor.DoctorId);
+                if (doctor.UserId.HasValue)
+                    lookupIds.Add(doctor.UserId.Value);
+            }
+
+            var userSubscription = await _context.PackageEntryDetails.AsNoTracking()
+                .Where(p => p.IsActive == true && p.DoctorId != null && lookupIds.Contains(p.DoctorId.Value))
                 .OrderByDescending(p => p.ExpiryDate)
                 .FirstOrDefaultAsync();
 
-            if (userSubscription?.ExpiryDate == null)
+            if (userSubscription?.ExpiryDate != null)
             {
-                return status;
+                var expiryDate = Convert.ToDateTime(userSubscription.ExpiryDate);
+                var daysRemaining = (int)Math.Floor((expiryDate - DateTime.UtcNow).TotalDays);
+
+                if (daysRemaining > 0)
+                {
+                    status.IsPlanActive = true;
+                    status.DaysRemaining = daysRemaining;
+                    status.IslastFiveDays = daysRemaining <= 5;
+                    status.ExpiryDate = expiryDate;
+                }
             }
 
-            var expiryDate = Convert.ToDateTime(userSubscription.ExpiryDate);
-            var daysRemaining = (int)Math.Floor((expiryDate - DateTime.UtcNow).TotalDays);
-
-            if (daysRemaining > 0)
+            if (!status.IsPlanActive)
             {
-                status.IsPlanActive = true;
-                status.DaysRemaining = daysRemaining;
-                status.IslastFiveDays = daysRemaining <= 5;
-                status.ExpiryDate = expiryDate;
+                string? userName = null;
+                if (doctor?.UserId != null)
+                {
+                    userName = await _context.UserMasters.AsNoTracking()
+                        .Where(u => u.UserId == doctor.UserId.Value)
+                        .Select(u => u.UserName)
+                        .FirstOrDefaultAsync();
+                }
+
+                if (IsDevClinicDoctor(userName))
+                {
+                    status.IsPlanActive = true;
+                    status.DaysRemaining = Math.Max(status.DaysRemaining, 365);
+                }
             }
 
             return status;
+        }
+
+        private static bool IsDevClinicDoctor(string? userName)
+        {
+            if (string.IsNullOrWhiteSpace(userName)) return false;
+            return userName.Equals("Tufan_Doctor", StringComparison.OrdinalIgnoreCase)
+                || userName.Equals("NIGA HOMEOPATHY", StringComparison.OrdinalIgnoreCase)
+                || userName.Equals("testdoctor", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -24,7 +24,7 @@ BUG-S2-03	Reception GetPatientStatsCharts	200	PASS	{"period":"ALL","fromDate":"2
 BUG-S2-03	Reception GetPatientStats	200	PASS	{"patientAppId":0,"appointmentDate":null,"status":null,"userId":0,"doctorId":0,"patientApp":0,"walkInpatientApp":0,"patientAppComplated":0,"patientAppWaiting":0,"patientAppNotArriv
 CON-01.02	Family Relations	200	PASS	{"success":true,"data":[{"relationId":15,"relationName":"Spouse","sortOrder":10},{"relationId":5,"relationName":"Father","sortOrder":20},{"relationId":9,"relationName":"Mother","so
 CON-01.03	Family name-only 400	400	PASS	{"success":false,"message":"Relation is required."}
-CON-01.02	Family create with relation	200	PASS	{"success":true,"data":{"familyMemberId":27,"ownerPatientId":3046,"memberPatientId":3052,"relationId":15,"relation":"Spouse","patientName":"Anita Live","mobileNo":null,"email":null
+CON-01.02	Family create with relation	200	PASS	{"success":true,"data":{"familyMemberId":28,"ownerPatientId":3046,"memberPatientId":3053,"relationId":15,"relation":"Spouse","patientName":"Anita Live","mobileNo":null,"email":null
 ADM-B01.03	Qualifications list New-API Admin	200	PASS	[{"qualificationId":2,"qualificationName":"BHMS","qualificationAlias":"BHMS","description":"","degreeLevel":"UG","enteredBy":"gourav nikam","enteredDate":"2026-08-15T11:48:47.05","
 ADM-B01.02	Doctor qualification mutate forbidden	403	PASS	
 ADM-3D1.03	3D mesh list New-API	200	PASS	{"success":true,"message":"Data retrieved successfully.","pageNumber":1,"pageSize":5,"totalRecords":1,"totalPages":1,"resultObject":[{"ThreeD_BodyPart_MeshKeyID":8,"ThreeD_BodyPart
@@ -45,7 +45,7 @@ BUG-S2-01	Backup invalid JWT 401	401	PASS
 BUG-S2-01	Account backup empty 403	403	PASS	{"success":false,"message":"Only the treating doctor can run case taking."}
 BUG-S2-01	Patient backup empty 403	403	PASS	{"success":false,"message":"Only the treating doctor can run case taking."}
 BUG-S2-01	Doctor backup empty 400	400	PASS	{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or more validation errors occurred.","status":400,"errors":{"BackupPayload":["The BackupPayload field is r
-BUG-S2-01	Doctor backup valid 200	200	PASS	{"success":true,"message":"Patient board backup saved successfully.","resultObject":{"backupId":20003,"patientCount":0,"savedAt":"2026-09-21T15:41:28.5312082Z"}}
+BUG-S2-01	Doctor backup valid 200	200	PASS	{"success":true,"message":"Patient board backup saved successfully.","resultObject":{"backupId":20003,"patientCount":0,"savedAt":"2026-09-21T17:18:04.8215196Z"}}
 BUG-S2-03	Doctor GetPatientStatsCharts	200	PASS	{"period":"ALL","fromDate":"2026-01-01T00:00:00","toDate":"2026-09-21T00:00:00+05:30","pieChart":{"waiting":0,"walkIn":0,"notArrived":0,"eConsult":0,"remaining":0,"completed":0,"to
 BUG-S2-03	Account GetPatientStatsCharts 403	403	PASS	{"success":false,"message":"Clinic dashboard is for the treating doctor or their reception staff."}
 BUG-S2-03	Reception charts without userId	200	PASS	{"period":"ALL","fromDate":"2026-01-01T00:00:00","toDate":"2026-09-21T00:00:00+05:30","pieChart":{"waiting":0,"walkIn":0,"notArrived":0,"eConsult":0,"remaining":0,"completed":0,"to

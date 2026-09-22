@@ -291,7 +291,7 @@ END
 DROP TABLE #RoleMenus;
 
 PRINT '19_DEV_Seed_Role_Menus.sql completed.';
-PRINT 'Verify GetMenuByRole for Tufan_Admin / Tufan_Doctore / Tufan_Reception / Tufan_Account / Tufan_Pharmacy / Tufan_Patient.';
+PRINT 'Verify GetMenuByRole for Tufan_Admin / Tufan_Doctor / Tufan_Reception / Tufan_Account / Tufan_Pharmacy / Tufan_Patient.';
 SELECT r.RoleName, COUNT(*) AS MenuCount
 FROM dbo.RoleDetails rd
 INNER JOIN dbo.RoleMaster r ON r.RoleId = rd.RoleId

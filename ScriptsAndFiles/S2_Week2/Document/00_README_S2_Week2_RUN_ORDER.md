@@ -24,13 +24,17 @@ Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 | 11 | `11_FAMILY_RELATION_MASTER.sql` | FamilyRelationMaster + PatientFamilyMember.RelationId. Seed Spouse/Father/Mother/... |
 | 12 | `12_DEV_Seed_Role_Users.sql` | Dev logins for Account (`s2.account`) and PharmacyPartner (`s2.pharmacy`), password hash from tufanpowar001@gmail.com (123456). |
 | 13 | `13_DOC_Reception_Profile_Menus.sql` | Doctor menus: Reception Staff `/doctor/reception-staff`, Profile `/profile`. |
-| 15 | `15_DEV_Seed_Tufan_Role_Logins.sql` | Team logins `Tufan_*` / `123456` for Admin, Doctor (`Tufan_Doctore`), Reception, Account, Pharmacy, Patient, Caregiver, plus API-only `Tufan_NoMenu`. Dev only. |
+| 15 | `15_DEV_Seed_Tufan_Role_Logins.sql` | Team logins `Tufan_*` / `123456` for Admin, Doctor (`Tufan_Doctor`), Reception, Account, Pharmacy, Patient, Caregiver, plus API-only `Tufan_NoMenu`. Dev only. |
 | 16 | `16_DEV_Tufan_Role_Logins_Verify.sql` | Read-only proof of Tufan_* logins + RoleDetails counts. |
 | 17 | `17_DEV_Tufan_Contact_Email_Mobile.sql` | Unique emails/mobiles so LoginWithOtp is not ambiguous. |
 | 19 | `19_DEV_Seed_Role_Menus.sql` | RoleDetails for Admin/Reception/Pharmacy extras; revoke Doctor Enquiries; unique (RoleId, MenuId). Run after 15. |
 | 22 | `22_DEV_Role_Menu_Consistency.sql` | Read-only proof: Tufan users, role-menu mappings, no Doctor Enquiries, Reception has no patientboard, Tufan_NoMenu has zero menus. |
+| 23 | `23_DEV_Rename_Tufan_Doctor.sql` | Rename login Tufan_Doctore → Tufan_Doctor (already applied). |
+| 24 | `24_DEV_Seed_Tufan_Doctor_Clinic.sql` | Dev clinic for Tufan_Doctor: KYC, schedule, credential stub, 8 cases, today appointments (all dashboard statuses), notes, sample eRx. Do not run on production. |
+| 25 | `25_DEV_Seed_Tufan_Doctor_Extra_Menus.sql` | Tufan_Doctor UserDetails = every available MenuMaster item. Other doctors stay on the 5 RoleDetails clinic menus. Dev only. |
+| 26 | `26_DEV_Replace_Tufanpowar_Email.sql` | Replace tufanpowar@gmail.com with tufanpowar001@gmail.com on UserMaster / Patient / Reception. Keep OTP unique on Tufan_Patient. |
 
-Scripts 07, 08 and 10 are Dev/test data only. Scripts 14 and 16 are read-only. Script 15 is Dev team users only — do not run on production.
+Scripts 07, 08, 10 and 24 are Dev/test data only. Scripts 14 and 16 are read-only. Script 15 is Dev team users only — do not run on production.
 
 ## After SQL
 

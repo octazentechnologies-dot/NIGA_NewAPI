@@ -28,25 +28,37 @@ namespace Niga_Domain.API.Controllers
             _context = context;
         }
 
-        /// <summary>Primary clinical Patient for this login. Auto-links or creates if missing.</summary>
+        /// <summary>Primary clinical Patient for this login. Caregivers resolve to the patient they act for.</summary>
         [HttpGet("Me")]
         public async Task<IActionResult> Me()
         {
-            var userId = (long)User.GetUserId();
-            var owner = await EnsurePrimaryPatientAsync(userId);
-            if (owner == null)
-                return BadRequest(new { success = false, message = "Could not resolve a patient record for this login." });
-
-            return Ok(new
+            try
             {
-                success = true,
-                data = new FamilyOwnerDto
+                var userId = (long)User.GetUserId();
+                if (userId <= 0)
+                    return Unauthorized(new { success = false, message = "Not signed in." });
+
+                var owner = await EnsurePrimaryPatientAsync(userId);
+                if (owner == null)
+                    return BadRequest(new { success = false, message = "Could not resolve a patient record for this login." });
+
+                return Ok(new
                 {
-                    OwnerPatientId = owner.Value.PatientId,
-                    OwnerPatientName = owner.Value.PatientName,
-                    Linked = true
-                }
-            });
+                    success = true,
+                    data = new FamilyOwnerDto
+                    {
+                        OwnerPatientId = owner.PatientId,
+                        OwnerPatientName = owner.PatientName,
+                        Linked = true,
+                        IsActingAsCaregiver = owner.IsActingAsCaregiver
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    new { success = false, message = ex.InnerException?.Message ?? ex.Message });
+            }
         }
 
         [HttpGet("Relations")]
@@ -128,32 +140,47 @@ namespace Niga_Domain.API.Controllers
         [HttpGet]
         public async Task<IActionResult> List()
         {
-            var userId = (long)User.GetUserId();
-            var owner = await EnsurePrimaryPatientAsync(userId);
-            var rows = await (
-                from f in _context.PatientFamilyMembers
-                join p in _context.Patients on f.MemberPatientId equals p.PatientId
-                where f.OwnerUserId == userId && !f.DeleteStatus && p.DeleteStatus != true
-                orderby f.FamilyMemberId
-                select new FamilyMemberDto
-                {
-                    FamilyMemberId = f.FamilyMemberId,
-                    OwnerPatientId = f.OwnerPatientId,
-                    MemberPatientId = f.MemberPatientId,
-                    RelationId = f.RelationId,
-                    Relation = f.Relation,
-                    PatientName = p.PatientName,
-                    MobileNo = p.MobileNo,
-                    Email = p.Email
-                }).ToListAsync();
-
-            return Ok(new
+            try
             {
-                success = true,
-                ownerPatientId = owner?.PatientId,
-                ownerPatientName = owner?.PatientName,
-                data = rows
-            });
+                var userId = (long)User.GetUserId();
+                if (userId <= 0)
+                    return Unauthorized(new { success = false, message = "Not signed in." });
+
+                var owner = await EnsurePrimaryPatientAsync(userId);
+                var ownerPatientId = owner?.PatientId ?? 0;
+                var rows = ownerPatientId <= 0
+                    ? new List<FamilyMemberDto>()
+                    : await (
+                        from f in _context.PatientFamilyMembers
+                        join p in _context.Patients on f.MemberPatientId equals p.PatientId
+                        where f.OwnerPatientId == ownerPatientId && !f.DeleteStatus && p.DeleteStatus != true
+                        orderby f.FamilyMemberId
+                        select new FamilyMemberDto
+                        {
+                            FamilyMemberId = f.FamilyMemberId,
+                            OwnerPatientId = f.OwnerPatientId,
+                            MemberPatientId = f.MemberPatientId,
+                            RelationId = f.RelationId,
+                            Relation = f.Relation,
+                            PatientName = p.PatientName,
+                            MobileNo = p.MobileNo,
+                            Email = p.Email
+                        }).ToListAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    ownerPatientId = owner?.PatientId,
+                    ownerPatientName = owner?.PatientName,
+                    isActingAsCaregiver = owner?.IsActingAsCaregiver ?? false,
+                    data = rows
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    new { success = false, message = ex.InnerException?.Message ?? ex.Message });
+            }
         }
 
         [HttpPost]
@@ -163,11 +190,15 @@ namespace Niga_Domain.API.Controllers
                 return BadRequest(new { success = false, message = "Body is required." });
 
             var userId = (long)User.GetUserId();
+            if (userId <= 0)
+                return Unauthorized(new { success = false, message = "Not signed in." });
+
             var relation = await ResolveRelationAsync(request.RelationId, request.Relation, userId);
             if (relation == null)
                 return BadRequest(new { success = false, message = "Relation is required." });
 
             int ownerPatientId;
+            long ownerUserId = userId;
             if (AdminAuthorizationPolicies.IsAdminPortalUser(User)
                 && request.OwnerPatientId.HasValue
                 && request.OwnerPatientId.Value > 0)
@@ -180,7 +211,8 @@ namespace Niga_Domain.API.Controllers
                 if (owner == null)
                     return StatusCode(StatusCodes.Status403Forbidden,
                         new { success = false, message = "No patient record is linked to this login." });
-                ownerPatientId = owner.Value.PatientId;
+                ownerPatientId = owner.PatientId;
+                ownerUserId = owner.OwnerUserId;
             }
 
             int memberPatientId;
@@ -216,7 +248,7 @@ namespace Niga_Domain.API.Controllers
 
             var row = new PatientFamilyMember
             {
-                OwnerUserId = userId,
+                OwnerUserId = ownerUserId,
                 OwnerPatientId = ownerPatientId,
                 MemberPatientId = memberPatientId,
                 RelationId = relation.Value.RelationId,
@@ -254,7 +286,7 @@ namespace Niga_Domain.API.Controllers
             if (row == null)
                 return NotFound(new { success = false, message = "Family member not found." });
 
-            if (!AdminAuthorizationPolicies.IsAdminPortalUser(User) && row.OwnerUserId != userId)
+            if (!await CanManageFamilyMemberAsync(userId, row))
                 return StatusCode(StatusCodes.Status403Forbidden,
                     new { success = false, message = "Access denied." });
 
@@ -299,7 +331,7 @@ namespace Niga_Domain.API.Controllers
             if (row == null)
                 return NotFound(new { success = false, message = "Family member not found." });
 
-            if (!AdminAuthorizationPolicies.IsAdminPortalUser(User) && row.OwnerUserId != userId)
+            if (!await CanManageFamilyMemberAsync(userId, row))
                 return StatusCode(StatusCodes.Status403Forbidden,
                     new { success = false, message = "Access denied." });
 
@@ -322,7 +354,7 @@ namespace Niga_Domain.API.Controllers
             if (row == null)
                 return NotFound(new { success = false, message = "Family member not found." });
 
-            if (!AdminAuthorizationPolicies.IsAdminPortalUser(User) && row.f.OwnerUserId != userId)
+            if (!await CanManageFamilyMemberAsync(userId, row.f))
                 return StatusCode(StatusCodes.Status403Forbidden,
                     new { success = false, message = "Access denied." });
 
@@ -461,79 +493,20 @@ namespace Niga_Domain.API.Controllers
             return null;
         }
 
-        private async Task<(int PatientId, string? PatientName)?> EnsurePrimaryPatientAsync(long userId)
+        private Task<PatientPortalOwner?> EnsurePrimaryPatientAsync(long userId)
+            => PatientPortalOwnerResolver.ResolveAsync(_context, userId, preferActingFor: true, createIfMissing: true);
+
+        private async Task<bool> CanManageFamilyMemberAsync(long userId, PatientFamilyMember row)
         {
-            var map = await _context.PatientUserMaps
-                .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus && m.IsPrimary)
-                ?? await _context.PatientUserMaps
-                    .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus);
-
-            if (map != null)
-            {
-                var linked = await _context.Patients.AsNoTracking()
-                    .FirstOrDefaultAsync(p => p.PatientId == map.PatientId && p.DeleteStatus != true);
-                return (map.PatientId, linked?.PatientName);
-            }
-
-            var user = await _context.UserMasters
-                .FirstOrDefaultAsync(u => u.UserId == userId && !u.DeleteStatus);
-            if (user == null)
-                return null;
-
-            var email = user.EmailId ?? user.UserName;
-            Patient? existingPatient = null;
-            if (!string.IsNullOrWhiteSpace(email))
-            {
-                existingPatient = await _context.Patients
-                    .FirstOrDefaultAsync(p => p.Email == email && p.DeleteStatus != true);
-            }
-            if (existingPatient == null && !string.IsNullOrWhiteSpace(user.MobileNo))
-            {
-                existingPatient = await _context.Patients
-                    .FirstOrDefaultAsync(p => p.MobileNo == user.MobileNo && p.DeleteStatus != true);
-            }
-
-            int patientId;
-            string? name;
-            if (existingPatient != null)
-            {
-                patientId = existingPatient.PatientId;
-                name = existingPatient.PatientName;
-            }
-            else
-            {
-                name = string.Join(" ", new[] { user.FirstName, user.LastName }
-                    .Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
-                if (string.IsNullOrWhiteSpace(name))
-                    name = user.UserName;
-
-                var created = new Patient
-                {
-                    PatientName = name,
-                    Email = email,
-                    MobileNo = user.MobileNo,
-                    CountryId = user.CountryId,
-                    StateId = user.StateId,
-                    DeleteStatus = false,
-                    EnteredBy = userId.ToString(),
-                    EnteredDate = DateTime.UtcNow
-                };
-                _context.Patients.Add(created);
-                await _context.SaveChangesAsync();
-                patientId = created.PatientId;
-            }
-
-            _context.PatientUserMaps.Add(new PatientUserMap
-            {
-                UserId = userId,
-                PatientId = patientId,
-                IsPrimary = true,
-                DeleteStatus = false,
-                EnteredBy = userId.ToString(),
-                EnteredDate = DateTime.UtcNow
-            });
-            await _context.SaveChangesAsync();
-            return (patientId, name);
+            if (AdminAuthorizationPolicies.IsAdminPortalUser(User))
+                return true;
+            if (row.OwnerUserId == userId)
+                return true;
+            return await _context.CaregiverAuthorizations.AnyAsync(c =>
+                c.CaregiverUserId == userId
+                && c.PatientId == row.OwnerPatientId
+                && !c.DeleteStatus
+                && c.RevokedAt == null);
         }
 
         private async Task<(int RelationId, string RelationName)?> ResolveRelationAsync(

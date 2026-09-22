@@ -70,6 +70,8 @@ namespace Niga_Domain.Services
                     $"{method} {path}",
                     match.Entity,
                     correlationId: context.TraceIdentifier);
+                Niga_Domain.Logging.AppFileLog.Audit($"{method} {path}", match.Entity, userId,
+                    AdminAuthorizationPolicies.GetRoleName(context.User));
             }
             catch
             {

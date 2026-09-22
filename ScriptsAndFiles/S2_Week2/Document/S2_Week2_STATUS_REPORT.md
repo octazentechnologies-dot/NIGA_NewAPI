@@ -37,6 +37,11 @@ Do **not** run 07 / 08 / 10 sample scripts on production.
 12. `12_DEV_Seed_Role_Users.sql`
 13. `13_DOC_Reception_Profile_Menus.sql`
 14. `14_DEV_Dashboard_Users_Verify.sql` (read-only dashboard logins)
+15. `15_DEV_Seed_Tufan_Role_Logins.sql` (Dev team users including Tufan_NoMenu)
+16. `16_DEV_Tufan_Role_Logins_Verify.sql` (read-only)
+17. `17_DEV_Tufan_Contact_Email_Mobile.sql`
+19. `19_DEV_Seed_Role_Menus.sql`
+22. `22_DEV_Role_Menu_Consistency.sql` (read-only)
 
 ## Re-audit 21 Sep 2026 (after upper-branch pull)
 
@@ -48,6 +53,15 @@ Excel Done/Not Started ignored. In-scope 107 rows checked against code (skip QA 
 - Mobile developer sheet: **`Mobile_API_Reference`** in `Homeocentrum_All_New_And_Updated+APIs.xlsx` (all Old-API + New-API HTTP, not S1/S2-only).
 - UI verified locally: `/book` directory + profile fees, `/pricing` labelled SaaS vs consult, doctor dashboard chrome (availability / tele queue / unpaid), reception-staff page, Account portal login.
 - Regenerator + smoke: `Documents/_build_mobile_api_reference.py`, `NIGA_NewAPI/ScriptsAndFiles/S2_Week2/15_S1_S2_Human_Smoke.py`.
+
+## Re-audit 21 Sep 2026 (role/menu/bugs + Users sheet)
+
+- RoleDetails granted (script 19): Admin 49, Doctor 5 (no Enquiries), Reception 1 `/doctordashboard`, Account 6, PharmacyPartner 4, Patient 2. Unique `(RoleId, MenuId)`.
+- GetMenuByRole: empty RoleDetails **200 []** (Tufan_NoMenu); missing user 404; unauth/invalid JWT 401; non-Admin inspect ignored.
+- BUG-S2-01 DoctorOnly is IAuthorizationFilter: Reception backup 403 before 400. SPA no longer calls backup for Reception.
+- BUG-S2-02 `/patientboard` and `/anatomy` are role-guarded. BUG-S2-03 Reception stats 200 zeros.
+- CON-01: Family relation required (API 400 + UI Add disabled). ADM-B01/B02/B03/3D mutate AdminPortal; lists 200 for Admin.
+- Catalog `Homeocentrum_All_New_And_Updated+APIs.xlsx` sheet **Users & Login Details**. Live suite `21_Role_Menus_Bugs_Live.py`.
 
 ## Code shipped this week
 | ID | Change | Where |

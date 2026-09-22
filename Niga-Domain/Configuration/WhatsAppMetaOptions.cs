@@ -4,6 +4,8 @@ public class WhatsAppMetaOptions
 {
     public const string SectionName = "WhatsAppMeta";
 
+    // TODO S5: confirm AccessToken is still valid (already in New-API appsettings WhatsAppMeta). S5 will use it.
+
     public string AccessToken { get; set; } = string.Empty;
 
     public string PhoneNumberId { get; set; } = string.Empty;

@@ -46,13 +46,13 @@ LEFT JOIN dbo.RoleMaster r ON r.RoleId = u.RoleId
 LEFT JOIN dbo.RoleDetails rd ON rd.RoleId = r.RoleId AND rd.IsView = 1
 WHERE ISNULL(u.DeleteStatus, 0) = 0
   AND u.UserName IN (
-      N'Tufan_Admin', N'Tufan_Doctore', N'Tufan_Account', N'Tufan_Pharmacy',
+      N'Tufan_Admin', N'Tufan_Doctor', N'Tufan_Account', N'Tufan_Pharmacy',
       N'Tufan_Patient', N'Tufan_Caregiver', N'Tufan_NoMenu'
   )
 GROUP BY u.UserName, r.RoleName, u.IsUserActivated, u.UserStatus, u.DeleteStatus
 ORDER BY u.UserName;
 
-PRINT '--- Reception staff linked to Tufan_Doctore ---';
+PRINT '--- Reception staff linked to Tufan_Doctor ---';
 SELECT s.UserID, s.DoctorID, d.UserId AS DoctorUserId, u.UserName AS DoctorUserName
 FROM dbo.DoctorReceptionStaff s
 LEFT JOIN dbo.Doctor d ON d.DoctorID = s.DoctorID

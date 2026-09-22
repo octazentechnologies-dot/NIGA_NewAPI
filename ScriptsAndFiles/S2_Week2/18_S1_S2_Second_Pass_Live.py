@@ -13,7 +13,7 @@ NEW = "http://127.0.0.1:5038"
 
 USERS = [
     ("Tufan_Admin", "123456", "Admin"),
-    ("Tufan_Doctore", "123456", "Doctor"),
+    ("Tufan_Doctor", "123456", "Doctor"),
     ("Tufan_Reception", "123456", "Reception"),
     ("Tufan_Account", "123456", "Account"),
     ("Tufan_Pharmacy", "123456", "PharmacyPartner"),
@@ -85,13 +85,13 @@ def main():
         )
         check("SEC-01.02", f"role claim {user} expect {expect_role} got {got_role}", 200 if role_ok else 0, got_role, {200})
 
-    s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "Tufan_Doctore", "password": "wrong"})
+    s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "Tufan_Doctor", "password": "wrong"})
     check("SEC-01.02", "OLD login wrong password", s, b, {400, 401, 404})
 
     s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "", "password": ""})
     check("SEC-01.02", "OLD login empty", s, b, {400, 401, 404})
 
-    doc = tokens.get("Tufan_Doctore") or ""
+    doc = tokens.get("Tufan_Doctor") or ""
     rec = tokens.get("Tufan_Reception") or ""
     acc = tokens.get("Tufan_Account") or ""
     pharm = tokens.get("Tufan_Pharmacy") or ""
@@ -123,6 +123,14 @@ def main():
     if cg:
         s, b = req("GET", f"{NEW}/api/Caregiver/ListActingFor", token=cg)
         check("CON-02.02", "Caregiver/ListActingFor", s, b, {200})
+        s, b = req("GET", f"{NEW}/api/Family/Me", token=cg)
+        check("CON-01.02", "Family/Me caregiver", s, b, {200})
+        acting_ok = "3046" in b or "Tufan Patient" in b
+        check("CON-01.02", "Family/Me caregiver acts for Tufan_Patient", 200 if acting_ok else 0, b, {200})
+        s, b = req("GET", f"{NEW}/api/Family", token=cg)
+        check("CON-01.02", "Family list caregiver", s, b, {200})
+        list_ok = s == 200 and ("3047" in b or "Spouse" in b or "familyMemberId" in b.lower() or "FamilyMemberId" in b)
+        check("CON-01.02", "Family list caregiver sees patient members", 200 if list_ok else 0, b, {200})
 
     if acc:
         s, b = req("GET", f"{NEW}/api/Family/Me", token=acc)

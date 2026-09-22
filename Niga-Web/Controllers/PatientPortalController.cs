@@ -25,23 +25,25 @@ namespace Niga_Domain.API.Controllers
         public async Task<IActionResult> Home()
         {
             var userId = (long)User.GetUserId();
-            var map = await _context.PatientUserMaps.AsNoTracking()
-                .FirstOrDefaultAsync(m => m.UserId == userId && m.IsPrimary && !m.DeleteStatus);
+            if (userId <= 0)
+                return Unauthorized(new { success = false, message = "Not signed in." });
+
+            var owner = await PatientPortalOwnerResolver.ResolveAsync(
+                _context, userId, preferActingFor: true, createIfMissing: false);
 
             var dto = new PatientHomeDashboardDto();
-            if (map == null)
+            if (owner == null)
                 return Ok(new { success = true, data = dto });
 
-            var patient = await _context.Patients.AsNoTracking()
-                .FirstOrDefaultAsync(p => p.PatientId == map.PatientId && p.DeleteStatus != true);
-            dto.PatientId = map.PatientId;
-            dto.PatientName = patient?.PatientName;
-            dto.FamilyCount = await _context.PatientFamilyMembers.CountAsync(f => f.OwnerUserId == userId && !f.DeleteStatus);
+            dto.PatientId = owner.PatientId;
+            dto.PatientName = owner.PatientName;
+            dto.FamilyCount = await _context.PatientFamilyMembers.CountAsync(f =>
+                f.OwnerPatientId == owner.PatientId && !f.DeleteStatus);
             dto.CaregiverCount = await _context.CaregiverAuthorizations.CountAsync(c =>
-                c.PatientId == map.PatientId && !c.DeleteStatus && c.RevokedAt == null);
+                c.PatientId == owner.PatientId && !c.DeleteStatus && c.RevokedAt == null);
 
             var upcoming = await _context.PatientAppointments.AsNoTracking()
-                .Where(a => a.PatientId == map.PatientId && a.DeleteStatus != true && a.AppointmentDate >= DateTime.Today)
+                .Where(a => a.PatientId == owner.PatientId && a.DeleteStatus != true && a.AppointmentDate >= DateTime.Today)
                 .OrderBy(a => a.AppointmentDate)
                 .ThenBy(a => a.AppointmentTime)
                 .Take(5)

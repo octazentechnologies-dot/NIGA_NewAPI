@@ -12,10 +12,15 @@ using Niga_Domain.Data;
 using API.Entities;
 using Niga_Domain.Configuration.CorsPolicyConfig;
 using Niga_Domain.Authorization;
+using Niga_Domain.Logging;
+using Microsoft.Extensions.Logging;
 
 
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.AddFilter<AppFileLoggerProvider>(null, LogLevel.Debug);
+builder.Logging.AddProvider(new AppFileLoggerProvider());
 
 ConfigurationManager configuration = builder.Configuration;
 IWebHostEnvironment environment = builder.Environment;
@@ -134,6 +139,8 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
+AppFileLog.Initialize(app.Environment.ContentRootPath, app.Configuration, "NIGA New-API (Niga-Web :5038)");
+app.UseMiddleware<AppDiagnosticsMiddleware>();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {

@@ -33,26 +33,41 @@ namespace Niga_Domain.API.Controllers
         [HttpGet("Me")]
         public async Task<IActionResult> Me()
         {
-            var userId = (long)User.GetUserId();
-            var owner = await EnsurePrimaryPatientAsync(userId);
-            if (owner == null)
-                return BadRequest(new { success = false, message = "Could not resolve a patient record for this login." });
-
-            var user = await _context.UserMasters.AsNoTracking()
-                .FirstOrDefaultAsync(u => u.UserId == userId && !u.DeleteStatus);
-            var destination = FirstContact(user);
-
-            return Ok(new
+            try
             {
-                success = true,
-                data = new CaregiverMeDto
+                var userId = (long)User.GetUserId();
+                if (userId <= 0)
+                    return Unauthorized(new { success = false, message = "Not signed in." });
+
+                var owner = await PatientPortalOwnerResolver.ResolveAsync(
+                    _context, userId, preferActingFor: true, createIfMissing: false)
+                    ?? await PatientPortalOwnerResolver.ResolveAsync(
+                        _context, userId, preferActingFor: false, createIfMissing: true);
+                if (owner == null)
+                    return BadRequest(new { success = false, message = "Could not resolve a patient record for this login." });
+
+                var user = await _context.UserMasters.AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.UserId == userId && !u.DeleteStatus);
+                var destination = FirstContact(user);
+
+                return Ok(new
                 {
-                    OwnerPatientId = owner.Value.PatientId,
-                    OwnerPatientName = owner.Value.PatientName,
-                    OtpDestination = destination,
-                    Linked = true
-                }
-            });
+                    success = true,
+                    data = new CaregiverMeDto
+                    {
+                        OwnerPatientId = owner.PatientId,
+                        OwnerPatientName = owner.PatientName,
+                        OtpDestination = destination,
+                        Linked = true,
+                        IsActingAsCaregiver = owner.IsActingAsCaregiver
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    new { success = false, message = ex.InnerException?.Message ?? ex.Message });
+            }
         }
 
         [HttpGet("Lookup")]
@@ -85,11 +100,12 @@ namespace Niga_Domain.API.Controllers
             }
             else
             {
-                var owner = await EnsurePrimaryPatientAsync(userId);
-                if (owner == null)
+                var owner = await PatientPortalOwnerResolver.ResolveAsync(
+                    _context, userId, preferActingFor: false, createIfMissing: false);
+                if (owner == null || owner.IsActingAsCaregiver)
                     return StatusCode(StatusCodes.Status403Forbidden,
-                        new { success = false, message = "No patient record is linked to this login." });
-                patientId = owner.Value.PatientId;
+                        new { success = false, message = "Only the patient account linked to this record may grant caregiver access." });
+                patientId = owner.PatientId;
             }
 
             long caregiverUserId;
@@ -280,77 +296,6 @@ namespace Niga_Domain.API.Controllers
             challenge.VerifiedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
             return null;
-        }
-
-        private async Task<(int PatientId, string? PatientName)?> EnsurePrimaryPatientAsync(long userId)
-        {
-            var map = await _context.PatientUserMaps
-                .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus && m.IsPrimary)
-                ?? await _context.PatientUserMaps
-                    .FirstOrDefaultAsync(m => m.UserId == userId && !m.DeleteStatus);
-
-            if (map != null)
-            {
-                var linked = await _context.Patients.AsNoTracking()
-                    .FirstOrDefaultAsync(p => p.PatientId == map.PatientId && p.DeleteStatus != true);
-                return (map.PatientId, linked?.PatientName);
-            }
-
-            var user = await _context.UserMasters
-                .FirstOrDefaultAsync(u => u.UserId == userId && !u.DeleteStatus);
-            if (user == null)
-                return null;
-
-            var email = user.EmailId ?? user.UserName;
-            Patient? existingPatient = null;
-            if (!string.IsNullOrWhiteSpace(email))
-            {
-                existingPatient = await _context.Patients
-                    .FirstOrDefaultAsync(p => p.Email == email && p.DeleteStatus != true);
-            }
-            if (existingPatient == null && !string.IsNullOrWhiteSpace(user.MobileNo))
-            {
-                existingPatient = await _context.Patients
-                    .FirstOrDefaultAsync(p => p.MobileNo == user.MobileNo && p.DeleteStatus != true);
-            }
-
-            int patientId;
-            string? name;
-            if (existingPatient != null)
-            {
-                patientId = existingPatient.PatientId;
-                name = existingPatient.PatientName;
-            }
-            else
-            {
-                name = DisplayName(user);
-                var created = new Patient
-                {
-                    PatientName = name,
-                    Email = email,
-                    MobileNo = user.MobileNo,
-                    CountryId = user.CountryId,
-                    StateId = user.StateId,
-                    DeleteStatus = false,
-                    EnteredBy = userId.ToString(),
-                    EnteredDate = DateTime.UtcNow
-                };
-                _context.Patients.Add(created);
-                await _context.SaveChangesAsync();
-                patientId = created.PatientId;
-            }
-
-            _context.PatientUserMaps.Add(new PatientUserMap
-            {
-                UserId = userId,
-                PatientId = patientId,
-                IsPrimary = true,
-                DeleteStatus = false,
-                EnteredBy = userId.ToString(),
-                EnteredDate = DateTime.UtcNow
-            });
-            await _context.SaveChangesAsync();
-            return (patientId, name);
         }
 
         private async Task<UserMaster?> FindUserByContactAsync(string? contact)

@@ -549,12 +549,13 @@ HOST       : Old-API  API_URL
 
 --------------------------------------------------------------------------------
 URL        : POST /api/Account/Login
-USE        : Clinic login. Reception token now includes RoleName=Reception and
-             DoctorUserID (owning doctor's UserMaster id) for New-API backup/ACL.
+USE        : Clinic login. Reception token includes RoleName=Reception,
+             DoctorID, and doctorUserId (owning doctor's UserMaster id) for
+             New-API dashboard stats. PatientBoardBackup stays DoctorOnly 403.
 HOST       : Old-API
 TOKEN      : no
-SAMPLE PAYLOAD: { "userName": "tufanpowar001@gmail.com", "password": "123456" }
-OUTPUT     : { success, data: { userId, role, token, ... } }
+SAMPLE PAYLOAD: { "userName": "Tufan_Reception", "password": "123456" }
+OUTPUT     : { success, data: { userId, role, token, doctorId, receptionStaffId, doctorUserId, ... } }
 
 --------------------------------------------------------------------------------
 URL        : GET /api/patient/{userId}

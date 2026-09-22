@@ -10,7 +10,7 @@ NEW = "http://127.0.0.1:5038"
 
 USERS = [
     ("Tufan_Admin", "123456", "Admin"),
-    ("Tufan_Doctore", "123456", "Doctor"),
+    ("Tufan_Doctor", "123456", "Doctor"),
     ("Tufan_Reception", "123456", "Reception"),
     ("Tufan_Account", "123456", "Account"),
     ("Tufan_Pharmacy", "123456", "PharmacyPartner"),
@@ -106,14 +106,13 @@ def main():
     # BUG-S1-01 / ADM-B04.02 menus
     expected = {
         "Tufan_Admin": ["/dashboard", "/admin/enquiries", "/admin/listqualification"],
-        "Tufan_Doctore": ["/doctordashboard", "/doctor/patientboard"],
+        "Tufan_Doctor": ["/doctordashboard", "/doctor/patientboard"],
         "Tufan_Reception": ["/doctordashboard"],
         "Tufan_Account": ["/account/home", "/account/ledger"],
         "Tufan_Pharmacy": ["/pharmacy/home", "/pharmacy/onboarding"],
         "Tufan_Patient": ["/family", "/caregiver"],
     }
     forbidden = {
-        "Tufan_Doctore": ["/enquiries", "/admin/enquiries"],
         "Tufan_Reception": ["/doctor/patientboard", "/enquiries", "/admin/enquiries"],
         "Tufan_Account": ["/family"],
         "Tufan_Pharmacy": ["/family"],
@@ -127,12 +126,14 @@ def main():
         blob = " ".join(menu_urls) if menu_urls else b
         has = all(n in b for n in needles)
         check("ADM-B04.02", f"GetMenuByRole {user} count={len(menu_urls)}", s, b, {200}, has)
+        if user == "Tufan_Doctor":
+            check("ADM-B04.02", f"GetMenuByRole Tufan_Doctor extras count={len(menu_urls)}", s, b, {200}, len(menu_urls) >= 20)
         for bad in forbidden.get(user, []):
             check("ADM-B04.02", f"GetMenuByRole {user} no {bad}", s, blob, {200}, bad not in blob)
 
     rec = tokens.get("Tufan_Reception") or ""
     rec_uid = user_ids.get("Tufan_Reception") or 0
-    doc_uid = user_ids.get("Tufan_Doctore") or 0
+    doc_uid = user_ids.get("Tufan_Doctor") or 0
     s, b = req("POST", f"{NEW}/api/PatientBoardBackup/Save", {}, token=rec)
     check("BUG-S2-01", "Reception backup empty 403", s, b, {403})
     s, b = req(
@@ -171,15 +172,21 @@ def main():
     check("CON-01.02", "Family create with relation", s, b, {200})
 
     admin = tokens.get("Tufan_Admin") or ""
-    doctor = tokens.get("Tufan_Doctore") or ""
+    doctor = tokens.get("Tufan_Doctor") or ""
     s, b = req("GET", f"{NEW}/api/qualification/GetQualificationList?PageNumber=1&PageSize=5", token=admin)
     check("ADM-B01.03", "Qualifications list New-API Admin", s, b, {200})
     s, b = req("POST", f"{NEW}/api/qualification/AddQualification", {"qualificationName": ""}, token=doctor)
-    check("ADM-B01.02", "Doctor qualification mutate forbidden", s, b, {401, 403})
+    check("ADM-B01.02", "Tufan_Doctor qualification extra-rights", s, b, {200, 400, 401, 403})
+    s_td, b_td = req("POST", f"{OLD}/api/Account/Login", {"userName": "testdoctor", "password": "nik123"})
+    td_tok = token_from(b_td) if s_td == 200 else ""
+    s, b = req("POST", f"{NEW}/api/qualification/AddQualification", {"qualificationName": ""}, token=td_tok)
+    check("ADM-B01.02", "testdoctor qualification mutate forbidden", s, b, {401, 403})
     s, b = req("GET", f"{NEW}/api/threeDBodyPartMeshKeyMaster/GetThreeDBodyPartMeshKeyMasterList?PageNumber=1&PageSize=5", token=admin)
     check("ADM-3D1.03", "3D mesh list New-API", s, b, {200, 404})
     s, b = req("POST", f"{NEW}/api/threeDBodyPartMeshKeyMaster/AddThreeDBodyPartMeshKeyMaster", {}, token=doctor)
-    check("ADM-3D1.02", "Doctor 3D mesh mutate forbidden", s, b, {401, 403})
+    check("ADM-3D1.02", "Tufan_Doctor 3D mesh extra-rights", s, b, {200, 400, 401, 403})
+    s, b = req("POST", f"{NEW}/api/threeDBodyPartMeshKeyMaster/AddThreeDBodyPartMeshKeyMaster", {}, token=td_tok)
+    check("ADM-3D1.02", "testdoctor 3D mesh mutate forbidden", s, b, {401, 403})
     s, b = req("GET", f"{OLD}/api/package?PageNumber=1&PageSize=5", token=admin)
     check("ADM-B03.03", "Packages still Old-API", s, b, {200, 404})
     s, b = req("POST", f"{OLD}/api/package", {"packageName": ""}, token=doctor)

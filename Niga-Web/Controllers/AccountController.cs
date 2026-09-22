@@ -324,7 +324,8 @@ namespace Niga_Domain.API.Controllers
                     success = true,
                     message = genericMessage,
                     resetLink = _env.IsDevelopment() ? resetLink : null,
-                    mailSent = _env.IsDevelopment() ? mailSent : (bool?)null
+                    mailSent = _env.IsDevelopment() ? mailSent : (bool?)null,
+                    smtpError = _env.IsDevelopment() && !mailSent ? _emailSender.LastError : null
                 });
             }
             catch (Exception)
@@ -560,6 +561,8 @@ namespace Niga_Domain.API.Controllers
                 var mobile = PhoneNormalizer.Digits(request.MobileNo);
                 if (mobile.Length < 8)
                     return BadRequest(new { success = false, message = "MobileNo is invalid." });
+
+                // TODO: production OTP. Until then LoginWithOtp consumes Dev/challenge OTP only (test mobile 7768046064).
 
                 var challenge = await _context.OtpChallenges
                     .FirstOrDefaultAsync(c => c.OtpChallengeId == request.OtpChallengeId);

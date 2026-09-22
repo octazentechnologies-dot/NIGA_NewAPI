@@ -72,13 +72,13 @@ C. What I need from you (all tasks / go-live)
    - Whether clinic SPA should stay on localhost or remote for your next demo
 
 3. SMTP / email (reset password, doctor activation, welcome)
-   - From address
-   - SMTP host/port (Gmail 587 already in appsettings)
-   - SMTP username
-   - App password (Gmail)
-   - Confirm SiteUrl used inside reset/activation links
-   Current Dev uses tufanpowar001@gmail.com in both API appsettings.
-   INPUT: is that the mailbox the team should keep, or a company mailbox?
+   CONFIRMED 21-Sep-2026: Gmail SMTP already in New-API + Old-API appsettings
+   (from/user tufanpowar001@gmail.com, host smtp.gmail.com:587, appName Homeocentrum).
+   ErrorAlert Recipients: tufanpowar001@gmail.com only.
+   ErrorAlert:Enabled true = send descriptive runtime emails; false = do not send.
+   FileLog:Enabled true = write Logs/ (INFO/WARN/ERROR/DEBUG + niga-all-*.log); false = no files.
+   SiteUrl for reset/activation links: http://localhost:3000 (ConfigurationModel).
+   INPUT remaining: later production mailbox if this Gmail is Dev-only.
 
 4. SMS / OTP (PRE-03 — NOT live)
    - Vendor name (MSG91 / Twilio / Exotel / other)

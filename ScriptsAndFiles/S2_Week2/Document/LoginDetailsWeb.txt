@@ -3,7 +3,7 @@ Username : Tufan_Admin
 Password : 123456
 
 Doctor portal  /doctordashboard
-Username : Tufan_Doctore
+Username : Tufan_Doctor
 Password : 123456
 
 Reception (DoctorReceptionStaff, same doctor chrome until Phase 5)
@@ -24,6 +24,10 @@ Password : 123456
 
 Caregiver (Patient role + CaregiverAuthorization on Tufan_Patient)
 Username : Tufan_Caregiver
+Password : 123456
+
+API-only empty-menu probe (no portal menus; GetMenuByRole 200 [])
+Username : Tufan_NoMenu
 Password : 123456
 
 Clinic password login is Old-API POST /api/Account/Login.

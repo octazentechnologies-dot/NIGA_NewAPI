@@ -74,6 +74,9 @@ namespace Niga_Domain.API.Controllers
             var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
             var masked = MaskDestination(request.Destination);
 
+            // TODO: production OTP delivery via SMS vendor. Until then only Dev/challenge OTP
+            // (devCode in Development) — test mobile 7768046064.
+
             var challenge = new OtpChallenge
             {
                 Action = request.Action.Trim(),
@@ -103,7 +106,8 @@ namespace Niga_Domain.API.Controllers
                 request.Destination,
                 "Your Homeocentrum verification code is valid for 10 minutes.");
 
-            // SMS provider adapter stub until PRE-03 vendor is live — do not return raw code in production.
+            // TODO PRE-03: do not return raw OTP once SMS vendor + DLT templates are live.
+            // Until then only Dev/challenge OTP (devCode) on 7768046064 / Development.
             var payload = new Dictionary<string, object?>
             {
                 ["otpChallengeId"] = challenge.OtpChallengeId,

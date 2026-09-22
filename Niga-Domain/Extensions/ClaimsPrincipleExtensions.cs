@@ -37,8 +37,22 @@ namespace Niga_Domain.Extensions
         }
         public static int GetUserId(this ClaimsPrincipal user)
         {
-            return int.Parse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-            
+            if (user == null)
+                return 0;
+
+            foreach (var claim in user.Claims)
+            {
+                if (claim.Type != ClaimTypes.NameIdentifier
+                    && claim.Type != "nameid"
+                    && claim.Type != "UserId"
+                    && claim.Type != "userId"
+                    && claim.Type != "sub")
+                    continue;
+                if (int.TryParse(claim.Value, out var id) && id > 0)
+                    return id;
+            }
+
+            return 0;
         }
 
         /// <summary>SEC-01.02 — DoctorID claim from JWT (doctors / reception).</summary>

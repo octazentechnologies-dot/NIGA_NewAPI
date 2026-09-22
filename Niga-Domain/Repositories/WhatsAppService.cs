@@ -36,6 +36,7 @@ public class WhatsAppService : IWhatsAppService
         _bulkSendQueue = bulkSendQueue;
         _metaOptions = metaOptions.Value;
         _logger = logger;
+        // TODO S5: confirm WhatsApp Meta token in appsettings is still valid; S5 reuses this client.
     }
 
     public Task<(bool Success, string Message, SendWhatsAppMessageResultModel? Result)> SendHospitalServiceMessageAsync(

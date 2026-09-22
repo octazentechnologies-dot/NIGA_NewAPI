@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Niga_Domain.Business.Interface;
 using Niga_Domain.Data;
 using Niga_Domain.DTOs;
+using Niga_Domain.Master;
 
 namespace Niga_Domain.Business.Implementation
 {
@@ -941,38 +942,66 @@ namespace Niga_Domain.Business.Implementation
                 .OrderBy(x => x.Menu.SeqNo)
                 .ToList();
 
-            if (menuEntityList.Count == 0)
-            {
-                // Mapped user/role exists but has no visible RoleDetails. Contract is 200 []
-                // (missing UserMaster is 404; unauthenticated is 401).
-                return menuModelList;
-            }
-
             foreach (var item in menuEntityList)
             {
                 var menu = item.Menu;
-                menuModelList.Add(new MenuMasterModel
-                {
-                    MenuId = menu.MenuId,
-                    ModuleId = menu.ModuleId,
-                    MenuName = menu.MenuName,
-                    MenuNameMarathi = menu.MenuNameMarathi,
-                    MenuType = menu.MenuType,
-                    ParentMenuId = menu.ParentMenuId,
-                    MenuUrl = menu.MenuUrl,
-                    Description = menu.Description,
-                    MenuIcon = menu.MenuIcon,
-                    ActionName = menu.ActionName,
-                    ControllerName = menu.ControllerName,
-                    IsLeaf = menu.IsLeaf,
-                    ShowInMainMenu = menu.ShowInMainMenu,
-                    SeqNo = menu.SeqNo,
-                    FirmIds = menu.FirmIds,
-                    DeleteStatus = menu.DeleteStatus
-                });
+                menuModelList.Add(ToMenuModel(menu));
             }
 
+            AppendUserLevelMenus(menuModelList, userId, isReceptionJwt);
+
             return menuModelList;
+        }
+
+        /// <summary>
+        /// Per-user extras from UserDetails (IsView). Used so Tufan_Doctor can have
+        /// menus/rights other Doctor-role logins do not get via RoleDetails.
+        /// </summary>
+        private void AppendUserLevelMenus(List<MenuMasterModel> menuModelList, long userId, bool skip)
+        {
+            if (skip || userId <= 0 || menuModelList == null)
+                return;
+
+            var existing = new HashSet<int>(menuModelList.Where(m => m.MenuId > 0).Select(m => m.MenuId));
+            var extras = context.UserDetails
+                .AsNoTracking()
+                .Where(x => x.UserId == userId && x.IsView == true)
+                .Include(x => x.Menu)
+                .ToList()
+                .Select(x => x.Menu)
+                .Where(m => m != null && !m.DeleteStatus && m.ShowInMainMenu)
+                .ToList();
+
+            foreach (var menu in extras)
+            {
+                if (menu == null || existing.Contains(menu.MenuId))
+                    continue;
+                existing.Add(menu.MenuId);
+                menuModelList.Add(ToMenuModel(menu));
+            }
+        }
+
+        private static MenuMasterModel ToMenuModel(MenuMaster menu)
+        {
+            return new MenuMasterModel
+            {
+                MenuId = menu.MenuId,
+                ModuleId = menu.ModuleId,
+                MenuName = menu.MenuName,
+                MenuNameMarathi = menu.MenuNameMarathi,
+                MenuType = menu.MenuType,
+                ParentMenuId = menu.ParentMenuId,
+                MenuUrl = menu.MenuUrl,
+                Description = menu.Description,
+                MenuIcon = menu.MenuIcon,
+                ActionName = menu.ActionName,
+                ControllerName = menu.ControllerName,
+                IsLeaf = menu.IsLeaf,
+                ShowInMainMenu = menu.ShowInMainMenu,
+                SeqNo = menu.SeqNo,
+                FirmIds = menu.FirmIds,
+                DeleteStatus = menu.DeleteStatus
+            };
         }
 
         /// <summary>

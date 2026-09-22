@@ -59,6 +59,7 @@ namespace Niga_Domain.Extensions
             services.AddSingleton<IJwtDenylistService, JwtDenylistService>();
             services.AddScoped<IAuditEventWriter, AuditEventWriter>();
             services.AddSingleton<ISignedFileUrlService, SignedFileUrlService>();
+            // TODO PRE-03: wire SMS vendor (MSG91 / Twilio / Exotel + India DLT template IDs) and replace StubSmsSender.
             services.AddSingleton<ISmsSender, StubSmsSender>();
             services.Configure<Niga_Domain.DTOs.SmtpSettingsModel>(config.GetSection("smtp"));
             services.AddScoped<IUserService, UserService>();
@@ -267,6 +268,7 @@ namespace Niga_Domain.Extensions
             services.AddHostedService<AiIncrementalEmbeddingRefreshBackgroundService>();
             services.AddHostedService<AiEmbeddingSemanticCacheWarmupBackgroundService>();
 
+            // TODO S5: confirm WhatsApp Meta AccessToken / PhoneNumberId still valid (New-API appsettings WhatsAppMeta). S5 will use this client.
             services.Configure<WhatsAppMetaOptions>(config.GetSection(WhatsAppMetaOptions.SectionName));
             services.AddHttpClient<IWhatsAppMetaApiClient, WhatsAppMetaApiClient>();
             services.AddScoped<IWhatsAppRepository, WhatsAppRepository>();

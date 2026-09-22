@@ -8,7 +8,7 @@ Purpose      : Shared team logins for every live web role.
                tufanpowar001@gmail.com). Reception is DoctorReceptionStaff.
 Use          : HomeoCentrum_Dev only. Idempotent (update password if login exists).
 Do not run   : Production.
-Logins       : Tufan_Admin / Tufan_Doctore / Tufan_Reception / Tufan_Account /
+Logins       : Tufan_Admin / Tufan_Doctor / Tufan_Reception / Tufan_Account /
                Tufan_Pharmacy / Tufan_Patient / Tufan_Caregiver / Tufan_NoMenu
                Password for all: 123456
                Tufan_NoMenu is an EmptyMenuProbe API user (GetMenuByRole 200 []).
@@ -75,17 +75,29 @@ DECLARE @Users TABLE
 
 -- Email/mobile cannot be shared across UserMaster rows: LoginWithOtp and
 -- ForgotPassword resolve FirstOrDefault by MobileNo / EmailId.
--- Shared team contact (tufanpowar@gmail.com / 7768046064) is on Tufan_Patient only.
+-- Shared team contact (tufanpowar001@gmail.com / 7768046064) is on Tufan_Patient only.
 INSERT INTO @Users (RoleName, UserName, EmailId, FirstName, LastName, MobileNo) VALUES
     (N'Admin',            N'Tufan_Admin',     N'tufan.admin@homeocentrum.dev',     N'Tufan', N'Admin',     N'9000000201'),
-    (N'Doctor',           N'Tufan_Doctore',   N'tufan.doctore@homeocentrum.dev',   N'Tufan', N'Doctore',   N'9000000202'),
+    (N'Doctor',           N'Tufan_Doctor',    N'tufan.doctor@homeocentrum.dev',    N'Tufan', N'Doctor',    N'9000000202'),
     (N'Account',          N'Tufan_Account',   N'tufan.account@homeocentrum.dev',   N'Tufan', N'Account',   N'9000000203'),
     (N'PharmacyPartner',  N'Tufan_Pharmacy',  N'tufan.pharmacy@homeocentrum.dev',  N'Tufan', N'Pharmacy',  N'9000000204'),
-    (N'Patient',          N'Tufan_Patient',   N'tufanpowar@gmail.com',             N'Tufan', N'Patient',   N'7768046064'),
+    (N'Patient',          N'Tufan_Patient',   N'tufanpowar001@gmail.com',             N'Tufan', N'Patient',   N'7768046064'),
     (N'Patient',          N'Tufan_Caregiver', N'tufan.caregiver@homeocentrum.dev', N'Tufan', N'Caregiver', N'9000000206'),
     (N'EmptyMenuProbe',   N'Tufan_NoMenu',    N'tufan.nomenu@homeocentrum.dev',    N'Tufan', N'NoMenu',    N'9000000207');
 
 BEGIN TRAN;
+
+-- Fix typo login Tufan_Doctore → Tufan_Doctor (idempotent).
+IF EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserName = N'Tufan_Doctore' AND ISNULL(DeleteStatus,0)=0)
+   AND NOT EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserName = N'Tufan_Doctor' AND ISNULL(DeleteStatus,0)=0)
+BEGIN
+    UPDATE dbo.UserMaster SET UserName = N'Tufan_Doctor' WHERE UserName = N'Tufan_Doctore' AND ISNULL(DeleteStatus,0)=0;
+    IF @HasLastName = 1
+        UPDATE dbo.UserMaster SET LastName = N'Doctor' WHERE UserName = N'Tufan_Doctor' AND ISNULL(DeleteStatus,0)=0;
+    IF @HasEmail = 1
+        UPDATE dbo.UserMaster SET EmailId = N'tufan.doctor@homeocentrum.dev' WHERE UserName = N'Tufan_Doctor' AND ISNULL(DeleteStatus,0)=0;
+    PRINT 'RENAMED UserMaster Tufan_Doctore → Tufan_Doctor';
+END
 
 DECLARE @RoleName NVARCHAR(50), @UserName NVARCHAR(200), @Email NVARCHAR(200),
         @First NVARCHAR(100), @Last NVARCHAR(100), @Mobile NVARCHAR(20), @RoleId INT, @UserId BIGINT;
@@ -109,7 +121,7 @@ BEGIN
     ELSE
     BEGIN
         -- Match UserName only. Looking up by EmailId would collapse two roles if
-        -- they ever shared tufanpowar@gmail.com (LoginWithOtp/ForgotPassword uniqueness).
+        -- they ever shared tufanpowar001@gmail.com (LoginWithOtp/ForgotPassword uniqueness).
         SET @UserId = (
             SELECT TOP 1 UserId FROM dbo.UserMaster
             WHERE ISNULL(DeleteStatus, 0) = 0
@@ -163,14 +175,14 @@ END
 CLOSE u_cursor;
 DEALLOCATE u_cursor;
 
--- Doctor row for Tufan_Doctore (clinic JWT needs Doctor.UserId)
-DECLARE @DocUserId BIGINT = (SELECT TOP 1 UserId FROM dbo.UserMaster WHERE UserName = N'Tufan_Doctore' AND ISNULL(DeleteStatus,0)=0);
+-- Doctor row for Tufan_Doctor (clinic JWT needs Doctor.UserId)
+DECLARE @DocUserId BIGINT = (SELECT TOP 1 UserId FROM dbo.UserMaster WHERE UserName = N'Tufan_Doctor' AND ISNULL(DeleteStatus,0)=0);
 DECLARE @DoctorId INT = NULL;
 
 IF @DocUserId IS NULL
-    PRINT 'SKIP Doctor: Tufan_Doctore UserMaster missing';
+    PRINT 'SKIP Doctor: Tufan_Doctor UserMaster missing';
 ELSE IF @DocUserId > 2147483647
-    RAISERROR('Tufan_Doctore UserId does not fit Doctor.UserId INT.', 16, 1);
+    RAISERROR('Tufan_Doctor UserId does not fit Doctor.UserId INT.', 16, 1);
 ELSE
 BEGIN
     SET @DoctorId = (
@@ -188,8 +200,8 @@ BEGIN
             CountryId, StateId
         )
         VALUES (
-            N'Tufan', N'Doctore', @QualId, N'Tufan team clinic',
-            N'9000000202', N'tufan.doctore@homeocentrum.dev',
+            N'Tufan', N'Doctor', @QualId, N'Tufan team clinic',
+            N'9000000202', N'tufan.doctor@homeocentrum.dev',
             N'Pune', N'TUFAN-TEAM', GETDATE(), 0, CAST(@DocUserId AS INT),
             N'Tufan Homeopathy Clinic', 550, 420,
             1, 1, N'Verified', 1,
@@ -201,7 +213,9 @@ BEGIN
     ELSE
     BEGIN
         UPDATE dbo.Doctor
-        SET DirectoryVisible = 1,
+        SET LastName = N'Doctor',
+            EmailId = N'tufan.doctor@homeocentrum.dev',
+            DirectoryVisible = 1,
             VerificationStatus = N'Verified',
             PracticeActivated = 1,
             IsOnline = 1,
@@ -222,7 +236,7 @@ BEGIN
     BEGIN
         INSERT INTO dbo.DoctorVerification (DoctorId, Status, EnteredDate, DeleteStatus)
         VALUES (@DoctorId, N'Approved', GETUTCDATE(), 0);
-        PRINT 'INSERTED DoctorVerification Approved for Tufan_Doctore';
+        PRINT 'INSERTED DoctorVerification Approved for Tufan_Doctor';
     END
 END
 
@@ -230,7 +244,7 @@ END
 IF OBJECT_ID(N'dbo.DoctorReceptionStaff', N'U') IS NULL
     PRINT 'SKIP reception: DoctorReceptionStaff missing';
 ELSE IF @DoctorId IS NULL
-    PRINT 'SKIP reception: Tufan_Doctore DoctorId missing';
+    PRINT 'SKIP reception: Tufan_Doctor DoctorId missing';
 ELSE IF EXISTS (
     SELECT 1 FROM dbo.DoctorReceptionStaff
     WHERE UserID = N'Tufan_Reception' AND ISNULL(DeleteStatus, 0) = 0
@@ -240,7 +254,7 @@ BEGIN
     SET Password = N'123456',
         DoctorID = @DoctorId,
         ContactNumber = N'7768046064',
-        EmailId = N'tufanpowar@gmail.com',
+        EmailId = N'tufanpowar001@gmail.com',
         DeleteStatus = 0
     WHERE UserID = N'Tufan_Reception';
     PRINT 'UPDATED DoctorReceptionStaff Tufan_Reception';
@@ -258,7 +272,7 @@ BEGIN
         N'Tufan Reception',
         N'Tufan team clinic',
         N'7768046064',
-        N'tufanpowar@gmail.com',
+        N'tufanpowar001@gmail.com',
         N'India', N'Maharashtra', N'Pune',
         NULL, GETDATE(), 0
     );
@@ -293,7 +307,7 @@ BEGIN
             N'Tufan Patient',
             N'Tufan team',
             14, 78, N'7768046064',
-            '1990-01-01', 0, N'tufanpowar@gmail.com',
+            '1990-01-01', 0, N'tufanpowar001@gmail.com',
             DATEDIFF(YEAR, '1990-01-01', GETDATE()),
             0,
             0, N'TUFAN-TEAM', GETDATE()
@@ -308,7 +322,7 @@ BEGIN
     BEGIN
         UPDATE dbo.Patient
         SET MobileNo = N'7768046064',
-            Email = N'tufanpowar@gmail.com'
+            Email = N'tufanpowar001@gmail.com'
         WHERE PatientId = @PatientId;
         PRINT CONCAT('UPDATED Patient contact PatientId=', @PatientId);
     END
@@ -338,7 +352,7 @@ COMMIT TRAN;
 
 PRINT '15_DEV_Seed_Tufan_Role_Logins.sql completed.';
 PRINT 'All passwords: 123456';
-PRINT 'UserMaster: Tufan_Admin Tufan_Doctore Tufan_Account Tufan_Pharmacy Tufan_Patient Tufan_Caregiver Tufan_NoMenu';
+PRINT 'UserMaster: Tufan_Admin Tufan_Doctor Tufan_Account Tufan_Pharmacy Tufan_Patient Tufan_Caregiver Tufan_NoMenu';
 PRINT 'Reception (DoctorReceptionStaff): Tufan_Reception';
 PRINT 'NEXT: run 19_DEV_Seed_Role_Menus.sql so GetMenuByRole is mapped for every role.';
 GO

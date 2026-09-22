@@ -36,6 +36,8 @@ namespace Niga_Domain.API.Controllers
             if (digits.Length < 8)
                 return BadRequest(new { success = false, message = "Destination must be a valid mobile number." });
 
+            // TODO: production OTP via SMS vendor. Until then only Dev/challenge OTP (devCode) — test mobile 7768046064.
+
             var since = DateTime.UtcNow.AddMinutes(-1);
             var recent = await _context.OtpChallenges.CountAsync(c =>
                 c.Action == "PatientAuth" && c.EntityId == digits && c.CreatedAt >= since);
