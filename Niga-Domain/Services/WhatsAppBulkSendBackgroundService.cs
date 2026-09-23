@@ -25,18 +25,28 @@ public class WhatsAppBulkSendBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await foreach (var job in _queue.Reader.ReadAllAsync(stoppingToken))
+        try
         {
-            try
+            await foreach (var job in _queue.Reader.ReadAllAsync(stoppingToken))
             {
-                await using var scope = _scopeFactory.CreateAsyncScope();
-                var service = scope.ServiceProvider.GetRequiredService<IWhatsAppService>();
-                await service.ProcessBulkSendJobAsync(job, BatchSize, stoppingToken);
+                try
+                {
+                    await using var scope = _scopeFactory.CreateAsyncScope();
+                    var service = scope.ServiceProvider.GetRequiredService<IWhatsAppService>();
+                    await service.ProcessBulkSendJobAsync(job, BatchSize, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Bulk WhatsApp job {JobId} failed.", job.JobId);
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Bulk WhatsApp job {JobId} failed.", job.JobId);
-            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
         }
     }
 }

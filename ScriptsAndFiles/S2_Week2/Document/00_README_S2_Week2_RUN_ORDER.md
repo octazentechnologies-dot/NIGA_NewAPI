@@ -17,7 +17,7 @@ Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 | 4 | `04_CLN_M03_3D_Hotspot_SubSection.sql` | ThreeDBodyPartSectionHotspot.SubSectionId + name backfill. |
 | 5 | `05_VERIFY_S2_Week2.sql` | Read-only proof queries. |
 | 6 | `06_UNIT_TEST_S2_Week2_Guards.sql` | Guard unit tests + live schema assertions. |
-| 7 | `07_TEST_Sample_Data_Insert.sql` | Dev/test sample: 10 enquiries, 10 CogRun, 10 bookings (S2TESTED01–10), KYC, fees, hotspot map, Booking policy. |
+| 7 | `07_TEST_Sample_Data_Insert.sql` | Dev/test sample on Tufan_Doctor 1010 and Tufan_Patient 3046 when those rows exist: 10 enquiries, 10 CogRun, 10 bookings (S2TESTED01–10), KYC, fees, hotspot map, Booking policy. |
 | 8 | `08_CARE_CATEGORIES_RECEPTION_ARTICLES.sql` | HumanSystemMaster care categories, Dev reception login `s2.reception`, S2-TESTED article body. |
 | 9 | `09_WEB_TRU_Doctor_Credential_Documents.sql` | WEB-09.01 TRU-01 tables: DoctorVerification + DoctorCredentialDocument. Backfill one verification row per doctor. |
 | 10 | `10_TODAY_SLOTS_POLICY_DIRECTORY.sql` | Dev-only: today + tomorrow DoctorDailySchedule for every Verified directory doctor; Booking policy 2026.09 if missing. |

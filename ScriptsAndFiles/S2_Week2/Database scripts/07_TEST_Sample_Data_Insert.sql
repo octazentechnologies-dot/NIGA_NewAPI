@@ -41,12 +41,12 @@ FROM dbo.Doctor d
 WHERE ISNULL(d.DeleteStatus, 0) = 0
   AND d.DirectoryVisible = 1
   AND d.VerificationStatus = N'Verified'
-ORDER BY CASE WHEN d.DoctorId = 3 THEN 0 ELSE 1 END, d.DoctorId;
+ORDER BY CASE WHEN d.DoctorId = 1010 THEN 0 WHEN d.DoctorId = 3 THEN 1 ELSE 2 END, d.DoctorId;
 
 SELECT TOP 1 @PatientId = p.PatientID
 FROM dbo.Patient p
 WHERE ISNULL(p.DeleteStatus, 0) = 0
-ORDER BY CASE WHEN p.PatientID = 2 THEN 0 ELSE 1 END, p.PatientID;
+ORDER BY CASE WHEN p.PatientID = 3046 THEN 0 WHEN p.PatientID = 2 THEN 1 ELSE 2 END, p.PatientID;
 
 IF @DoctorId IS NULL OR @DoctorUserId IS NULL OR @PatientId IS NULL
 BEGIN

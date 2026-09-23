@@ -10,6 +10,7 @@ Run on `HomeoCentrum_Dev` (`localhost\MSSQLSERVER25`). Both scripts are already 
 |---|------|-----|
 | 1 | `01_S3_Week3_Schema.sql` | Appointment cancel/payment columns, schedule break, reception IsActive, case-paper role, waitlist, tele, support, help. Does not rewrite old VisitType rows and does not touch Razorpay. |
 | 2 | `02_S3_Week3_Menus.sql` | Menu URLs for schedule, support, tele, and reception. |
+| 3 | `03_DEV_Seed_S3_Static.sql` | Dev only. Static help, waitlist, 20 Dec schedule with a break, appointment token S3STATIC01 for Tufan_Patient 3046 / Tufan_Doctor 1010, support ticket, instant consult. |
 
 ## After SQL
 

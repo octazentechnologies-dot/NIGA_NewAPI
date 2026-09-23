@@ -447,6 +447,13 @@ namespace Niga_Domain.API.Controllers
 
                 if (patientAppointmentModel != null)
                 {
+                    if (!DoctorOwnership.IsAdminPortalUser(User))
+                    {
+                        var jwtDoctorId = DoctorOwnership.GetDoctorId(User);
+                        patientAppointmentModel = patientAppointmentModel
+                            .Where(x => jwtDoctorId.HasValue && x.DoctorId == jwtDoctorId.Value)
+                            .ToList();
+                    }
                     return Ok(patientAppointmentModel);
                 }
                 return ReturnErrorResponse(errorResponseModel);

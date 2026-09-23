@@ -336,11 +336,26 @@ namespace Niga_Domain.Implementation
             ref ErrorResponseModel errorResponseModel
         )
         {
-            string Message = "";
+            errorResponseModel = new ErrorResponseModel();
+            if (patient == null || string.IsNullOrWhiteSpace(patient.ChiefComplaintIds))
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "ChiefComplaintIds is required";
+                return "";
+            }
+
             var CaseEntry = context
                 .CaseEntryDetails.Where(x => x.PatientId == patient.PatientID)
                 .FirstOrDefault();
-            foreach (var item in patient.ChiefComplaintIds.Split(','))
+            if (CaseEntry == null)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "Case not found for this patient";
+                return "";
+            }
+
+            string Message = "";
+            foreach (var item in patient.ChiefComplaintIds.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0))
             {
                 var caseEntryChiefComplaint = new CaseEntryChiefComplaint();
                 caseEntryChiefComplaint.ChiefComplaintName = item;
@@ -348,6 +363,11 @@ namespace Niga_Domain.Implementation
                 context.CaseEntryChiefComplaints.Add(caseEntryChiefComplaint);
                 context.SaveChanges();
                 Message = "Complaints Saved Successfully";
+            }
+            if (string.IsNullOrEmpty(Message))
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "ChiefComplaintIds is required";
             }
             return Message;
         }
@@ -522,40 +542,47 @@ namespace Niga_Domain.Implementation
             ref ErrorResponseModel errorResponseModel
         )
         {
+            errorResponseModel = new ErrorResponseModel();
+            if (casedetailsModel == null || casedetailsModel.Count == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "Case details are required";
+                return null;
+            }
+
             string Message = "";
-            var existingDetails = context
-                .CaseDetails.Where(x => x.CaseId == casedetailsModel[0].CaseId)
-                .ToList();
-
-            //foreach (var item in casedetailsModel)
-            // {
-            //     var caseDetailsEntity = new CaseDetails();
-            //    // caseDetailsEntity.CaseDetailId = item.CaseDetailId;
-            //     caseDetailsEntity.SubsectionId = item.SubsectionId;
-            //     caseDetailsEntity.CaseId = item.CaseId;
-            //     caseDetailsEntity.IntensityId = item.IntensityId;
-            //     caseDetailsEntity.RemedyCount = item.RemedyCount;
-            //     context.CaseDetails.Add(caseDetailsEntity);
-            //     context.SaveChanges();
-
-            // }
-
             foreach (var item in casedetailsModel)
             {
-                var caseDetailsEntity = new CaseDetail();
-
+                CaseDetail caseDetailsEntity;
                 if (item.CaseDetailId == 0)
                 {
-                    // var caseDetailsEntity = new CaseDetails();
-                    caseDetailsEntity.CaseDetailId = item.CaseDetailId;
-                    caseDetailsEntity.SubsectionId = item.SubsectionId;
-                    caseDetailsEntity.CaseId = item.CaseId;
-                    caseDetailsEntity.IntensityId = item.IntensityId;
-                    caseDetailsEntity.RemedyCount = item.RemedyCount;
+                    caseDetailsEntity = new CaseDetail
+                    {
+                        SubsectionId = item.SubsectionId,
+                        CaseId = item.CaseId,
+                        IntensityId = item.IntensityId,
+                        RemedyCount = item.RemedyCount
+                    };
                     context.CaseDetails.Add(caseDetailsEntity);
                     context.SaveChanges();
                 }
-                if (casedetailsModel.IndexOf(item) == casedetailsModel.Count - 1)
+                else
+                {
+                    caseDetailsEntity = context.CaseDetails.FirstOrDefault(x =>
+                        x.CaseDetailId == item.CaseDetailId && x.CaseId == item.CaseId);
+                    if (caseDetailsEntity == null)
+                    {
+                        errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                        errorResponseModel.Message = "Case detail not found";
+                        return null;
+                    }
+                    caseDetailsEntity.SubsectionId = item.SubsectionId;
+                    caseDetailsEntity.IntensityId = item.IntensityId;
+                    caseDetailsEntity.RemedyCount = item.RemedyCount;
+                    context.SaveChanges();
+                }
+
+                if (casedetailsModel.IndexOf(item) == casedetailsModel.Count - 1 && item.ModelEx != null)
                 {
                     foreach (var item1 in item.ModelEx)
                     {

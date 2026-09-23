@@ -10,6 +10,8 @@ Login web  : Clinic password login stays Old-API POST /api/Account/Login on :500
 Razorpay   : Stays Old-API. Public booking hold is PaymentStatus=PENDING until classic pay.
 
 Every endpoint has USE / HOST / TOKEN / SAMPLE / INPUTS / OUTPUT.
+Patient app calls the PATIENT APP FLOW. Doctor mobile calls the DOCTOR APP FLOW and must not call case-taking.
+Common for all apps: Old-API POST /api/Account/Login, public doctor list, and care-category chips.
 
 --------------------------------------------------------------------------------
 PATIENT APP FLOW (PAT-01 … PAT-15)

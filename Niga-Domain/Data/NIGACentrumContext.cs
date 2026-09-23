@@ -593,6 +593,9 @@ namespace Niga_Domain.Data
             entity.Property(e => e.BlogDate).HasColumnType("datetime");
             entity.Property(e => e.ChangedDate).HasColumnType("datetime");
             entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            // SQL stores these as int; the shared AuditableEntities type is string.
+            entity.Ignore(e => e.EnteredBy);
+            entity.Ignore(e => e.ChangedBy);
         });
 
         modelBuilder.Entity<BodyPartMaster>(entity =>

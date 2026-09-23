@@ -1,4 +1,6 @@
-"""S3 Week 3 live checks. No SMS, WhatsApp, or Razorpay calls."""
+"""S3 Week 3 live checks. No SMS, WhatsApp, or Razorpay calls.
+Static seed: 03_DEV_Seed_S3_Static.sql. Own patient 3046. Staff probe patient 3065.
+"""
 from __future__ import annotations
 
 import json

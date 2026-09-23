@@ -14,6 +14,14 @@ Replace the sample ids with the ids from the previous response.
 
 Login once, keep data.token, send it on every call that says TOKEN = yes.
 
+WHO CALLS IT
+  Patient app       PAT-16 onward, waitlist, instant consult, own visit changes.
+  Doctor mobile app DMO context, refill, tele room the doctor opens. No case-taking.
+  Clinic web        Reception and doctor browser: schedule, case paper, call next.
+  Common for all    POST /api/Account/Login on Old-API, published GET /api/Help, GET /health.
+  Static Dev data   Doctor 1010 Tufan_Doctor, Patient 3046 Tufan_Patient, token S3STATIC01.
+                    Password 123456. Run Database scripts/03_DEV_Seed_S3_Static.sql on Dev.
+
 ================================================================================
 LOGIN  (Old-API)   TOKEN = no
 ================================================================================

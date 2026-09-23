@@ -627,9 +627,11 @@ namespace Niga_Domain.Repositories
                     x.AppointmentTime.HasValue)
                 .ToListAsync();
 
-            var bookedLookup = bookedAppointments.ToDictionary(
-                x => x.AppointmentTime!.Value,
-                x => x);
+            var bookedLookup = bookedAppointments
+                .GroupBy(x => x.AppointmentTime!.Value)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(x => x.PatientAppId).First());
 
             var generatedSlots = AppointmentSlotHelper.GenerateSlots(
                 schedule.WorkStartTime,

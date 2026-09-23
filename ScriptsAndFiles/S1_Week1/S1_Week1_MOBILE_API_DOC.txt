@@ -8,6 +8,8 @@ Dev OTP    : Development responses include data.devCode (never in production)
 Clinic login / Razorpay stay Old-API :5001. Doctor mobile must NOT call case-taking.
 
 RN screens are out of scope. These are the HTTP contracts the patient/doctor apps must call.
+Patient app calls the PATIENT APP FLOW. Doctor mobile calls the DOCTOR APP FLOW and must not call case-taking.
+Common for all apps: Old-API POST /api/Account/Login and New-API GET /mastersAPI/GetLanguages.
 Every endpoint has USE / HOST / TOKEN / SAMPLE / INPUTS / OUTPUT.
 
 Shareable full Week-1 API pack (web + security + dual-API hosts):
@@ -139,7 +141,7 @@ SAMPLE PAYLOAD:
   "mobileNo": "7768046064",
   "preferredLanguageId": 1
 }
-INPUTS     : patientName, mobileNo, email, dateOfBirth, gender, age, preferredLanguageId
+INPUTS     : firstName, lastName, patientName, mobileNo, email, dateOfBirth, gender, age, preferredLanguageId
 OUTPUT     : same as GET Me
 
 ================================================================================

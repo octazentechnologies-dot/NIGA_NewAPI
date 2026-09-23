@@ -23,12 +23,18 @@ namespace Niga_Domain.API.Controllers
         private readonly NIGACentrumContext _context;
         private readonly IWebHostEnvironment _env;
         private readonly IPatientAppointmentService _appointments;
+        private readonly IS4Week4Service _fees;
 
-        public PublicController(NIGACentrumContext context, IWebHostEnvironment env, IPatientAppointmentService appointments)
+        public PublicController(
+            NIGACentrumContext context,
+            IWebHostEnvironment env,
+            IPatientAppointmentService appointments,
+            IS4Week4Service fees)
         {
             _context = context;
             _env = env;
             _appointments = appointments;
+            _fees = fees;
         }
 
         [HttpGet("Doctors")]
@@ -245,6 +251,10 @@ namespace Niga_Domain.API.Controllers
                 .Select(p => p.Version)
                 .FirstOrDefaultAsync();
 
+            var payAtClinicEnabled = await _fees.PayAtClinicEnabledAsync(id);
+            if (request.PayAtClinic == true && !payAtClinicEnabled)
+                return BadRequest(new { success = false, code = "PAY_AT_CLINIC_DISABLED", message = "This doctor does not accept pay at clinic." });
+
             var token = Guid.NewGuid().ToString("N");
             var appt = new PatientAppointment
             {
@@ -260,7 +270,7 @@ namespace Niga_Domain.API.Controllers
                 ConsultMode = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType),
                 IsTele = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType) == S3AppointmentRules.Tele,
                 PaymentStatus = "PENDING",
-                PayAtClinicAllowed = true,
+                PayAtClinicAllowed = request.PayAtClinic ?? payAtClinicEnabled,
                 HoldExpiresAt = DateTime.UtcNow.AddMinutes(15),
                 ConsentPolicyVersion = request.ConsentPolicyVersion ?? policy
             };
@@ -278,7 +288,9 @@ namespace Niga_Domain.API.Controllers
                     holdExpiresAt = appt.HoldExpiresAt,
                     consentPolicyVersion = appt.ConsentPolicyVersion,
                     consultMode = appt.ConsultMode,
-                    consultFee = appt.IsTele == true ? doctor.ConsultFeeTele : doctor.ConsultFeeInClinic
+                    consultFee = appt.IsTele == true ? doctor.ConsultFeeTele : doctor.ConsultFeeInClinic,
+                    payAtClinicAllowed = appt.PayAtClinicAllowed,
+                    payAtClinicEnabled
                 }
             });
         }
@@ -370,8 +382,21 @@ namespace Niga_Domain.API.Controllers
         [HttpGet("Articles/{id:int}")]
         public async Task<IActionResult> ArticleById(int id)
         {
+            // Project only article columns. BlogDetail.EnteredBy is string on the entity
+            // but int in SQL, so materializing the full row throws InvalidCastException.
             var row = await _context.BlogDetails.AsNoTracking()
-                .FirstOrDefaultAsync(b => b.BlogId == id && b.IsActive == true);
+                .Where(b => b.BlogId == id && b.IsActive == true)
+                .Select(b => new
+                {
+                    b.BlogId,
+                    b.BlogHead,
+                    b.BlogSubHead,
+                    b.BlogDate,
+                    b.BlogImage1,
+                    b.BlogImage2,
+                    Body = b.BlogDetails
+                })
+                .FirstOrDefaultAsync();
             if (row == null)
                 return NotFound(new { success = false, message = "Article not found." });
 
@@ -386,7 +411,7 @@ namespace Niga_Domain.API.Controllers
                     row.BlogDate,
                     row.BlogImage1,
                     row.BlogImage2,
-                    body = row.BlogDetails
+                    body = row.Body
                 }
             });
         }

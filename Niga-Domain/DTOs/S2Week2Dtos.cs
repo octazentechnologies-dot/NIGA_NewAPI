@@ -27,6 +27,8 @@ namespace Niga_Domain.DTOs
         public decimal? ConsultFeeTele { get; set; }
         public bool IsOnline { get; set; }
         public bool Verified { get; set; }
+        /// <summary>Same flag as <see cref="Verified"/>. Kept so public clients can read isVerified.</summary>
+        public bool IsVerified { get => Verified; set => Verified = value; }
         public string? PhotoPath { get; set; }
         public string RankingSummary { get; set; } = string.Empty;
     }
@@ -55,6 +57,8 @@ namespace Niga_Domain.DTOs
         [Required]
         public long BookingSessionId { get; set; }
         public string? ConsentPolicyVersion { get; set; }
+        /// <summary>When true, the hold is pay-at-clinic. Rejected when the doctor fee config disables it.</summary>
+        public bool? PayAtClinic { get; set; }
     }
 
     public class PatientAuthRequestOtpModel

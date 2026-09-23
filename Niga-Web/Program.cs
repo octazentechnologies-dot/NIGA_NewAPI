@@ -7,12 +7,16 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
+using System.Threading.RateLimiting;
 using Niga_Domain.Data;
 using API.Entities;
 using Niga_Domain.Configuration.CorsPolicyConfig;
 using Niga_Domain.Authorization;
 using Niga_Domain.Logging;
+using Niga_Domain.Helpers;
 using Microsoft.Extensions.Logging;
 
 
@@ -52,12 +56,52 @@ builder.Services.Configure<GzipCompressionProviderOptions>(options =>
     options.Level = CompressionLevel.Fastest;
 });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new FlexibleTimeOnlyJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new FlexibleNullableTimeOnlyJsonConverter());
+    });
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = ApiProblem.Validation;
+});
+builder.Services.AddHealthChecks();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (ctx, _) =>
+    {
+        await ApiProblem.WriteAsync(ctx.HttpContext, 429, "Too many requests. Please wait a moment and try again.");
+    };
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var path = httpContext.Request.Path.Value ?? "";
+        if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
+        {
+            return RateLimitPartition.GetNoLimiter("open");
+        }
+        var limit = 300;
+        var window = 60;
+        if (int.TryParse(builder.Configuration["RateLimit:PermitLimit"], out var parsed) && parsed > 0)
+            limit = parsed;
+        if (int.TryParse(builder.Configuration["RateLimit:WindowSeconds"], out parsed) && parsed > 0)
+            window = parsed;
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = limit,
+            Window = TimeSpan.FromSeconds(window),
+            QueueLimit = 0
+        });
+    });
+});
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opt =>
 {
-    opt.SwaggerDoc("v1", new OpenApiInfo { Title = "MyAPI", Version = "v1" });
+    opt.SwaggerDoc("v1", new OpenApiInfo { Title = "Homeocentrum New API", Version = "v1" });
   opt.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
 {
     Description = "Enter your JWT token **including** 'Bearer ' prefix. Example: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'",
@@ -141,11 +185,25 @@ builder.Services.AddAuthorization(options =>
 var app = builder.Build();
 AppFileLog.Initialize(app.Environment.ContentRootPath, app.Configuration, "NIGA New-API (Niga-Web :5038)");
 
-if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
+app.Use(async (context, next) =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    if (HttpMethods.IsGet(context.Request.Method)
+        && (context.Request.Path == "/" || context.Request.Path == PathString.Empty))
+    {
+        context.Response.Redirect("/swagger");
+        return;
+    }
+    await next();
+});
+
+// Swagger is behind SwaggerAuth. The sign-in page fills the docs URL from this browser host.
+app.UseMiddleware<SwaggerGateMiddleware>("Homeocentrum New API");
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Homeocentrum New API");
+    c.DocumentTitle = "Homeocentrum New API";
+});
 
 app.UseCors(builder => 
 builder.AllowAnyOrigin()
@@ -160,6 +218,7 @@ if (listenUrls.Contains("https://", StringComparison.OrdinalIgnoreCase) || !stri
 
 app.UseAuthentication();
 app.UseMiddleware<AppDiagnosticsMiddleware>();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.UseMiddleware<Niga_Domain.Services.MutatingAuditMiddleware>();
 app.UseCorsPolicy()
@@ -170,6 +229,14 @@ app.UseCorsPolicy()
 // SEC-05.02 — do not serve /attachments or /Blogs anonymously.
 // Use GET /api/SecureFile/{root}/{*path} (JWT) or signed /api/SecureFile/Download.
 
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync("{\"success\":true,\"status\":\"" + report.Status + "\",\"api\":\"New API\"}");
+    }
+});
 app.MapControllers();
 
 

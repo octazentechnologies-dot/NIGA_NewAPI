@@ -28,8 +28,10 @@ namespace Niga_Domain.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            await foreach (var job in _queue.Reader.ReadAllAsync(stoppingToken))
+            try
             {
+                await foreach (var job in _queue.Reader.ReadAllAsync(stoppingToken))
+                {
                 try
                 {
                     _logger.LogInformation("Starting rubric import job {JobId} for {FileName}", job.JobId, job.OriginalFileName);
@@ -76,6 +78,10 @@ namespace Niga_Domain.Services
                         _logger.LogWarning(cleanupEx, "Failed to delete temp import file for job {JobId}", job.JobId);
                     }
                 }
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
             }
         }
     }

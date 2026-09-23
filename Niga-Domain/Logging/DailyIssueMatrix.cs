@@ -15,7 +15,7 @@ namespace Niga_Domain.Logging
     }
 
     /// <summary>
-    /// Builds the daily issue matrix from Logs/niga-errors and Logs/niga-ui for one calendar day.
+    /// Builds the daily issue matrix from Homeocentrum_api and Homeocentrum_other for one calendar day.
     /// UI rows are category UI (the browser reporter). Every other row on this host is New API.
     /// The mail is sent at local midnight and covers the day that just ended, not the new empty day.
     /// </summary>
@@ -29,8 +29,11 @@ namespace Niga_Domain.Logging
         {
             var counts = new Dictionary<string, DailyIssueMatrixRow>(StringComparer.OrdinalIgnoreCase);
             var dayKey = day.ToString("yyyyMMdd");
-            AddFile(counts, Path.Combine(logsDirectory ?? "", $"niga-errors-{dayKey}.log"), hostSource, includeWarnings: false);
-            AddFile(counts, Path.Combine(logsDirectory ?? "", $"niga-ui-{dayKey}.log"), hostSource, includeWarnings: true);
+            var folder = Path.Combine(logsDirectory ?? "", day.ToString("dd-MMM-yyyy", System.Globalization.CultureInfo.InvariantCulture));
+            AddFile(counts, Path.Combine(folder, $"Homeocentrum_api_{dayKey}.log"), hostSource, includeWarnings: false);
+            AddFile(counts, Path.Combine(folder, $"Homeocentrum_other_{dayKey}.log"), hostSource, includeWarnings: true);
+            AddFile(counts, Path.Combine(folder, $"niga-errors-{dayKey}.log"), hostSource, includeWarnings: false);
+            AddFile(counts, Path.Combine(folder, $"niga-ui-{dayKey}.log"), hostSource, includeWarnings: true);
             return counts.Values
                 .OrderBy(row => row.Source, StringComparer.OrdinalIgnoreCase)
                 .ThenByDescending(row => row.Count)

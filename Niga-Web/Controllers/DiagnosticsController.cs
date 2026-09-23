@@ -32,19 +32,23 @@ namespace Niga_Domain.API.Controllers
             public string? Href { get; set; }
             public string? Referrer { get; set; }
             public string? DisplayName { get; set; }
+            public string? TraceId { get; set; }
         }
 
-        /// <summary>SPA / runtime client failures land in Logs/niga-ui-*.log and email on 5xx / window errors.</summary>
+        /// <summary>SPA / runtime client failures land in Homeocentrum_other_yyyyMMdd.log and email on 5xx / window errors.</summary>
         [HttpPost("ClientError")]
         [AllowAnonymous]
         public IActionResult ClientError([FromBody] ClientErrorRequest request)
         {
             request ??= new ClientErrorRequest();
+            if (!string.IsNullOrWhiteSpace(request.TraceId) && request.TraceId.Length <= 80)
+                HttpContext.TraceIdentifier = request.TraceId.Trim();
             var status = request.Status ?? 0;
             var level = status >= 500 || string.Equals(request.Source, "window", StringComparison.OrdinalIgnoreCase)
                 ? "ERROR" : "WARN";
             var kind = level == "ERROR" ? "errors" : "ui";
-            var details = AppDiagnosticsMiddleware.RequestDetails(HttpContext, status, 0);
+            var details = AppDiagnosticsMiddleware.RequestDetails(HttpContext, 200, 0);
+            details["ClientStatus"] = status.ToString();
             details["ClientSource"] = request.Source ?? "";
             details["ClientUrl"] = request.Url ?? "";
             details["Href"] = request.Href ?? request.Url ?? "";
@@ -91,10 +95,13 @@ namespace Niga_Domain.API.Controllers
                 details["Stack"] = request.Stack;
             if (!string.IsNullOrWhiteSpace(request.ComponentStack))
                 details["ComponentStack"] = request.ComponentStack;
+            if (!string.IsNullOrWhiteSpace(request.TraceId))
+                details["TraceId"] = request.TraceId;
 
             AppFileLog.Write(kind, level, "UI",
                 $"{request.Method} {request.Url} status={status} src={request.Source} user={request.UserName} browser={request.Browser} device={request.DeviceName} {request.Message}",
-                details: details);
+                details: details,
+                sendAlert: !string.Equals(request.Source, "axios", StringComparison.OrdinalIgnoreCase) && level == "ERROR");
             return Ok(new { success = true });
         }
     }

@@ -87,6 +87,7 @@ namespace Niga_Domain.Extensions
             services.AddScoped<INewsDetailService, NewsDetailService>();
             services.AddScoped<IPatientAppointmentService, PatientAppointmentService>();
             services.AddScoped<IS3Week3Service, S3Week3Service>();
+            services.AddScoped<IS4Week4Service, S4Week4Service>();
             services.AddScoped<IPrescriptionService, PrescriptionService>();
             services.AddScoped<IDropdownListService, DropdownListService>();
             services.AddScoped<IAllopathicDrugService, AllopathicDrugService>();

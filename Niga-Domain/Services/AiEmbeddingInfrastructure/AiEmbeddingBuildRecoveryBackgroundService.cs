@@ -36,6 +36,12 @@ public class AiEmbeddingBuildRecoveryBackgroundService : BackgroundService
             return;
         }
 
+        if (!_options.EnableAutoResumeEmbeddingBuildOnStartup)
+        {
+            _logger.LogInformation("Embedding build recovery is disabled by configuration.");
+            return;
+        }
+
         var startupDelay = TimeSpan.FromSeconds(Math.Max(5, _options.AutoResumeStartupDelaySeconds));
         _logger.LogInformation(
             "Embedding build recovery service waiting {DelaySeconds}s before first check.",

@@ -25,36 +25,46 @@ public class RubricEmbeddingIndexerBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
-
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            try
+            await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
+
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await using var scope = _scopeFactory.CreateAsyncScope();
-                var settings = scope.ServiceProvider.GetRequiredService<IRubricIntelligenceSettingsService>();
-
-                if (settings.IsV2Active && settings.GetBaseOptions().EnableEmbeddingSearch)
+                try
                 {
-                    var cache = scope.ServiceProvider.GetRequiredService<IRubricEmbeddingMemoryCache>();
-                    await cache.RefreshAsync(stoppingToken);
+                    await using var scope = _scopeFactory.CreateAsyncScope();
+                    var settings = scope.ServiceProvider.GetRequiredService<IRubricIntelligenceSettingsService>();
 
-                    var indexer = scope.ServiceProvider.GetRequiredService<IRubricEmbeddingIndexerService>();
-                    var result = await indexer.ReindexAsync(cancellationToken: stoppingToken);
-                    if (result.Processed > 0)
+                    if (settings.IsV2Active && settings.GetBaseOptions().EnableEmbeddingSearch)
                     {
-                        _logger.LogInformation(
-                            "Scheduled embedding indexer processed {Count} rubric(s).", result.Processed);
+                        var cache = scope.ServiceProvider.GetRequiredService<IRubricEmbeddingMemoryCache>();
+                        await cache.RefreshAsync(stoppingToken);
+
+                        var indexer = scope.ServiceProvider.GetRequiredService<IRubricEmbeddingIndexerService>();
+                        var result = await indexer.ReindexAsync(cancellationToken: stoppingToken);
+                        if (result.Processed > 0)
+                        {
+                            _logger.LogInformation(
+                                "Scheduled embedding indexer processed {Count} rubric(s).", result.Processed);
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Scheduled rubric embedding indexer failed.");
-            }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Scheduled rubric embedding indexer failed.");
+                }
 
-            var delayHours = Math.Max(1, _options.EmbeddingIndexerIntervalHours);
-            await Task.Delay(TimeSpan.FromHours(delayHours), stoppingToken);
+                var delayHours = Math.Max(1, _options.EmbeddingIndexerIntervalHours);
+                await Task.Delay(TimeSpan.FromHours(delayHours), stoppingToken);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
         }
     }
 }

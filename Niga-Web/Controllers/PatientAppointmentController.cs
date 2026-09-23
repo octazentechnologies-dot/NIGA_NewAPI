@@ -72,6 +72,7 @@ namespace Niga_Domain.API.Controllers
         /// Example: GET api/PatientAppointment/GetAppointmentListByPatientId?PatientId=101&amp;pageNumber=1&amp;pageSize=10
         /// </remarks>
         [HttpGet("/api/PatientAppointment/GetAppointmentListByPatientId")]
+        [DoctorOnly]
         [ProducesResponseType(typeof(PaginatedApiResponse<PatientAppointmentListItemModel>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(PaginatedApiFailureResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(PaginatedApiFailureResponse), StatusCodes.Status500InternalServerError)]
@@ -105,6 +106,18 @@ namespace Niga_Domain.API.Controllers
                 {
                     return ThreeDBodyPartApiResponseHelper.PaginatedFailure("Patient not found");
                 }
+
+                var ownerDoctorId = await _context.CaseEntryDetails.AsNoTracking()
+                    .Where(c => c.PatientId == request.PatientId && c.DeleteStatus == false)
+                    .Select(c => (int?)c.DoctorId)
+                    .FirstOrDefaultAsync()
+                    ?? await _context.PatientAppointments.AsNoTracking()
+                        .Where(a => a.PatientId == request.PatientId && a.DeleteStatus != true)
+                        .Select(a => (int?)a.DoctorId)
+                        .FirstOrDefaultAsync();
+                var deny = DoctorOwnership.ForbidIfNotOwner(User, ownerDoctorId);
+                if (deny != null)
+                    return deny;
 
                 var result = await _PatientAppointmentService.GetAppointmentListByPatientIdAsync(request);
 

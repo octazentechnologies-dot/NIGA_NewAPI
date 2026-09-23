@@ -16,7 +16,7 @@ SET ANSI_NULLS ON;
 SET XACT_ABORT ON;
 
 DECLARE @Marker NVARCHAR(40) = N'S1-TESTED';
-DECLARE @PatientLogin NVARCHAR(200) = N'tufanpowar001@gmail.com';
+DECLARE @PatientLogin NVARCHAR(200) = N'Tufan_Patient';
 DECLARE @CaregiverLogin NVARCHAR(200) = N's1.caregiver.tested@homeocentrum.dev';
 DECLARE @SpouseEmail NVARCHAR(200) = N's1.family.spouse.tested@homeocentrum.dev';
 DECLARE @Pwd NVARCHAR(500) = N'PBKDF2$v1$100000$uszumO1aPL3it0x1tm/FcA==$hvFLmFwfXrC7i3Id07HFiH9ah4WiIAdjzYPyQnArLxQ='; -- 123456
@@ -58,7 +58,20 @@ WHERE um.UserName = @PatientLogin
 
 IF @OwnerUserId IS NULL OR @OwnerPatientId IS NULL
 BEGIN
-    RAISERROR('Patient seed tufanpowar001@gmail.com / PatientUserMap missing. Run 05_DEV_Seed_Patient_Portal_TufanPowar.sql first.', 16, 1);
+    SELECT TOP 1
+        @OwnerUserId = um.UserId,
+        @OwnerPatientId = pum.PatientId,
+        @OwnerMobile = um.MobileNo
+    FROM dbo.UserMaster um
+    INNER JOIN dbo.PatientUserMap pum
+        ON pum.UserId = um.UserId AND pum.IsPrimary = 1 AND ISNULL(pum.DeleteStatus, 0) = 0
+    WHERE um.UserName = N'tufanpowar001@gmail.com'
+      AND ISNULL(um.DeleteStatus, 0) = 0;
+END
+
+IF @OwnerUserId IS NULL OR @OwnerPatientId IS NULL
+BEGIN
+    RAISERROR('Need Tufan_Patient or tufanpowar001@gmail.com with PatientUserMap. Run 05 then 15_DEV_Seed_Tufan_Role_Logins.sql.', 16, 1);
     RETURN;
 END
 
