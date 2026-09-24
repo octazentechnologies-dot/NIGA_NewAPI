@@ -29,6 +29,7 @@ public class S4Week4Controller : ControllerBase
         _logger = logger;
     }
 
+    /// <summary>PAT-18.02 — public consult fee for patient checkout (anonymous).</summary>
     [AllowAnonymous]
     [HttpGet("/api/Fees/Public/{doctorId:int}")]
     public Task<IActionResult> PublicFee(int doctorId) => Done(_s4.GetPublicFeeAsync(doctorId));
@@ -39,12 +40,17 @@ public class S4Week4Controller : ControllerBase
     [HttpGet("/api/Fees/History")]
     public Task<IActionResult> FeeHistory([FromQuery] int doctorId) => Done(_s4.FeeHistoryAsync(doctorId, Caller()));
 
+    /// <summary>
+    /// PAT-18.02 — patient/reception consult checkout order (pay at clinic or gateway).
+    /// Does not accept client PaymentStatus=PAID; gateway/webhook/reception collection sets paid.
+    /// </summary>
     [HttpPost("/api/Payments/ConsultOrders")]
     public Task<IActionResult> ConsultOrder([FromBody] CreateConsultOrderRequest request) => Done(_s4.CreateConsultOrderAsync(request, Caller()));
 
     [HttpPost("/api/Payments/Verify")]
     public Task<IActionResult> Verify([FromBody] VerifyPaymentRequest request) => Done(_s4.VerifyPaymentAsync(request, Caller()));
 
+    /// <summary>PAT-18.02 / PAT-19 — poll appointment payment state for checkout UI.</summary>
     [HttpGet("/api/Payments/Appointments/{patientAppId:int}")]
     public Task<IActionResult> AppointmentPayment(int patientAppId) => Done(_s4.AppointmentPaymentAsync(patientAppId, Caller()));
 

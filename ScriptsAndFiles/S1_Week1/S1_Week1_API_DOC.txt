@@ -16,12 +16,66 @@ Every API below has USE (what the screen/app uses it for), plus HOST, TOKEN, SAM
 Skipped this week: QA, PRE/client gates, React Native UI.
 In scope: Web API, Database, Security, Web Frontend UI, Mobile APIs (not RN screens).
 
+
+================================================================================
+DEV LOGINS (HomeoCentrum_Dev) — use these in every sample. Do not invent other emails/mobiles.
+================================================================================
+Date       : 23-Sep-2026
+Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
+Clinic login HOST = Old-API  POST http://127.0.0.1:5001/api/Account/Login
+New HTTP HOST     = New-API  http://127.0.0.1:5038/api
+Password for every Tufan_* row: 123456
+Email (all our users): tufanpowar001@gmail.com
+Mobile (all our users): 7768046064
+
+Username          Role              userId   Notes
+Tufan_Admin       Admin             10030    /dashboard
+Tufan_Doctor      Doctor            10032    DoctorID 1010  /doctordashboard
+Tufan_Reception   Reception         staff    DoctorID 1010  DoctorReceptionStaff (not UserMaster)
+Tufan_Account     Account           10029    /accountdashboard
+Tufan_Pharmacy    PharmacyPartner   10034    /pharmacydashboard
+Tufan_Patient     Patient           10033    PatientId 3046
+Tufan_Caregiver   Patient           10031    caregiver on Tufan_Patient
+Tufan_NoMenu      EmptyMenuProbe    10035    GetMenuByRole must be 200 []
+
+REQUEST  (clinic web / doctor / account / pharmacy / patient password login)
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Doctor",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10032,
+    "userName": "TUFAN DOCTOR",
+    "role": "Doctor",
+    "roleId": 3,
+    "token": "<JWT>",
+    "doctorId": 1010,
+    "isPlanActive": false
+  }
+}
+
+Patient login uses userName "Tufan_Patient". Reception uses "Tufan_Reception".
+Admin uses "Tufan_Admin". Account uses "Tufan_Account". Pharmacy uses "Tufan_Pharmacy".
+Header on TOKEN=yes calls: Authorization: Bearer <data.token>
+Other environment: replace http://127.0.0.1:5001 and http://127.0.0.1:5038 with that Old-API and New-API host.
+Numeric ids in samples (userId 10032, doctorId 1010, patientId 3046) are HomeoCentrum_Dev.
+Use data.userId and data.doctorId from the login response on any other database.
+Live copy-paste REQUEST/RESPONSE for Week 1–3 APIs: S1_S2_S3_LIVE_REQUEST_RESPONSE.txt (same ScriptsAndFiles week folder, Documents, Desktop).
+
 --------------------------------------------------------------------------------
 SUGGESTED FLOWS
 --------------------------------------------------------------------------------
 CLINIC WEB LOGIN (do not switch host)
   1. POST http://localhost:5001/api/Account/Login
-     { "userName": "niga homeopathy", "password": "nik123" }
+     { "userName": "Tufan_Doctor", "password": "123456" }
   2. Save data.token. Use on both hosts (TokenKey / JWT:Secret aligned on Dev).
   3. POST both hosts /api/Account/Logout on sign-out.
 
@@ -62,7 +116,7 @@ USE        : Password login exists on New-API (lazy-migrates plaintext to PBKDF2
              Clinic SPA and doctor app MUST keep using Old-API Login (SEC-01.02 / DMO-01.02).
 HOST       : New-API (exists) — UI host is Old-API, do not switch
 TOKEN      : no
-SAMPLE PAYLOAD: { "userName": "niga homeopathy", "password": "nik123" }
+SAMPLE PAYLOAD: { "userName": "Tufan_Doctor", "password": "123456" }
 INPUTS     : userName, password
 OUTPUT     : { success, data: { token, userId, role, roleId, doctorId, ... } }
 
@@ -72,7 +126,7 @@ USE        : Clinic web + doctor-app password login. Same URL as today (SEC-01.0
              JWT claims: RoleId, RoleName/role, DoctorID, NameIdentifier=UserId.
 HOST       : Old-API  http://localhost:5001/api
 TOKEN      : no
-SAMPLE PAYLOAD: { "userName": "niga homeopathy", "password": "nik123" }
+SAMPLE PAYLOAD: { "userName": "Tufan_Doctor", "password": "123456" }
 INPUTS     : userName, password
 OUTPUT     : { success, message, data: { token, userId, role, roleId, doctorId, ... } }
 NOTE       : Do not switch this host. Reception token includes RoleName + DoctorUserID.
@@ -129,7 +183,7 @@ URL        : POST /api/Account/SetUserPassword
 USE        : Admin sets a user’s password (hashed). Not for self-service.
 HOST       : New-API
 TOKEN      : AdminPortal JWT
-SAMPLE PAYLOAD: { "userName": "s2.account", "newPassword": "123456" }
+SAMPLE PAYLOAD: { "userName": "Tufan_Account", "newPassword": "123456" }
 INPUTS     : userName, newPassword
 OUTPUT     : { success, message }
 
@@ -153,7 +207,7 @@ USE        : Doctor/patient first-run: confirm typed number against UserMaster, 
              linked Patient mobile (DMO-02.02).
 HOST       : New-API
 TOKEN      : yes
-SAMPLE PAYLOAD: { "mobileNo": "9000000002" }
+SAMPLE PAYLOAD: { "mobileNo": "7768046064" }
 INPUTS     : mobileNo
 OUTPUT     : { success, data: { matched, profileMasked, role } }
 
@@ -431,7 +485,7 @@ SAMPLE PAYLOAD:
   "relationId": 1,
   "relation": "Spouse",
   "patientName": "Anita",
-  "mobileNo": "9100000001"
+  "mobileNo": "7768046064"
 }
 INPUTS     : patientName required (unless existingMemberPatientId). relationId or relation required.
 OUTPUT     : { success, data: FamilyMemberDto }
@@ -502,7 +556,7 @@ URL        : GET /api/Caregiver/Lookup?contact=
 USE        : Resolve caregiver by registered mobile or email (not UserId) (CON-02.02).
 HOST       : New-API
 TOKEN      : patient JWT
-SAMPLE     : GET /api/Caregiver/Lookup?contact=s1.caregiver.tested@homeocentrum.dev
+SAMPLE     : GET /api/Caregiver/Lookup?contact=Tufan_Caregiver
 INPUTS     : contact = mobile or email
 OUTPUT     : { success, data: { caregiverUserId, displayName, contact } }
 
@@ -515,7 +569,7 @@ HOST       : New-API
 TOKEN      : patient JWT
 SAMPLE PAYLOAD:
 {
-  "caregiverContact": "s1.caregiver.tested@homeocentrum.dev",
+  "caregiverContact": "Tufan_Caregiver",
   "otpChallengeId": 1,
   "otpCode": "123456",
   "scope": "booking"
@@ -658,12 +712,12 @@ Team (script 15, password 123456 for all) — clinic SPA uses Old-API Login:
   Tufan_NoMenu is EmptyMenuProbe — GetMenuByRole must be 200 [].
 
 Older still valid:
-Doctor     : niga homeopathy / nik123                         Old-API Login
+Doctor     : Tufan_Doctor / 123456                         Old-API Login
 Patient    : tufanpowar001@gmail.com / 123456                 OTP or password
-Caregiver  : s1.caregiver.tested@homeocentrum.dev / 123456
-Account    : s2.account / 123456
-Pharmacy   : s2.pharmacy / 123456
-Reception  : s2.reception / S2Test@123
+Caregiver  : Tufan_Caregiver / 123456
+Account    : Tufan_Account / 123456
+Pharmacy   : Tufan_Pharmacy / 123456
+Reception  : Tufan_Reception / 123456
 Reset mail : Gmail wrap-safe /reset-password/{token} on SPA :3000
 
 ================================================================================

@@ -152,6 +152,7 @@ namespace Niga_Domain.Repositories
             }
 
             entity.DeleteStatus = true;
+            entity.IsActive = false;
             entity.ChangedBy = request.ChangedBy;
             entity.ChangedDate = DateTime.Now;
 

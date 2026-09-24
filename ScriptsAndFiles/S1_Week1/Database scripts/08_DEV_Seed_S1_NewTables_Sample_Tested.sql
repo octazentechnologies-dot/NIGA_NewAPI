@@ -17,8 +17,8 @@ SET XACT_ABORT ON;
 
 DECLARE @Marker NVARCHAR(40) = N'S1-TESTED';
 DECLARE @PatientLogin NVARCHAR(200) = N'Tufan_Patient';
-DECLARE @CaregiverLogin NVARCHAR(200) = N's1.caregiver.tested@homeocentrum.dev';
-DECLARE @SpouseEmail NVARCHAR(200) = N's1.family.spouse.tested@homeocentrum.dev';
+DECLARE @CaregiverLogin NVARCHAR(200) = N'Tufan_Caregiver';
+DECLARE @SpouseEmail NVARCHAR(200) = N'tufanpowar001@gmail.com';
 DECLARE @Pwd NVARCHAR(500) = N'PBKDF2$v1$100000$uszumO1aPL3it0x1tm/FcA==$hvFLmFwfXrC7i3Id07HFiH9ah4WiIAdjzYPyQnArLxQ='; -- 123456
 DECLARE @OtpHash NVARCHAR(128) = CONVERT(VARCHAR(64), HASHBYTES(N'SHA2_256', CONVERT(VARBINARY(32), N'123456')), 2);
 DECLARE @ResetHash NVARCHAR(128) = CONVERT(VARCHAR(64), HASHBYTES(N'SHA2_256', CONVERT(VARBINARY(64), N'S1-TESTED-RESET-TOKEN')), 2);
@@ -115,8 +115,8 @@ BEGIN
         DeleteStatus, IsUserActivated, EnteredBy, EnteredDate
     )
     VALUES (
-        @CaregiverLogin, @Pwd, 1, N'9000000002', @CaregiverLogin,
-        N'S1', N'CaregiverTested', 78, 14, @PatientRoleId,
+        @CaregiverLogin, @Pwd, 1, N'7768046064', N'tufanpowar001@gmail.com',
+        N'Tufan', N'Caregiver', 78, 14, @PatientRoleId,
         0, 1, @Marker, GETDATE()
     );
     SET @CaregiverUserId = SCOPE_IDENTITY();
@@ -130,7 +130,7 @@ ELSE
 -- ---------------------------------------------------------------------------
 DECLARE @MemberPatientId INT = (
     SELECT TOP 1 PatientId FROM dbo.Patient
-    WHERE Email = @SpouseEmail AND ISNULL(DeleteStatus, 0) = 0
+    WHERE PatientName = N'Anita Powar (S1-TESTED)' AND ISNULL(DeleteStatus, 0) = 0
 );
 
 IF @MemberPatientId IS NULL
@@ -142,7 +142,7 @@ BEGIN
             DeleteStatus, EnteredBy, EnteredDate
         )
         VALUES (
-            N'Anita Powar (S1-TESTED)', N'S1 test family member', 14, 78, N'9000000003', NULL,
+            N'Anita Powar (S1-TESTED)', N'S1 test family member', 14, 78, N'7768046064', NULL,
             '1992-05-01', 0, @SpouseEmail, DATEDIFF(YEAR, '1992-05-01', GETDATE()),
             0, NULL, 0, @Marker, GETDATE()
         );
@@ -152,7 +152,7 @@ BEGIN
             DateOfBirth, Gender, Email, Age, DeleteStatus, EnteredBy, EnteredDate
         )
         VALUES (
-            N'Anita Powar (S1-TESTED)', N'S1 test family member', 14, 78, N'9000000003', NULL,
+            N'Anita Powar (S1-TESTED)', N'S1 test family member', 14, 78, N'7768046064', NULL,
             '1992-05-01', 0, @SpouseEmail, DATEDIFF(YEAR, '1992-05-01', GETDATE()),
             0, @Marker, GETDATE()
         );
@@ -399,7 +399,7 @@ ELSE
 COMMIT TRAN;
 
 PRINT '08_DEV_Seed_S1_NewTables_Sample_Tested.sql completed.';
-PRINT 'Test logins: tufanpowar001@gmail.com / 123456  and  s1.caregiver.tested@homeocentrum.dev / 123456';
+PRINT 'Test logins: Tufan_Patient / Tufan_Caregiver  password 123456  email tufanpowar001@gmail.com  mobile 7768046064';
 
 SELECT
     @OwnerUserId AS OwnerUserId,

@@ -161,7 +161,7 @@ def main():
         check("CLN-19.03", "PatientBoardBackup/Summary", s, b, {200, 404})
         s, b = req("GET", f"{NEW}/api/patient/GetComplaints/1", token=doc)
         check("CLN-16.02", "GetComplaints", s, b, {200, 403, 404})
-        s, b = req("POST", f"{NEW}/api/Account/ConfirmMobile", {"mobileNo": "9000000202"}, token=doc)
+        s, b = req("POST", f"{NEW}/api/Account/ConfirmMobile", {"mobileNo": "7768046064"}, token=doc)
         check("DMO-02.02", "ConfirmMobile", s, b, {200, 400})
         s, b = req("POST", f"{NEW}/api/Device/Register", {"platform": "FCM", "deviceId": "s2-audit-doc", "token": "tok-audit"}, token=doc)
         check("DMO-06.02", "Device/Register FCM", s, b, {200, 201})

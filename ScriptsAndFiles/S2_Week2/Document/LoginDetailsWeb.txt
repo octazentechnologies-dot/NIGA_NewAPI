@@ -38,10 +38,10 @@ Seed: NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/15_DEV_Seed_Tufan_Ro
 
 --- older Dev logins (still in database) ---
 admin / 1234
-niga homeopathy / nik123
+Tufan_Doctor / 123456
 testdoctor / nik123
-s2.reception / S2Test@123
-s2.account / 123456
-s2.pharmacy / 123456
+Tufan_Reception / 123456
+Tufan_Account / 123456
+Tufan_Pharmacy / 123456
 tufanpowar001@gmail.com / 123456
-s1.caregiver.tested@homeocentrum.dev / 123456
+Tufan_Caregiver / 123456

@@ -18,23 +18,30 @@ Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 | 5 | `05_VERIFY_S2_Week2.sql` | Read-only proof queries. |
 | 6 | `06_UNIT_TEST_S2_Week2_Guards.sql` | Guard unit tests + live schema assertions. |
 | 7 | `07_TEST_Sample_Data_Insert.sql` | Dev/test sample on Tufan_Doctor 1010 and Tufan_Patient 3046 when those rows exist: 10 enquiries, 10 CogRun, 10 bookings (S2TESTED01–10), KYC, fees, hotspot map, Booking policy. |
-| 8 | `08_CARE_CATEGORIES_RECEPTION_ARTICLES.sql` | HumanSystemMaster care categories, Dev reception login `s2.reception`, S2-TESTED article body. |
+| 8 | `08_CARE_CATEGORIES_RECEPTION_ARTICLES.sql` | HumanSystemMaster care categories, reception login `Tufan_Reception` / `123456`, S2-TESTED article body. |
 | 9 | `09_WEB_TRU_Doctor_Credential_Documents.sql` | WEB-09.01 TRU-01 tables: DoctorVerification + DoctorCredentialDocument. Backfill one verification row per doctor. |
 | 10 | `10_TODAY_SLOTS_POLICY_DIRECTORY.sql` | Dev-only: today + tomorrow DoctorDailySchedule for every Verified directory doctor; Booking policy 2026.09 if missing. |
 | 11 | `11_FAMILY_RELATION_MASTER.sql` | FamilyRelationMaster + PatientFamilyMember.RelationId. Seed Spouse/Father/Mother/... |
-| 12 | `12_DEV_Seed_Role_Users.sql` | Dev logins for Account (`s2.account`) and PharmacyPartner (`s2.pharmacy`), password hash from tufanpowar001@gmail.com (123456). |
+| 12 | `12_DEV_Seed_Role_Users.sql` | Ensures `Tufan_Account` / `Tufan_Pharmacy` exist. Email `tufanpowar001@gmail.com`, mobile `7768046064`, password `123456`. |
 | 13 | `13_DOC_Reception_Profile_Menus.sql` | Doctor menus: Reception Staff `/doctor/reception-staff`, Profile `/profile`. |
 | 15 | `15_DEV_Seed_Tufan_Role_Logins.sql` | Team logins `Tufan_*` / `123456` for Admin, Doctor (`Tufan_Doctor`), Reception, Account, Pharmacy, Patient, Caregiver, plus API-only `Tufan_NoMenu`. Dev only. |
 | 16 | `16_DEV_Tufan_Role_Logins_Verify.sql` | Read-only proof of Tufan_* logins + RoleDetails counts. |
-| 17 | `17_DEV_Tufan_Contact_Email_Mobile.sql` | Unique emails/mobiles so LoginWithOtp is not ambiguous. |
+| 17 | `17_DEV_Tufan_Contact_Email_Mobile.sql` | Sets email `tufanpowar001@gmail.com` and mobile `7768046064` on every Tufan_* login and Tufan_Reception. |
 | 19 | `19_DEV_Seed_Role_Menus.sql` | RoleDetails for Admin/Reception/Pharmacy extras; revoke Doctor Enquiries; unique (RoleId, MenuId). Run after 15. |
 | 22 | `22_DEV_Role_Menu_Consistency.sql` | Read-only proof: Tufan users, role-menu mappings, no Doctor Enquiries, Reception has no patientboard, Tufan_NoMenu has zero menus. |
-| 23 | `23_DEV_Rename_Tufan_Doctor.sql` | Rename login Tufan_Doctore → Tufan_Doctor (already applied). |
-| 24 | `24_DEV_Seed_Tufan_Doctor_Clinic.sql` | Dev clinic for Tufan_Doctor: KYC, schedule, credential stub, 8 cases, today appointments (all dashboard statuses), notes, sample eRx. Do not run on production. |
-| 25 | `25_DEV_Seed_Tufan_Doctor_Extra_Menus.sql` | Tufan_Doctor UserDetails = every available MenuMaster item. Other doctors stay on the 5 RoleDetails clinic menus. Dev only. |
-| 26 | `26_DEV_Replace_Tufanpowar_Email.sql` | Replace tufanpowar@gmail.com with tufanpowar001@gmail.com on UserMaster / Patient / Reception. Keep OTP unique on Tufan_Patient. |
+| 23 | `23_DEV_Rename_Tufan_Doctor.sql` | Rename login Tufan_Doctore → Tufan_Doctor (already applied on Dev). |
+| 24 | `24_DEV_Seed_Tufan_Doctor_Clinic.sql` | Dev clinic for Tufan_Doctor: KYC, schedule, credential stub, 8 cases, today appointments, notes, sample eRx. Do not run on production. |
+| 25 | `25_DEV_Seed_Tufan_Doctor_Extra_Menus.sql` | Tufan_Doctor UserDetails = every available MenuMaster item. Other doctors stay on the RoleDetails clinic menus. Dev only. |
+| 26 | `26_DEV_Replace_Tufanpowar_Email.sql` | Replace tufanpowar@gmail.com with tufanpowar001@gmail.com. |
+| 27 | `27_DEV_Tufan_All_Mobile_7768046064.sql` | Replace leftover dummy 900000/910000/920000 mobiles on seeded rows with 7768046064. Dev only. |
+| 28 | `28_DEV_Tufan_Identity.sql` | Force email tufanpowar001@gmail.com and mobile 7768046064 on Tufan/s1/s2 seed rows. Dev only. Run last. |
 
-Scripts 07, 08, 10 and 24 are Dev/test data only. Scripts 14 and 16 are read-only. Script 15 is Dev team users only — do not run on production.
+Scripts 07, 08, 10, 24, 27 and 28 are Dev/test data only. Do **not** run them on production.  
+Script 01 marks practising doctors that are still Pending as Verified + DirectoryVisible.  
+Script 07 fills empty fee/city on every doctor and sets DirectoryVisible = 1. Skip 07 on a database whose real doctors must stay hidden.  
+Scripts 14, 16 and 22 are read-only. Script 15 is Dev team users only.
+
+On another database, numeric ids (Doctor 1010, Patient 3046, UserId 10032) will differ. Seeds look up `Tufan_Doctor` / `Tufan_Patient` / `Tufan_Admin` by UserName. API samples in the docs show the Dev ids; mobile developers must use `data.userId` and `data.doctorId` from login.
 
 ## After SQL
 

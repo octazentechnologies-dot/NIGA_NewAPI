@@ -2,6 +2,12 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Niga_Domain.DTOs;
 
+public class ConsultFeeQuote
+{
+    public decimal InClinicFee { get; set; }
+    public decimal TeleFee { get; set; }
+}
+
 public class FeeUpsertRequest
 {
     [Range(1, int.MaxValue)]

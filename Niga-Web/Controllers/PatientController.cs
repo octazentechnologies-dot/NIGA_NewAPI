@@ -69,15 +69,38 @@ namespace Niga_Domain.API.Controllers
             }
             try
             {
-                // DOC-04.02 — doctor or reception of this clinic only (JWT DoctorID).
-                if (!DoctorOwnership.IsAdminPortalUser(User))
+                // REC-04.02 — create patient is own-doctor only. Bind DoctorID from JWT; never trust a client DoctorID.
+                if (!DoctorOwnership.IsGlobalAdminPortalUser(User))
                 {
                     var jwtDoctor = DoctorOwnership.GetDoctorId(User);
-                    if (jwtDoctor.HasValue && model.DoctorID <= 0)
-                        model.DoctorID = jwtDoctor.Value;
+                    if (!jwtDoctor.HasValue)
+                    {
+                        return StatusCode(StatusCodes.Status403Forbidden,
+                            new { success = false, message = "Access denied for this doctor resource." });
+                    }
+
+                    model.DoctorID = jwtDoctor.Value;
                     var forbid = DoctorOwnership.ForbidIfNotOwner(User, model.DoctorID);
                     if (forbid != null)
                         return forbid;
+                }
+
+                if (model.PatientID == 0 && string.IsNullOrWhiteSpace(model.PatientName))
+                    return BadRequest(new { success = false, message = "Patient name is required." });
+
+                // REC-04.03 — same POST /api/patient. Reception JWT user id is staff id;
+                // the case must be stored under the clinic doctor's UserId.
+                if (string.Equals(DoctorOwnership.GetRoleName(User), "Reception", StringComparison.OrdinalIgnoreCase))
+                {
+                    var doctorUserId = DoctorOwnership.GetDoctorUserId(User);
+                    if (!doctorUserId.HasValue)
+                    {
+                        return StatusCode(StatusCodes.Status403Forbidden,
+                            new { success = false, message = "Reception must belong to a doctor." });
+                    }
+
+                    model.LoggedInUser = doctorUserId.Value;
+                    model.UserId = doctorUserId.Value;
                 }
 
                 var userModel = await _patientService.SavePatient(model);
@@ -273,7 +296,13 @@ namespace Niga_Domain.API.Controllers
 
             var rows = await _context.CaseEntryChiefComplaints.AsNoTracking()
                 .Where(c => c.CaseId == caseRow.CaseId)
-                .Select(c => new { c.CaseChiefComplaintId, c.CaseId, c.ChiefComplaintName })
+                .Select(c => new
+                {
+                    c.CaseChiefComplaintId,
+                    c.CaseId,
+                    c.ChiefComplaintName,
+                    c.CreatedByRole
+                })
                 .ToListAsync();
             return Ok(new { success = true, data = rows });
         }

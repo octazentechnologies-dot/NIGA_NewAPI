@@ -260,19 +260,19 @@ INSERT INTO #ClinicPts (
 ) VALUES
     (1, N'Tufan Patient',          N'7768046064', 0, '1990-01-01', N'tufanpowar001@gmail.com', @TufanPatientId,
      N'WAITING',     @Today,     '10:00', N'First',    N'InClinic', N'UNPAID',      0, N'TUFANDOC01', N'Headache since 2 weeks', @AsthmaId),
-    (2, N'Clinic Demo Asha',       N'9000000301', 1, '1988-03-12', N'asha.clinic@homeocentrum.dev', NULL,
+    (2, N'Clinic Demo Asha',       N'7768046064', 1, '1988-03-12', N'tufanpowar001@gmail.com', NULL,
      N'WALK-IN',     @Today,     '10:15', N'First',    N'InClinic', N'PayAtClinic', 0, N'TUFANDOC02', N'Cough with wheeze', @AsthmaId),
-    (3, N'Clinic Demo Rohan',      N'9000000302', 0, '1992-07-21', N'rohan.clinic@homeocentrum.dev', NULL,
+    (3, N'Clinic Demo Rohan',      N'7768046064', 0, '1992-07-21', N'tufanpowar001@gmail.com', NULL,
      N'REMAINING',   @Today,     '10:30', N'FollowUp', N'InClinic', N'Paid',        0, N'TUFANDOC03', N'Acne on face', @AcneId),
-    (4, N'Clinic Demo Meera',      N'9000000303', 1, '1985-11-04', N'meera.clinic@homeocentrum.dev', NULL,
+    (4, N'Clinic Demo Meera',      N'7768046064', 1, '1985-11-04', N'tufanpowar001@gmail.com', NULL,
      N'E-CONSULT',   @Today,     '11:00', N'Tele',     N'Tele',     N'UNPAID',      1, N'TUFANDOC04', N'Hair fall', @AlopeciaId),
-    (5, N'Clinic Demo Kabir',      N'9000000304', 0, '1979-01-18', N'kabir.clinic@homeocentrum.dev', NULL,
+    (5, N'Clinic Demo Kabir',      N'7768046064', 0, '1979-01-18', N'tufanpowar001@gmail.com', NULL,
      N'NOT ARRIVED', @Today,     '11:30', N'InClinic', N'InClinic', N'PENDING',     0, N'TUFANDOC05', N'Seasonal allergy', @AsthmaId),
-    (6, N'Clinic Demo Nisha',      N'9000000305', 1, '1995-09-09', N'nisha.clinic@homeocentrum.dev', NULL,
+    (6, N'Clinic Demo Nisha',      N'7768046064', 1, '1995-09-09', N'tufanpowar001@gmail.com', NULL,
      N'COMPLETED',   @Today,     '09:30', N'FollowUp', N'InClinic', N'Paid',        0, N'TUFANDOC06', N'Acne follow-up', @AcneId),
-    (7, N'Clinic Demo Vivek',      N'9000000306', 0, '1998-05-30', N'vivek.clinic@homeocentrum.dev', NULL,
+    (7, N'Clinic Demo Vivek',      N'7768046064', 0, '1998-05-30', N'tufanpowar001@gmail.com', NULL,
      N'WAITING',     @Today,     '12:00', N'First',    N'InClinic', N'UNPAID',      0, N'TUFANDOC07', N'Breathlessness on exertion', @AsthmaId),
-    (8, N'Clinic Demo Priya',      N'9000000307', 1, '1991-12-15', N'priya.clinic@homeocentrum.dev', NULL,
+    (8, N'Clinic Demo Priya',      N'7768046064', 1, '1991-12-15', N'tufanpowar001@gmail.com', NULL,
      N'COMPLETED',   @Yesterday, '16:00', N'FollowUp', N'InClinic', N'Paid',        0, N'TUFANDOC08', N'Chronic rhinitis', @AsthmaId);
 
 UPDATE t
@@ -283,7 +283,7 @@ WHERE t.ExistingPatientId IS NOT NULL;
 UPDATE t
 SET PatientId = p.PatientID
 FROM #ClinicPts t
-INNER JOIN dbo.Patient p ON p.MobileNo = t.MobileNo AND ISNULL(p.DeleteStatus, 0) = 0
+INNER JOIN dbo.Patient p ON p.PatientName = t.PatientName AND ISNULL(p.Email, N'') = ISNULL(t.Email, N'') AND ISNULL(p.DeleteStatus, 0) = 0
 WHERE t.PatientId IS NULL AND t.ExistingPatientId IS NULL;
 
 INSERT INTO dbo.Patient (
@@ -306,7 +306,7 @@ WHERE t.PatientId IS NULL;
 UPDATE t
 SET PatientId = p.PatientID
 FROM #ClinicPts t
-INNER JOIN dbo.Patient p ON p.MobileNo = t.MobileNo AND ISNULL(p.DeleteStatus, 0) = 0
+INNER JOIN dbo.Patient p ON p.PatientName = t.PatientName AND ISNULL(p.Email, N'') = ISNULL(t.Email, N'') AND ISNULL(p.DeleteStatus, 0) = 0
 WHERE t.PatientId IS NULL;
 
 SET @n = (SELECT COUNT(*) FROM #ClinicPts WHERE PatientId IS NOT NULL);

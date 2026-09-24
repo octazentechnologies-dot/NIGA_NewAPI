@@ -2416,7 +2416,7 @@ namespace Niga_Domain.Data
             entity.Property(e => e.BookingToken).HasMaxLength(64);
             entity.Property(e => e.VisitType).HasMaxLength(50);
             entity.Property(e => e.ConsultMode).HasMaxLength(50);
-            entity.Property(e => e.PaymentStatus).HasMaxLength(30);
+            entity.Property(e => e.PaymentStatus).HasMaxLength(30).HasDefaultValue("UNPAID");
             entity.Property(e => e.ConsentPolicyVersion).HasMaxLength(20);
             entity.Property(e => e.CancelReasonCode).HasMaxLength(40);
             entity.Property(e => e.CancelReasonText).HasMaxLength(500);

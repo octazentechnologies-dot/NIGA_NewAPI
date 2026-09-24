@@ -27,6 +27,49 @@ namespace Niga_Domain.DTOs
         public string? Message { get; set; }
         public PatientAppointmentModel? Appointment { get; set; }
         public List<AppointmentSlotModel> Alternatives { get; set; } = new();
+        public AppointmentNotificationResult? Notification { get; set; }
+        public WaitlistOfferResult WaitlistOffer { get; set; } = new();
+        public CancelRefundPolicyResult RefundPolicy { get; set; } = new();
+    }
+
+    /// <summary>
+    /// APT-06.04 — cancel stub. Oldest JOINED waitlist row for that doctor and date becomes OFFERED.
+    /// No SMS, no auto-booking. Full waitlist is Phase 9.
+    /// </summary>
+    public class WaitlistOfferResult
+    {
+        public bool Offered { get; set; }
+        public int? BookingWaitlistId { get; set; }
+        public string? ContactName { get; set; }
+        public string? SlotDate { get; set; }
+        public string? SlotTime { get; set; }
+        public string Sms { get; set; } = "skipped";
+        public string Push { get; set; } = "skipped";
+        public string Detail { get; set; } = "SMS and push run when Phase 12 communications exist. No auto-booking.";
+    }
+
+    /// <summary>
+    /// APT-06.02 — if the visit is PAID, queue the refund policy. Razorpay is not called.
+    /// </summary>
+    public class CancelRefundPolicyResult
+    {
+        public bool Queued { get; set; }
+        public string Policy { get; set; } = "NONE";
+        public decimal Amount { get; set; }
+        public long? RefundId { get; set; }
+        public string Detail { get; set; } = "No refund was sent.";
+    }
+
+    /// <summary>
+    /// APT-05.04 — channel outcomes. Push stays "later". Failed channels do not undo the move.
+    /// </summary>
+    public class AppointmentNotificationResult
+    {
+        public string Sms { get; set; } = "skipped";
+        public string WhatsApp { get; set; } = "skipped";
+        public string Push { get; set; } = "later";
+        public string? Message { get; set; }
+        public string? Detail { get; set; }
     }
 
     public class AppointmentChangeLogItem
@@ -134,5 +177,15 @@ namespace Niga_Domain.DTOs
         public DateTime AppointmentDate { get; set; }
         public TimeOnly AppointmentTime { get; set; }
         public string? ConsultMode { get; set; }
+    }
+
+    /// <summary>SUP-07.02 — patient asks clinic staff to book on their behalf (AssistedRequest ticket).</summary>
+    public class AssistanceRequestBody
+    {
+        public int? DoctorId { get; set; }
+        public int? PatientId { get; set; }
+        public string? Notes { get; set; }
+        public string? PreferredDate { get; set; }
+        public string? ContactMobile { get; set; }
     }
 }

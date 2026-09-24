@@ -80,7 +80,7 @@ def main():
         "requestedDate": "2026-12-01",
         "consultMode": "In-clinic",
         "contactName": "Week3 Wait",
-        "contactMobile": "9000000991",
+        "contactMobile": "7768046064",
     })
     check("waitlist join no offer", status, body, {200})
 
@@ -312,7 +312,7 @@ def main():
     status, body = req("POST", f"{NEW}/api/Tele/Instant", {
         "patientId": PATIENT_ID,
         "contactName": "Instant",
-        "contactMobile": "9000000992",
+        "contactMobile": "7768046064",
     }, token=patient)
     check("instant consult offer", status, body, {200})
     instant_id = 0

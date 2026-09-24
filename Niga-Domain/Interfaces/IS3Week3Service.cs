@@ -6,12 +6,15 @@ namespace Niga_Domain.Interfaces
     {
         Task<S3ActionResult> JoinWaitlistAsync(JoinWaitlistRequest request);
         Task<S3ActionResult> GetWaitlistAsync(int doctorId);
+        /// <summary>PAT-23.02 — patient poll for waitlist offer (JOINED / OFFERED).</summary>
+        Task<S3ActionResult> GetWaitlistOffersAsync(string? contactMobile, int? doctorId, int? patientId);
 
         Task<S3ActionResult> GetReceptionProfileAsync(int receptionStaffId);
         Task<S3ActionResult> UpdateReceptionProfileAsync(int receptionStaffId, ReceptionProfileUpdate request);
 
         Task<S3ActionResult> SaveCasePaperAsync(CasePaperRequest request, int doctorId, long userId);
         Task<S3ActionResult> GetCasePapersAsync(int doctorId, int patientId);
+        Task<S3ActionResult> OpenPatientRowAsync(int doctorId, int patientId);
 
         Task<S3ActionResult> SetTeleAvailabilityAsync(int doctorId, bool isOnline);
         Task<S3ActionResult> GetTeleAvailabilityAsync(int doctorId);
@@ -39,12 +42,16 @@ namespace Niga_Domain.Interfaces
         Task<S3ActionResult> UpdateTicketAsync(int ticketId, SupportTicketUpdate request);
         Task<S3ActionResult> AddMessageAsync(int ticketId, SupportMessageCreate request, long userId, string role, bool isAdmin);
         Task<S3ActionResult> ListMessagesAsync(int ticketId, long userId, bool isAdmin);
+        Task<S3ActionResult> UpdateMessageAsync(int ticketId, int messageId, SupportMessageCreate request, long userId, bool isAdmin);
+        Task<S3ActionResult> DeleteMessageAsync(int ticketId, int messageId, long userId, bool isAdmin);
 
         Task<S3ActionResult> ListHelpAsync(bool includeUnpublished);
         Task<S3ActionResult> GetHelpAsync(string slug, bool includeUnpublished);
         Task<S3ActionResult> SaveHelpAsync(HelpArticleWrite request);
 
         Task<S3ActionResult> AssistedBookAsync(AssistedBookRequest request, long userId);
+        Task<S3ActionResult> RequestAssistanceAsync(AssistanceRequestBody request, long userId, string role);
+        Task<S3ActionResult> ListAssistanceRequestsAsync();
         Task<S3ActionResult> GetDoctorContextAsync(int patientAppId, S3Caller caller);
 
         Task<S3ActionResult> ListRefillsAsync();

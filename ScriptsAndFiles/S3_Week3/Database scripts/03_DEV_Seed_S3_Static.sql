@@ -6,12 +6,13 @@ Script       : 03_DEV_Seed_S3_Static.sql
 Purpose      : Static Dev rows for Week 3 so patient, doctor mobile, and clinic
                calls return data. Does not rewrite old VisitType. No Razorpay.
 Use          : HomeoCentrum_Dev only. Run after 01 and 02.
-Marker       : BookingToken S3STATIC01, waitlist mobile 9000001444, ticket S3-STATIC.
+Marker       : BookingToken S3STATIC01, waitlist mobile 7768046064, ticket S3-STATIC.
 Idempotent   : Yes.
-Static users : Tufan_Doctor 1010 / UserId 10032
-               Tufan_Patient PatientId 3046 / UserId 10033
-               Tufan_Admin UserId 10030
-               Password 123456 (seeded by Week 2 script 15)
+Static users : looked up by UserName (not fixed ids).
+               Tufan_Doctor, Tufan_Patient, Tufan_Admin.
+               Password 123456 (Week 2 script 15). On Dev those ids are
+               Doctor 1010 / User 10032, Patient 3046 / User 10033, Admin 10030.
+               Another database will have different identity values.
 ================================================================================
 */
 SET NOCOUNT ON;
@@ -27,17 +28,29 @@ BEGIN
     RETURN;
 END
 
-DECLARE @DoctorId INT = 1010;
-DECLARE @DoctorUserId BIGINT = 10032;
-DECLARE @PatientId INT = 3046;
-DECLARE @PatientUserId BIGINT = 10033;
-DECLARE @AdminUserId BIGINT = 10030;
+DECLARE @DoctorId INT;
+DECLARE @DoctorUserId BIGINT;
+DECLARE @PatientId INT;
+DECLARE @PatientUserId BIGINT;
+DECLARE @AdminUserId BIGINT;
 
-IF NOT EXISTS (SELECT 1 FROM dbo.Doctor WHERE DoctorId = @DoctorId AND UserId = @DoctorUserId)
-   OR NOT EXISTS (SELECT 1 FROM dbo.Patient WHERE PatientID = @PatientId)
-   OR NOT EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserId = @PatientUserId AND UserName = N'Tufan_Patient')
+SELECT TOP 1 @DoctorUserId = u.UserId, @DoctorId = d.DoctorID
+FROM dbo.UserMaster u
+INNER JOIN dbo.Doctor d ON d.UserId = u.UserId AND ISNULL(d.DeleteStatus, 0) = 0
+WHERE u.UserName = N'Tufan_Doctor' AND ISNULL(u.DeleteStatus, 0) = 0;
+
+SELECT TOP 1 @PatientUserId = u.UserId, @PatientId = m.PatientId
+FROM dbo.UserMaster u
+INNER JOIN dbo.PatientUserMap m ON m.UserId = u.UserId AND ISNULL(m.DeleteStatus, 0) = 0 AND ISNULL(m.IsPrimary, 1) = 1
+WHERE u.UserName = N'Tufan_Patient' AND ISNULL(u.DeleteStatus, 0) = 0;
+
+SELECT TOP 1 @AdminUserId = UserId
+FROM dbo.UserMaster
+WHERE UserName = N'Tufan_Admin' AND ISNULL(DeleteStatus, 0) = 0;
+
+IF @DoctorId IS NULL OR @PatientId IS NULL OR @AdminUserId IS NULL
 BEGIN
-    RAISERROR('Static Tufan_Doctor 1010 or Tufan_Patient 3046 is missing. Run Week 2 scripts 15 and 24 first.', 16, 1);
+    RAISERROR('Tufan_Doctor, Tufan_Patient, or Tufan_Admin is missing. Run Week 2 scripts 15 and 24 first.', 16, 1);
     RETURN;
 END
 
@@ -55,10 +68,14 @@ IF NOT EXISTS (SELECT 1 FROM dbo.HelpArticle WHERE Slug = N's3-static-cancel')
 
 IF NOT EXISTS (
     SELECT 1 FROM dbo.BookingWaitlist
-    WHERE DoctorId = @DoctorId AND ContactMobile = N'9000001444' AND RequestedDate = '2026-12-20'
+    WHERE DoctorId = @DoctorId AND ContactName = N'S3-STATIC Sanjay Patil' AND RequestedDate = '2026-12-20'
 )
     INSERT INTO dbo.BookingWaitlist (DoctorId, PatientId, RequestedDate, ConsultMode, ContactName, ContactMobile, Status)
-    VALUES (@DoctorId, @PatientId, '2026-12-20', N'InClinic', N'S3-STATIC Sanjay Patil', N'9000001444', N'JOINED');
+    VALUES (@DoctorId, @PatientId, '2026-12-20', N'InClinic', N'S3-STATIC Sanjay Patil', N'7768046064', N'JOINED');
+ELSE
+    UPDATE dbo.BookingWaitlist
+    SET ContactMobile = N'7768046064'
+    WHERE ContactName = N'S3-STATIC Sanjay Patil' AND ISNULL(ContactMobile, N'') <> N'7768046064';
 
 IF NOT EXISTS (SELECT 1 FROM dbo.DoctorDailySchedule WHERE DoctorId = @DoctorId AND ScheduleDate = '2026-12-20')
     INSERT INTO dbo.DoctorDailySchedule
@@ -103,9 +120,15 @@ BEGIN
 END
 
 IF OBJECT_ID(N'dbo.InstantConsultRequest', N'U') IS NOT NULL
-   AND NOT EXISTS (SELECT 1 FROM dbo.InstantConsultRequest WHERE ContactMobile = N'9000001555')
-    INSERT INTO dbo.InstantConsultRequest (PatientId, ContactName, ContactMobile, Status, QueuePosition)
-    VALUES (@PatientId, N'S3-STATIC Instant', N'9000001555', N'OPEN', 1);
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM dbo.InstantConsultRequest WHERE ContactName = N'S3-STATIC Instant')
+        INSERT INTO dbo.InstantConsultRequest (PatientId, ContactName, ContactMobile, Status, QueuePosition)
+        VALUES (@PatientId, N'S3-STATIC Instant', N'7768046064', N'OPEN', 1);
+    ELSE
+        UPDATE dbo.InstantConsultRequest
+        SET ContactMobile = N'7768046064'
+        WHERE ContactName = N'S3-STATIC Instant' AND ISNULL(ContactMobile, N'') <> N'7768046064';
+END
 
 PRINT 'S3 static seed ready. Appointment token S3STATIC01, patient 3046, doctor 1010.';
 GO

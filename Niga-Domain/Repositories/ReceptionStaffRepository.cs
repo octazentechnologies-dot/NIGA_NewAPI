@@ -127,6 +127,7 @@ namespace Niga_Domain.Repositories
             return _context.DoctorReceptionStaffs
                 .FirstOrDefaultAsync(x =>
                     !x.DeleteStatus
+                    && x.IsActive
                     && x.UserId.ToLower() == normalizedUserId);
         }
 

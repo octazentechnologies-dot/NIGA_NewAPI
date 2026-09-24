@@ -12,15 +12,15 @@ Menus       : NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts/19_DEV_Seed_
 
 Username            Role              Portal / URL                         Email / Mobile
 ------------------  ----------------  -----------------------------------  ------------------------------------------
-Tufan_Admin         Admin             /dashboard                           tufan.admin@homeocentrum.dev / 9000000201
-Tufan_Doctor        Doctor            /doctordashboard                     tufan.doctor@homeocentrum.dev / 9000000202
+Tufan_Admin         Admin             /dashboard                           tufanpowar001@gmail.com / 7768046064
+Tufan_Doctor        Doctor            /doctordashboard                     tufanpowar001@gmail.com / 7768046064
                     Extra menus vs other doctors (existing More dropdown): every available MenuMaster item. Other doctors keep 5 clinic menus.
 Tufan_Reception     Reception         /doctordashboard                     tufanpowar001@gmail.com / 7768046064 (staff row, not UserMaster)
-Tufan_Account       Account           /accountdashboard                    tufan.account@homeocentrum.dev / 9000000203
-Tufan_Pharmacy      PharmacyPartner   /pharmacydashboard                   tufan.pharmacy@homeocentrum.dev / 9000000204
+Tufan_Account       Account           /accountdashboard                    tufanpowar001@gmail.com / 7768046064
+Tufan_Pharmacy      PharmacyPartner   /pharmacydashboard                   tufanpowar001@gmail.com / 7768046064
 Tufan_Patient       Patient           /family                              tufanpowar001@gmail.com / 7768046064
-Tufan_Caregiver     Patient           /family                              tufan.caregiver@homeocentrum.dev / 9000000206
-Tufan_NoMenu        EmptyMenuProbe    (API only, no portal menus)          tufan.nomenu@homeocentrum.dev / 9000000207
+Tufan_Caregiver     Patient           /family                              tufanpowar001@gmail.com / 7768046064
+Tufan_NoMenu        EmptyMenuProbe    (API only, no portal menus)          tufanpowar001@gmail.com / 7768046064
 
 Tufan_NoMenu is an API-only probe (EmptyMenuProbe). GET /api/mastersAPI/GetMenuByRole must be 200 [].
 
@@ -35,17 +35,11 @@ Do not use dummy Account/Account or Pharmacy/Pharmacy tokens.
 
 Uniqueness
 ----------
-LoginWithOtp and ForgotPassword pick the first UserMaster row for a mobile/email.
-So tufanpowar001@gmail.com / 7768046064 is on Tufan_Patient only (plus Reception staff Email/Contact, which is not UserMaster).
-Other Tufan_* UserMaster rows keep unique emails/mobiles. Older tufanpowar001@gmail.com mobile moved to 9000000101 so OTP is not ambiguous.
+Username + password still identifies the role. Every Tufan_* UserMaster, reception staff,
+and seeded test patient / enquiry / waitlist / instant row uses 7768046064.
 
-Older Dev logins (still valid, different passwords)
+Older Dev logins (pre-existing clinic rows; not our Tufan_* seed)
 ---------------------------------------------------
 admin                         Admin      1234
 niga homeopathy               Doctor     nik123
 testdoctor                    Doctor     nik123
-s2.reception                  Reception  S2Test@123
-s2.account                    Account    123456
-s2.pharmacy                   Pharmacy   123456
-tufanpowar001@gmail.com       Patient    123456
-s1.caregiver.tested@homeocentrum.dev  Patient (caregiver)  123456

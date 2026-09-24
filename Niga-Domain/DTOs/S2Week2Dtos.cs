@@ -105,6 +105,22 @@ namespace Niga_Domain.DTOs
         public DoctorPayeeKycDto? Kyc { get; set; }
     }
 
+    /// <summary>REC-02.01 — Profile/Me for role Reception. Stored on DoctorReceptionStaff, not a new table.</summary>
+    public class ReceptionProfileMeDto
+    {
+        public string Role { get; set; } = "Reception";
+        public int ReceptionStaffId { get; set; }
+        public int DoctorId { get; set; }
+        public string LoginId { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string? EmailId { get; set; }
+        public string? MobileNo { get; set; }
+        public string? Address { get; set; }
+        public string? City { get; set; }
+        public string? State { get; set; }
+        public string? Country { get; set; }
+    }
+
     public class DoctorCredentialDocumentDto
     {
         public int DoctorCredentialDocumentId { get; set; }
@@ -142,6 +158,8 @@ namespace Niga_Domain.DTOs
         public decimal? ConsultFeeInClinic { get; set; }
         public decimal? ConsultFeeTele { get; set; }
         public string? WorkingHoursNote { get; set; }
+        /// <summary>REC-02.02 — used by Reception Profile/Me PUT; ignored for doctors.</summary>
+        public string? Country { get; set; }
         public DoctorPayeeKycDto? Kyc { get; set; }
     }
 

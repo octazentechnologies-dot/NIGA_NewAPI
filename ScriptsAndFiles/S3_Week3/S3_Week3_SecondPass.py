@@ -387,7 +387,7 @@ def main():
     print("== waitlist and public booking ==")
     status, body = req("POST", f"{NEW}/api/Waitlist/Join", {
         "doctorId": DOCTOR_ID, "patientId": STAFF_PATIENT, "requestedDate": day,
-        "consultMode": "In-clinic", "contactName": "Second Pass", "contactMobile": "9000001881",
+        "consultMode": "In-clinic", "contactName": "Second Pass", "contactMobile": "7768046064",
     })
     check("WEB-11.02", "anonymous waitlist join", status, body, {200})
     status, body = req("GET", f"{NEW}/api/Waitlist?doctorId={DOCTOR_ID}", token=doctor)
@@ -398,13 +398,13 @@ def main():
     check("APT-01.02", "anonymous waitlist list rejected", status, body, {401})
     status, body = req("POST", f"{NEW}/api/Waitlist/Join", {
         "doctorId": DOCTOR_ID, "requestedDate": day, "consultMode": "Tele",
-        "contactName": "No Offer", "contactMobile": "9000001882",
+        "contactName": "No Offer", "contactMobile": "7768046064",
     })
     check("APT-06.04", "join response does not offer a slot", status, body, {200}, absent=["offered", "expiresin"])
 
     otp_raw = sql(
         "SET NOCOUNT ON; INSERT INTO OtpChallenge (Action, EntityType, EntityId, DestinationMasked, OtpHash, ExpiresAt, AttemptCount, CreatedAt, VerifiedAt) "
-        "VALUES ('PatientAuth','Mobile','9000001771','9000001771','SECOND', DATEADD(hour,1,GETDATE()),0,GETDATE(),GETDATE()); "
+        "VALUES ('PatientAuth','Mobile','7768046064','7768046064','SECOND', DATEADD(hour,1,GETDATE()),0,GETDATE(),GETDATE()); "
         "SELECT CAST(SCOPE_IDENTITY() AS bigint);"
     )
     otp_id = 0
@@ -415,14 +415,14 @@ def main():
     check("CON-09.01", "patient auth session for public book", 200 if otp_id else 0, otp_raw, {200})
 
     status, body = req("POST", f"{NEW}/api/Public/Doctors/{DOCTOR_ID}/Bookings", {
-        "mobile": "9000001771", "patientName": "Public Second", "appointmentDate": day,
+        "mobile": "7768046064", "patientName": "Public Second", "appointmentDate": day,
         "appointmentTime": break_time[:5], "consultMode": "In-clinic", "visitType": "In-clinic",
         "bookingSessionId": otp_id,
     })
     check("APT-08.03", "public book on a break slot rejected", status, body, {400, 409})
 
     status, body = req("POST", f"{NEW}/api/Public/Doctors/{DOCTOR_ID}/Bookings", {
-        "mobile": "9000001771", "patientName": "Public Second", "appointmentDate": day,
+        "mobile": "7768046064", "patientName": "Public Second", "appointmentDate": day,
         "appointmentTime": t_assisted[:5], "consultMode": "In-clinic", "visitType": "In-clinic",
         "bookingSessionId": otp_id,
     })
@@ -440,7 +440,7 @@ def main():
     check("APT-06.02", "cancel public hold", status, body, {200}, contains=["no refund"])
 
     status, body = req("POST", f"{NEW}/api/Public/Doctors/{DOCTOR_ID}/Bookings", {
-        "mobile": "9000001771", "patientName": "Public Second", "appointmentDate": day,
+        "mobile": "7768046064", "patientName": "Public Second", "appointmentDate": day,
         "appointmentTime": t_assisted[:5], "consultMode": "Online", "visitType": "Online",
         "bookingSessionId": otp_id,
     })
@@ -457,7 +457,7 @@ def main():
     status, body = req("GET", f"{NEW}/api/Reception/Profile", token=reception)
     check("REC-02.02", "reception profile", status, body, {200}, absent=["consultFee"])
     status, body = req("PUT", f"{NEW}/api/Reception/Profile", {
-        "mobileNo": "9000001444",
+        "mobileNo": "7768046064",
     }, token=reception)
     check("REC-02.02", "reception updates own mobile", status, body, {200})
     status, body = req("PUT", f"{NEW}/api/Profile/Me", {"consultFeeInClinic": 1}, token=reception)
@@ -596,7 +596,7 @@ def main():
     status, body = req("POST", f"{NEW}/api/Tele/Instant", {"contactMobile": ""}, token=patient)
     check("TEL-12.02", "instant without mobile rejected", status, body, {400})
     status, body = req("POST", f"{NEW}/api/Tele/Instant", {
-        "patientId": OWN_PATIENT, "contactName": "Instant Pass", "contactMobile": "9000001883",
+        "patientId": OWN_PATIENT, "contactName": "Instant Pass", "contactMobile": "7768046064",
     }, token=patient)
     check("PAT-24.02", "instant consult request", status, body, {200})
     instant = j(body)

@@ -22,6 +22,60 @@ Consult mode   : InClinic or Tele. In-clinic / Clinic map to InClinic.
 Payment        : Staff create stores UNPAID. Public booking stays PENDING.
                  The browser cannot set PAID. Cancel does not refund.
 
+
+================================================================================
+DEV LOGINS (HomeoCentrum_Dev) — use these in every sample. Do not invent other emails/mobiles.
+================================================================================
+Date       : 23-Sep-2026
+Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
+Clinic login HOST = Old-API  POST http://127.0.0.1:5001/api/Account/Login
+New HTTP HOST     = New-API  http://127.0.0.1:5038/api
+Password for every Tufan_* row: 123456
+Email (all our users): tufanpowar001@gmail.com
+Mobile (all our users): 7768046064
+
+Username          Role              userId   Notes
+Tufan_Admin       Admin             10030    /dashboard
+Tufan_Doctor      Doctor            10032    DoctorID 1010  /doctordashboard
+Tufan_Reception   Reception         staff    DoctorID 1010  DoctorReceptionStaff (not UserMaster)
+Tufan_Account     Account           10029    /accountdashboard
+Tufan_Pharmacy    PharmacyPartner   10034    /pharmacydashboard
+Tufan_Patient     Patient           10033    PatientId 3046
+Tufan_Caregiver   Patient           10031    caregiver on Tufan_Patient
+Tufan_NoMenu      EmptyMenuProbe    10035    GetMenuByRole must be 200 []
+
+REQUEST  (clinic web / doctor / account / pharmacy / patient password login)
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Doctor",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10032,
+    "userName": "TUFAN DOCTOR",
+    "role": "Doctor",
+    "roleId": 3,
+    "token": "<JWT>",
+    "doctorId": 1010,
+    "isPlanActive": false
+  }
+}
+
+Patient login uses userName "Tufan_Patient". Reception uses "Tufan_Reception".
+Admin uses "Tufan_Admin". Account uses "Tufan_Account". Pharmacy uses "Tufan_Pharmacy".
+Header on TOKEN=yes calls: Authorization: Bearer <data.token>
+Other environment: replace http://127.0.0.1:5001 and http://127.0.0.1:5038 with that Old-API and New-API host.
+Numeric ids in samples (userId 10032, doctorId 1010, patientId 3046) are HomeoCentrum_Dev.
+Use data.userId and data.doctorId from the login response on any other database.
+Live copy-paste REQUEST/RESPONSE for Week 1–3 APIs: S1_S2_S3_LIVE_REQUEST_RESPONSE.txt (same ScriptsAndFiles week folder, Documents, Desktop).
+
 --------------------------------------------------------------------------------
 SUGGESTED FLOWS
 --------------------------------------------------------------------------------
@@ -191,8 +245,9 @@ OUTPUT     : updated appointment, or 400
 --------------------------------------------------------------------------------
 URL        : POST /api/PatientAppointment/CancelAppointment
 USE        : Sets status CANCELLED, stores reason, frees the slot.
-             Does not call Razorpay and does not enqueue a refund.
-             Does not offer the waitlist.
+             APT-06.04 stub: the oldest JOINED waitlist row for that doctor and date
+             becomes OFFERED. No SMS, no auto-booking. Full waitlist capture is Phase 9.
+             If nobody is waiting, waitlistOffer.offered is false.
 HOST       : New-API
 TOKEN      : doctor, that doctor's reception, or the mapped patient
 SAMPLE PAYLOAD:
@@ -293,7 +348,7 @@ SAMPLE PAYLOAD:
   "requestedDate": "2026-12-01",
   "consultMode": "In-clinic",
   "contactName": "Week3 Wait",
-  "contactMobile": "9000000991"
+  "contactMobile": "7768046064"
 }
 OUTPUT     : { success, message: "Joined the waitlist. The slot is not reserved and no offer is sent." }
 
@@ -318,11 +373,12 @@ OUTPUT     : { success, data: { receptionStaffId, doctorId, fullName, contactNum
 --------------------------------------------------------------------------------
 URL        : PUT /api/Reception/Profile
 USE        : Update name, mobile, email. Fee and bank fields are not on this body.
-             PUT /api/Profile/Me from a reception token is 403.
+             PUT /api/Profile/Me from a reception token updates the same DoctorReceptionStaff
+             contact fields and ignores clinic fee / bank / qualifications if sent.
 HOST       : New-API
 TOKEN      : reception JWT
 SAMPLE PAYLOAD:
-{ "firstName": "Tufan", "lastName": "Desk", "mobileNo": "9000000000", "emailId": "desk@example.com" }
+{ "firstName": "Tufan", "lastName": "Desk", "mobileNo": "7768046064", "emailId": "desk@example.com" }
 OUTPUT     : same shape as GET
 
 --------------------------------------------------------------------------------
@@ -484,7 +540,7 @@ USE        : Patient asks for an instant consult. If a doctor is online, one off
 HOST       : New-API
 TOKEN      : any signed-in user (patient JWT in the app)
 SAMPLE PAYLOAD:
-{ "patientId": 3065, "contactName": "Instant", "contactMobile": "9000000992" }
+{ "patientId": 3065, "contactName": "Instant", "contactMobile": "7768046064" }
 OUTPUT     : { success, instantConsultRequestId, queuePosition, status: "OFFERED"|"NO_DOCTOR", doctorId? }
              400 when contactMobile is missing
 

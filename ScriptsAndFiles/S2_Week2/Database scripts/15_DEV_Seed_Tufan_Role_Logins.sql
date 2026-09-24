@@ -76,13 +76,13 @@ DECLARE @Users TABLE
 -- Newly created Tufan role users share tufanpowar001@gmail.com.
 -- Existing clinic users (admin, NIGA HOMEOPATHY, demotestuser, and the other named doctors) are not in this list.
 INSERT INTO @Users (RoleName, UserName, EmailId, FirstName, LastName, MobileNo) VALUES
-    (N'Admin',            N'Tufan_Admin',     N'tufanpowar001@gmail.com', N'Tufan', N'Admin',     N'9000000201'),
-    (N'Doctor',           N'Tufan_Doctor',    N'tufanpowar001@gmail.com', N'Tufan', N'Doctor',    N'9000000202'),
-    (N'Account',          N'Tufan_Account',   N'tufanpowar001@gmail.com', N'Tufan', N'Account',   N'9000000203'),
-    (N'PharmacyPartner',  N'Tufan_Pharmacy',  N'tufanpowar001@gmail.com', N'Tufan', N'Pharmacy',  N'9000000204'),
+    (N'Admin',            N'Tufan_Admin',     N'tufanpowar001@gmail.com', N'Tufan', N'Admin',     N'7768046064'),
+    (N'Doctor',           N'Tufan_Doctor',    N'tufanpowar001@gmail.com', N'Tufan', N'Doctor',    N'7768046064'),
+    (N'Account',          N'Tufan_Account',   N'tufanpowar001@gmail.com', N'Tufan', N'Account',   N'7768046064'),
+    (N'PharmacyPartner',  N'Tufan_Pharmacy',  N'tufanpowar001@gmail.com', N'Tufan', N'Pharmacy',  N'7768046064'),
     (N'Patient',          N'Tufan_Patient',   N'tufanpowar001@gmail.com', N'Tufan', N'Patient',   N'7768046064'),
-    (N'Patient',          N'Tufan_Caregiver', N'tufanpowar001@gmail.com', N'Tufan', N'Caregiver', N'9000000206'),
-    (N'EmptyMenuProbe',   N'Tufan_NoMenu',    N'tufanpowar001@gmail.com', N'Tufan', N'NoMenu',    N'9000000207');
+    (N'Patient',          N'Tufan_Caregiver', N'tufanpowar001@gmail.com', N'Tufan', N'Caregiver', N'7768046064'),
+    (N'EmptyMenuProbe',   N'Tufan_NoMenu',    N'tufanpowar001@gmail.com', N'Tufan', N'NoMenu',    N'7768046064');
 
 BEGIN TRAN;
 
@@ -200,7 +200,7 @@ BEGIN
         )
         VALUES (
             N'Tufan', N'Doctor', @QualId, N'Tufan team clinic',
-            N'9000000202', N'tufanpowar001@gmail.com',
+            N'7768046064', N'tufanpowar001@gmail.com',
             N'Pune', N'TUFAN-TEAM', GETDATE(), 0, CAST(@DocUserId AS INT),
             N'Tufan Homeopathy Clinic', 550, 420,
             1, 1, N'Verified', 1,
@@ -213,6 +213,7 @@ BEGIN
     BEGIN
         UPDATE dbo.Doctor
         SET LastName = N'Doctor',
+            MobileNo = N'7768046064',
             EmailId = N'tufanpowar001@gmail.com',
             DirectoryVisible = 1,
             VerificationStatus = N'Verified',

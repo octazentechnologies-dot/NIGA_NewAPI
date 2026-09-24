@@ -6,6 +6,7 @@ using Niga_Domain.API.Helpers;
 using Niga_Domain.Authorization;
 using Niga_Domain.Data;
 using Niga_Domain.DTOs;
+using Niga_Domain.Helpers;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Security;
 using Niga_Domain.Extensions;
@@ -175,6 +176,18 @@ namespace Niga_Domain.API.Controllers
                     || roleName.Equals("Doctor", StringComparison.OrdinalIgnoreCase)
                     || roleName.Equals("Reception", StringComparison.OrdinalIgnoreCase)
                     || jwtDoctorId.HasValue;
+
+                // REC-13.02 — reception/doctor SPA must not write PaymentStatus=PAID (Account/webhook Phase 6).
+                if (isClinicStaff
+                    && S3AppointmentRules.IsPaid(PatientAppointmentModel?.PaymentStatus))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "PaymentStatus=PAID cannot be set by the client. Account / webhook is the source of truth (Phase 6)."
+                    });
+                }
+
                 if (!isClinicStaff && PatientAppointmentModel.PatientId > 0)
                 {
                     var userId = (long)User.GetUserId();
@@ -286,6 +299,8 @@ namespace Niga_Domain.API.Controllers
 
         /// <summary>
         /// Update appointment date/time for a particular appointment.
+        /// REC-10.02 — Reception may update time only for appointments of their JWT DoctorID (own doctor).
+        /// Same endpoint as the treating doctor (REC-10.03).
         /// </summary>
         [HttpPost("/api/PatientAppointment/UpdateAppointmentTime")]
         [ProducesResponseType(typeof(PatientAppointmentModel), StatusCodes.Status200OK)]
@@ -303,6 +318,7 @@ namespace Niga_Domain.API.Controllers
                     return BadRequest("Invalid request data");
                 }
 
+                // REC-10.02 — ACL own doctor (GuardAppointment → JWT DoctorID must match row.DoctorId)
                 var timeGuard = GuardAppointment(model.PatientAppId, allowPatient: false);
                 if (timeGuard != null)
                     return timeGuard;
@@ -415,7 +431,9 @@ namespace Niga_Domain.API.Controllers
         }
 
         /// <summary>
-        /// Get generated appointment slots for a doctor on a specific date.
+        /// APT-08.03 — clinic slot grid. This is the public-booking engine.
+        /// Public GET /api/Public/Doctors/{id}/Slots and POST .../Bookings call
+        /// IPatientAppointmentService.GetAppointmentSlotsAsync. Do not add a second slot calculator.
         /// </summary>
         [HttpGet("/api/PatientAppointment/GetAppointmentSlots")]
         [ProducesResponseType(typeof(AppointmentSlotsResponse), StatusCodes.Status200OK)]
@@ -429,6 +447,10 @@ namespace Niga_Domain.API.Controllers
                 {
                     return BadRequest("DoctorId is required");
                 }
+
+                var forbid = DoctorOwnership.ForbidIfNotOwner(User, request.DoctorId);
+                if (forbid != null)
+                    return forbid;
 
                 if (request.AppointmentDate == default)
                 {
@@ -445,7 +467,9 @@ namespace Niga_Domain.API.Controllers
         }
 
         /// <summary>
-        /// Update appointment status by appointment id
+        /// Update appointment status by appointment id.
+        /// REC-09.02 — Reception may update status only for appointments of their JWT DoctorID (own doctor).
+        /// Same endpoint as the treating doctor (REC-09.03).
         /// </summary>
         [HttpPost("UpdateAppointmentStatus")]
         [ProducesResponseType(typeof(PatientAppointmentModel), 200)]
@@ -464,6 +488,7 @@ namespace Niga_Domain.API.Controllers
                     return BadRequest("Invalid request data");
                 }
 
+                // REC-09.02 — ACL own doctor (GuardAppointment → JWT DoctorID must match row.DoctorId)
                 var statusGuard = GuardAppointment(model.PatientAppId, allowPatient: false);
                 if (statusGuard != null)
                     return statusGuard;
@@ -484,6 +509,12 @@ namespace Niga_Domain.API.Controllers
             }
         }
 
+        /// <summary>
+        /// APT / PAT-21.02 — formal reschedule for clinic or owning patient (JWT).
+        /// Patient app: pick a new slot via GET /api/Public/Doctors/{id}/Slots, then POST here.
+        /// REC-06.01 — Reception is authorised for this clinic's appointments only (JWT DoctorID).
+        /// Does not invent local paid state; paymentStatus comes from the saved appointment.
+        /// </summary>
         [HttpPost("/api/PatientAppointment/RescheduleAppointment")]
         public async Task<IActionResult> RescheduleAppointment([FromBody] RescheduleAppointmentRequest request)
         {
@@ -497,6 +528,9 @@ namespace Niga_Domain.API.Controllers
             return StatusCode(result.StatusCode, result);
         }
 
+        /// <summary>
+        /// REC-06.01 — Reception may cancel for this clinic's appointments only (JWT DoctorID).
+        /// </summary>
         [HttpPost("/api/PatientAppointment/CancelAppointment")]
         public async Task<IActionResult> CancelAppointment([FromBody] CancelAppointmentRequest request)
         {
@@ -541,6 +575,10 @@ namespace Niga_Domain.API.Controllers
             return Ok(new { success = true, data = rows });
         }
 
+        /// <summary>
+        /// REC-08.02 — Call next waiting patient for this clinic: sets CalledAt and board Status.
+        /// Uses JWT DoctorID (doctor or reception of that clinic).
+        /// </summary>
         [HttpPost("/api/PatientAppointment/CallNext")]
         public async Task<IActionResult> CallNext()
         {
@@ -559,8 +597,12 @@ namespace Niga_Domain.API.Controllers
                 .FirstOrDefault();
             if (row == null)
                 return NotFound(new { success = false, message = "Appointment not found" });
+
+            // REC-06.01 / REC-09.02 / REC-10.02 — Doctor or Reception with matching JWT DoctorID may act on this clinic only.
+            // Reception must never change status / time / reschedule / cancel another doctor's appointments.
             if (DoctorOwnership.EnsureDoctorOwns(User, row.DoctorId))
                 return null;
+
             if (allowPatient)
             {
                 var role = DoctorOwnership.GetRoleName(User) ?? string.Empty;

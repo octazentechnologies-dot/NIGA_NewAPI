@@ -61,6 +61,7 @@ namespace Niga_Domain.Extensions
             services.AddSingleton<ISignedFileUrlService, SignedFileUrlService>();
             // TODO PRE-03: wire SMS vendor (MSG91 / Twilio / Exotel + India DLT template IDs) and replace StubSmsSender.
             services.AddSingleton<ISmsSender, StubSmsSender>();
+            services.AddSingleton<IAppointmentRescheduleNotifier, AppointmentRescheduleNotifier>();
             services.Configure<Niga_Domain.DTOs.SmtpSettingsModel>(config.GetSection("smtp"));
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<ISectionRepository, SectionService>();

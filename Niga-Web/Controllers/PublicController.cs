@@ -152,8 +152,13 @@ namespace Niga_Domain.API.Controllers
             });
         }
 
+        /// <summary>
+        /// APT-08.03 / PAT-16.02 — public + patient-app slot picker.
+        /// Same GetAppointmentSlotsAsync engine as clinic GetAppointmentSlots. No second calculator.
+        /// Anonymous. Does not return patient names/ids (mobile-safe). Slot status: available|booked|break|past.
+        /// </summary>
         [HttpGet("Doctors/{id:int}/Slots")]
-        public async Task<IActionResult> Slots(int id, [FromQuery] DateTime date)
+        public async Task<IActionResult> GetDoctorSlots(int id, [FromQuery] DateTime date)
         {
             if (date == default)
                 date = DateTime.Today;
@@ -161,7 +166,7 @@ namespace Niga_Domain.API.Controllers
             var doctor = await _context.Doctors.AsNoTracking()
                 .FirstOrDefaultAsync(d => d.DoctorId == id && !d.DeleteStatus && d.DirectoryVisible && d.VerificationStatus == "Verified");
             if (doctor == null)
-                return NotFound(new { success = false, message = "Doctor not found." });
+                return NotFound(new { success = false, message = "Doctor not found or not verified." });
 
             var day = date.Date;
             var engine = await _appointments.GetAppointmentSlotsAsync(new GetAppointmentSlotsRequest
@@ -256,6 +261,9 @@ namespace Niga_Domain.API.Controllers
                 return BadRequest(new { success = false, code = "PAY_AT_CLINIC_DISABLED", message = "This doctor does not accept pay at clinic." });
 
             var token = Guid.NewGuid().ToString("N");
+            var mode = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType);
+            var isTele = mode == S3AppointmentRules.Tele;
+            var fees = await _fees.ResolveConsultFeesAsync(id);
             var appt = new PatientAppointment
             {
                 PatientId = patient.PatientId,
@@ -266,9 +274,9 @@ namespace Niga_Domain.API.Controllers
                 Status = PatientsStatus.NotArrived.GetDisplayName(),
                 DeleteStatus = false,
                 BookingToken = token,
-                VisitType = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType),
-                ConsultMode = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType),
-                IsTele = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType) == S3AppointmentRules.Tele,
+                VisitType = mode,
+                ConsultMode = mode,
+                IsTele = isTele,
                 PaymentStatus = "PENDING",
                 PayAtClinicAllowed = request.PayAtClinic ?? payAtClinicEnabled,
                 HoldExpiresAt = DateTime.UtcNow.AddMinutes(15),
@@ -280,6 +288,7 @@ namespace Niga_Domain.API.Controllers
             return Ok(new
             {
                 success = true,
+                // PAT-18.02 — checkout inputs for patient app (PENDING hold; fee; pay-at-clinic flags)
                 data = new
                 {
                     patientAppId = appt.PatientAppId,
@@ -288,7 +297,7 @@ namespace Niga_Domain.API.Controllers
                     holdExpiresAt = appt.HoldExpiresAt,
                     consentPolicyVersion = appt.ConsentPolicyVersion,
                     consultMode = appt.ConsultMode,
-                    consultFee = appt.IsTele == true ? doctor.ConsultFeeTele : doctor.ConsultFeeInClinic,
+                    consultFee = isTele ? fees.TeleFee : fees.InClinicFee,
                     payAtClinicAllowed = appt.PayAtClinicAllowed,
                     payAtClinicEnabled
                 }
@@ -306,8 +315,9 @@ namespace Niga_Domain.API.Controllers
             if (appt == null)
                 return NotFound(new { success = false, message = "Booking not found." });
 
-            var feeDoctor = await _context.Doctors.AsNoTracking()
-                .FirstOrDefaultAsync(d => d.DoctorId == appt.DoctorId);
+            var isTele = appt.IsTele == true
+                || S3AppointmentRules.NormalizeMode(appt.ConsultMode) == S3AppointmentRules.Tele;
+            var fees = await _fees.ResolveConsultFeesAsync(appt.DoctorId);
 
             return Ok(new
             {
@@ -327,7 +337,7 @@ namespace Niga_Domain.API.Controllers
                     appt.BookingToken,
                     appt.HoldExpiresAt,
                     appt.ConsentPolicyVersion,
-                    consultFee = appt.IsTele == true ? feeDoctor?.ConsultFeeTele : feeDoctor?.ConsultFeeInClinic
+                    consultFee = isTele ? fees.TeleFee : fees.InClinicFee
                 }
             });
         }

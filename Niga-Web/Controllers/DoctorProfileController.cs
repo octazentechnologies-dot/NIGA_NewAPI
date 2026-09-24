@@ -27,6 +27,9 @@ namespace Niga_Domain.API.Controllers
         [HttpGet("Me")]
         public async Task<IActionResult> Me()
         {
+            if (string.Equals(DoctorOwnership.GetRoleName(User), "Reception", StringComparison.OrdinalIgnoreCase))
+                return await ReceptionMeAsync();
+
             var deny = DoctorOwnership.ForbidIfReception(User);
             // Reception may read the doctor's public-facing clinic name but not bank KYC — still doctor-owned.
             var doctor = await ResolveDoctorAsync();
@@ -50,9 +53,9 @@ namespace Niga_Domain.API.Controllers
         [HttpPut("Me")]
         public async Task<IActionResult> Update([FromBody] DoctorProfileUpdateRequest request)
         {
-            var deny = DoctorOwnership.ForbidIfReception(User);
-            if (deny != null)
-                return deny;
+            // REC-02.02 — reception may PUT own staff fields; clinic fee / bank / qualifications are ignored.
+            if (string.Equals(DoctorOwnership.GetRoleName(User), "Reception", StringComparison.OrdinalIgnoreCase))
+                return await ReceptionUpdateAsync(request);
 
             var doctor = await ResolveDoctorAsync();
             if (doctor == null)
@@ -289,6 +292,74 @@ namespace Niga_Domain.API.Controllers
             await _context.SaveChangesAsync();
             return row;
         }
+
+        private async Task<IActionResult> ReceptionMeAsync()
+        {
+            var staffId = User.GetUserId();
+            var staff = await _context.DoctorReceptionStaffs.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.ReceptionStaffId == staffId && !s.DeleteStatus && s.IsActive);
+            if (staff == null)
+                return NotFound(new { success = false, message = "Reception profile not found for this user." });
+
+            return Ok(new { success = true, data = MapReception(staff) });
+        }
+
+        /// <summary>
+        /// REC-02.02 — update DoctorReceptionStaff contact fields only.
+        /// ConsultFee*, Kyc, Qualification*, ClinicName, WorkingHoursNote are not applied.
+        /// </summary>
+        private async Task<IActionResult> ReceptionUpdateAsync(DoctorProfileUpdateRequest? request)
+        {
+            if (request == null)
+                return BadRequest(new { success = false, message = "Body required." });
+
+            var staffId = User.GetUserId();
+            var staff = await _context.DoctorReceptionStaffs
+                .FirstOrDefaultAsync(s => s.ReceptionStaffId == staffId && !s.DeleteStatus && s.IsActive);
+            if (staff == null)
+                return NotFound(new { success = false, message = "Reception profile not found for this user." });
+
+            var name = $"{request.FirstName} {request.LastName}".Trim();
+            if (!string.IsNullOrWhiteSpace(name))
+                staff.FullName = name;
+            if (request.EmailId != null)
+                staff.EmailId = string.IsNullOrWhiteSpace(request.EmailId) ? null : request.EmailId.Trim();
+            if (request.MobileNo != null)
+            {
+                var mobile = request.MobileNo.Trim();
+                if (string.IsNullOrWhiteSpace(mobile))
+                    return BadRequest(new { success = false, message = "MobileNo cannot be empty." });
+                staff.ContactNumber = mobile;
+            }
+            if (request.AddressLine1 != null)
+                staff.Address = string.IsNullOrWhiteSpace(request.AddressLine1) ? null : request.AddressLine1.Trim();
+            if (request.City != null)
+                staff.City = string.IsNullOrWhiteSpace(request.City) ? null : request.City.Trim();
+            if (request.State != null)
+                staff.State = string.IsNullOrWhiteSpace(request.State) ? null : request.State.Trim();
+            if (request.Country != null)
+                staff.Country = string.IsNullOrWhiteSpace(request.Country) ? null : request.Country.Trim();
+
+            staff.ChangedDate = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { success = true, data = MapReception(staff) });
+        }
+
+        private static ReceptionProfileMeDto MapReception(DoctorReceptionStaff staff) => new()
+        {
+            Role = "Reception",
+            ReceptionStaffId = staff.ReceptionStaffId,
+            DoctorId = staff.DoctorId,
+            LoginId = staff.UserId,
+            FullName = staff.FullName,
+            EmailId = staff.EmailId,
+            MobileNo = staff.ContactNumber,
+            Address = staff.Address,
+            City = staff.City,
+            State = staff.State,
+            Country = staff.Country
+        };
 
         private async Task<Doctor?> ResolveDoctorAsync()
         {

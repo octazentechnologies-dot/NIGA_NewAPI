@@ -52,6 +52,21 @@ public partial class S4Week4Service : IS4Week4Service
         }
     }
 
+    public async Task<ConsultFeeQuote> ResolveConsultFeesAsync(int doctorId)
+    {
+        var doctor = await _context.Doctors.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.DoctorId == doctorId && !d.DeleteStatus);
+        if (doctor == null)
+            return new ConsultFeeQuote();
+
+        var fee = await LatestFeeOrNullAsync(doctorId);
+        return new ConsultFeeQuote
+        {
+            InClinicFee = fee?.InClinicFee ?? doctor.ConsultFeeInClinic ?? 0,
+            TeleFee = fee?.TeleFee ?? doctor.ConsultFeeTele ?? 0
+        };
+    }
+
     public async Task<S4ActionResult> GetPublicFeeAsync(int doctorId)
     {
         if (doctorId <= 0)

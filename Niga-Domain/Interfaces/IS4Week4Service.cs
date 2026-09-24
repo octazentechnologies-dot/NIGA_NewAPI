@@ -6,6 +6,7 @@ namespace Niga_Domain.Interfaces;
 public interface IS4Week4Service
 {
     Task<bool> PayAtClinicEnabledAsync(int doctorId);
+    Task<ConsultFeeQuote> ResolveConsultFeesAsync(int doctorId);
     Task<S4ActionResult> GetPublicFeeAsync(int doctorId);
     Task<S4ActionResult> UpsertFeeAsync(FeeUpsertRequest request, S4Caller caller);
     Task<S4ActionResult> FeeHistoryAsync(int doctorId, S4Caller caller);

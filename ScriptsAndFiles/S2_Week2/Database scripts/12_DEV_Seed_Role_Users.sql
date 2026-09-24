@@ -3,11 +3,11 @@
 Author       : Tufan Powar
 Created      : 20-09-2026
 Script       : 12_DEV_Seed_Role_Users.sql
-Purpose      : Dev UserMaster logins for added roles that have no user yet
-               (Account, PharmacyPartner). Password hash copied from
-               tufanpowar001@gmail.com (plaintext 123456).
+Purpose      : Dev UserMaster logins for Account and PharmacyPartner if
+               Tufan_Account / Tufan_Pharmacy are missing. Email and mobile
+               are always tufanpowar001@gmail.com / 7768046064.
 Use          : Dev HomeoCentrum_Dev only. Idempotent.
-Logins       : s2.account / 123456    s2.pharmacy / 123456
+Logins       : Tufan_Account / 123456    Tufan_Pharmacy / 123456
 ================================================================================
 */
 
@@ -53,8 +53,8 @@ DECLARE @Roles TABLE
 );
 
 INSERT INTO @Roles (RoleName, UserName, EmailId, FirstName, LastName, MobileNo) VALUES
-    (N'Account',          N's2.account',  N's2.account@homeocentrum.dev',  N'S2', N'Account',  N'9000000101'),
-    (N'PharmacyPartner',  N's2.pharmacy', N's2.pharmacy@homeocentrum.dev', N'S2', N'Pharmacy', N'9000000102');
+    (N'Account',          N'Tufan_Account',  N'tufanpowar001@gmail.com',  N'Tufan', N'Account',  N'7768046064'),
+    (N'PharmacyPartner',  N'Tufan_Pharmacy', N'tufanpowar001@gmail.com',  N'Tufan', N'Pharmacy', N'7768046064');
 
 DECLARE @RoleName NVARCHAR(50), @UserName NVARCHAR(200), @Email NVARCHAR(200),
         @First NVARCHAR(100), @Last NVARCHAR(100), @Mobile NVARCHAR(20), @RoleId INT;
@@ -114,5 +114,6 @@ CLOSE role_cursor;
 DEALLOCATE role_cursor;
 
 PRINT '12_DEV_Seed_Role_Users.sql completed.';
-PRINT 'Logins: s2.account / 123456   s2.pharmacy / 123456';
+PRINT 'Logins: Tufan_Account / 123456   Tufan_Pharmacy / 123456';
+PRINT 'Email tufanpowar001@gmail.com  mobile 7768046064.';
 GO

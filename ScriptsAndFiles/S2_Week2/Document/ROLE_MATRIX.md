@@ -5,7 +5,7 @@ Clinic login: Old-API `POST /api/Account/Login` (`http://127.0.0.1:5001`)
 Password for Tufan_* rows: `123456`
 Evidence date: 21-Sep-2026
 
-Uniqueness: `tufanpowar001@gmail.com` / `7768046064` is on **Tufan_Patient** UserMaster (and Reception staff Email/Contact, which is not UserMaster). Other Tufan_* logins keep unique emails/mobiles so LoginWithOtp / ForgotPassword stay unambiguous.
+Test mobile: `tufanpowar001@gmail.com` / `7768046064` is on **every Tufan_* login**, reception staff, and seeded Tufan patients. Username + password (`123456`) still identifies the role.
 
 | Role | Login | Dashboard | Feature access | Restricted features | API access |
 | ---- | ----- | --------- | -------------- | ------------------- | ---------- |

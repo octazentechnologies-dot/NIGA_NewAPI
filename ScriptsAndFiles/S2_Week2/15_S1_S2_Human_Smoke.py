@@ -54,23 +54,23 @@ def main():
     s, b = req("GET", f"{NEW}/api/Public/Doctors/999999")
     check("NEW GET /api/Public/Doctors/999999 (missing)", s, b, {404, 400})
 
-    s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "testdoctor", "password": "nik123"})
-    check("OLD POST /api/Account/Login testdoctor", s, b, {200})
+    s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "Tufan_Doctor", "password": "123456"})
+    check("OLD POST /api/Account/Login Tufan_Doctor", s, b, {200})
     doc_tok = token_from(b)
 
     s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "wrong", "password": "nope"})
     check("OLD login invalid", s, b, {400, 401, 404})
 
-    s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "s2.account", "password": "123456"})
-    check("OLD login s2.account", s, b, {200})
+    s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "Tufan_Account", "password": "123456"})
+    check("OLD login Tufan_Account", s, b, {200})
     acc_tok = token_from(b)
 
-    s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "s2.pharmacy", "password": "123456"})
-    check("OLD login s2.pharmacy", s, b, {200})
+    s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "Tufan_Pharmacy", "password": "123456"})
+    check("OLD login Tufan_Pharmacy", s, b, {200})
     pharm_tok = token_from(b)
 
-    s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "s2.reception", "password": "S2Test@123"})
-    check("OLD login s2.reception", s, b, {200})
+    s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "Tufan_Reception", "password": "123456"})
+    check("OLD login Tufan_Reception", s, b, {200})
 
     s, b = req("POST", f"{OLD}/api/Account/Login", {"userName": "admin", "password": "1234"})
     check("OLD login admin", s, b, {200})

@@ -44,5 +44,13 @@ Login / Rx-write / Razorpay stay on classic (Old-API) paths. New HTTP for S1 sec
 - **FND-01.01 shared keys:** `DoctorId` (JWT `DoctorID` + appointment/patient rows), `PatientId`, `PatientAppId` / appointment id, JWT `UserId` (`NameIdentifier`). Family members are real `Patient` rows. Caregiver is `CaregiverUserId` → `UserMaster`.
 - **FND-01.02 roles:** `Patient`, `Account`, `PharmacyPartner` seeded in script 01. Do not rename existing Admin/Doctor/Reception roles.
 - **FND-01.03 dual API:** New domain HTTP on New-API (.NET 8). Do not add a third API. Existing classic writes stay on Old-API.
-- **FND-02.01 Account menus:** Seeded in script 02; SPA consumes `GetMenuByRole` with hardcoded Account nav fallback (`/accountdashboard`, ledger, earnings, payouts, invoices, reports). Real login is `s2.account` / `123456` on Old-API Login (no dummy token).
-- **FND-02.04 five portals (PDF count):** Patient Website (public landing `/`, `/book`, `/contact`); Doctor Web Portal (`/doctordashboard`); Reception Portal (same doctor chrome until Phase 5, login `s2.reception`); Admin Portal (`/dashboard`); Account Department (`/accountdashboard`). Pharmacy console `/pharmacydashboard` is HomeoMeds, not a 6th portal.
+- **FND-02.01 Account menus:** Seeded in script 02; SPA consumes `GetMenuByRole` with hardcoded Account nav fallback (`/accountdashboard`, ledger, earnings, payouts, invoices, reports). Real login is `Tufan_Account` / `123456` on Old-API Login (no dummy token).
+- **FND-02.04 five portals (PDF count):** Patient Website (public landing `/`, `/book`, `/contact`); Doctor Web Portal (`/doctordashboard`); Reception Portal (same doctor chrome until Phase 5, login `Tufan_Reception` / `123456`); Admin Portal (`/dashboard`); Account Department (`/accountdashboard`). Pharmacy console `/pharmacydashboard` is HomeoMeds, not a 6th portal.
+
+## Other database
+
+Schema scripts 01–04 and 09 are safe to run again (idempotent).  
+Data scripts 05, 08, and `Test sample data insert.sql` create **Tufan_Patient** / **Tufan_Caregiver** with email `tufanpowar001@gmail.com` and mobile `7768046064`.  
+Do not run 07, 08, or the test-sample script on production.  
+Week 2 script 15 creates the rest of the `Tufan_*` logins. Run that before treating 05 as optional.  
+API samples use Dev ids (Doctor 1010, Patient 3046). On another database, use `userId` / `doctorId` from the login response.

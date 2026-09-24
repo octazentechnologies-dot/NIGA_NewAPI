@@ -6,6 +6,8 @@ using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Enums;
 using Niga_Domain.Extensions;
+using Niga_Domain.Helpers;
+using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
 using Niga_Domain.Security;
 
@@ -22,10 +24,12 @@ namespace Niga_Domain.API.Controllers
     public class FamilyController : ControllerBase
     {
         private readonly NIGACentrumContext _context;
+        private readonly IS4Week4Service _fees;
 
-        public FamilyController(NIGACentrumContext context)
+        public FamilyController(NIGACentrumContext context, IS4Week4Service fees)
         {
             _context = context;
+            _fees = fees;
         }
 
         /// <summary>Primary clinical Patient for this login. Caregivers resolve to the patient they act for.</summary>
@@ -430,6 +434,12 @@ namespace Niga_Domain.API.Controllers
             if (clash)
                 return Conflict(new { success = false, message = "That slot is already booked." });
 
+            var rawMode = request.ConsultMode ?? request.VisitType;
+            var mode = string.IsNullOrWhiteSpace(rawMode)
+                ? (request.IsTele ? S3AppointmentRules.Tele : S3AppointmentRules.InClinic)
+                : S3AppointmentRules.NormalizeMode(rawMode);
+            var isTele = mode == S3AppointmentRules.Tele;
+            var fees = await _fees.ResolveConsultFeesAsync(request.DoctorId);
             var appt = new PatientAppointment
             {
                 PatientId = request.MemberPatientId,
@@ -440,9 +450,9 @@ namespace Niga_Domain.API.Controllers
                 Status = PatientsStatus.NotArrived.GetDisplayName(),
                 DeleteStatus = false,
                 BookingToken = Guid.NewGuid().ToString("N"),
-                VisitType = string.IsNullOrWhiteSpace(request.VisitType) ? "InClinic" : request.VisitType.Trim(),
-                ConsultMode = string.IsNullOrWhiteSpace(request.ConsultMode) ? "InClinic" : request.ConsultMode.Trim(),
-                IsTele = request.IsTele,
+                VisitType = mode,
+                ConsultMode = mode,
+                IsTele = isTele,
                 PaymentStatus = "PENDING",
                 HoldExpiresAt = DateTime.UtcNow.AddMinutes(15)
             };
@@ -462,7 +472,9 @@ namespace Niga_Domain.API.Controllers
                     appointmentDate = appt.AppointmentDate,
                     appointmentTime = appt.AppointmentTime.ToString(),
                     bookingToken = appt.BookingToken,
-                    status = appt.Status
+                    status = appt.Status,
+                    consultMode = appt.ConsultMode,
+                    consultFee = isTele ? fees.TeleFee : fees.InClinicFee
                 }
             });
         }

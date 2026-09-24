@@ -4,7 +4,7 @@ Author       : Tufan Powar
 Created      : 22-09-2026
 Script       : 26_DEV_Replace_Tufanpowar_Email.sql
 Purpose      : Use tufanpowar001@gmail.com everywhere tufanpowar@gmail.com was.
-               Tufan_Patient UserMaster keeps OTP uniqueness on 001 / 7768046064.
+               Every Tufan_* / seeded test login uses 7768046064.
                Newly created Tufan users keep EmailId tufanpowar001@gmail.com.
                tufan.seed001@homeocentrum.dev is not used.
 Use          : HomeoCentrum_Dev. Idempotent.

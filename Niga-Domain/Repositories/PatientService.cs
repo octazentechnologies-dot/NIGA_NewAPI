@@ -67,13 +67,19 @@ namespace Niga_Domain.Implementation
                     patientEntity.Age = null;
                 }
                 context.Patients.Add(patientEntity);
-                var doctorEntity = context
-                    .Doctors.Where(x => x.UserId == patientModel.LoggedInUser)
-                    .FirstOrDefault();
+                // REC-04.02 — attach new case to JWT/clinic DoctorID (works for Reception; LoggedInUser may be staff id).
+                var doctorEntity = patientModel.DoctorID > 0
+                    ? context.Doctors.FirstOrDefault(x => x.DoctorId == patientModel.DoctorID && x.DeleteStatus == false)
+                    : null;
+                if (doctorEntity == null && patientModel.LoggedInUser > 0)
+                {
+                    doctorEntity = context.Doctors.FirstOrDefault(x =>
+                        x.UserId == patientModel.LoggedInUser && x.DeleteStatus == false);
+                }
                 if (doctorEntity != null)
                 {
                     var caseEntryDetailsEntity = new CaseEntryDetail();
-                    caseEntryDetailsEntity.UserId = patientModel.LoggedInUser;
+                    caseEntryDetailsEntity.UserId = doctorEntity.UserId ?? patientModel.LoggedInUser;
                     caseEntryDetailsEntity.DoctorId = doctorEntity.DoctorId;
                     caseEntryDetailsEntity.DateodFirstVisit = patientModel.DateodFirstVisit;
                     caseEntryDetailsEntity.RefBy = patientModel.RefBy;

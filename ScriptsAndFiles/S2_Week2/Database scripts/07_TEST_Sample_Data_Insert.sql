@@ -38,15 +38,35 @@ SELECT TOP 1
     @DoctorId = d.DoctorId,
     @DoctorUserId = d.UserId
 FROM dbo.Doctor d
+INNER JOIN dbo.UserMaster um ON um.UserId = d.UserId
 WHERE ISNULL(d.DeleteStatus, 0) = 0
-  AND d.DirectoryVisible = 1
-  AND d.VerificationStatus = N'Verified'
-ORDER BY CASE WHEN d.DoctorId = 1010 THEN 0 WHEN d.DoctorId = 3 THEN 1 ELSE 2 END, d.DoctorId;
+  AND ISNULL(um.DeleteStatus, 0) = 0
+  AND um.UserName IN (N'Tufan_Doctor', N'NIGA HOMEOPATHY')
+ORDER BY CASE WHEN um.UserName = N'Tufan_Doctor' THEN 0 ELSE 1 END;
 
-SELECT TOP 1 @PatientId = p.PatientID
-FROM dbo.Patient p
-WHERE ISNULL(p.DeleteStatus, 0) = 0
-ORDER BY CASE WHEN p.PatientID = 3046 THEN 0 WHEN p.PatientID = 2 THEN 1 ELSE 2 END, p.PatientID;
+IF @DoctorId IS NULL
+    SELECT TOP 1
+        @DoctorId = d.DoctorId,
+        @DoctorUserId = d.UserId
+    FROM dbo.Doctor d
+    WHERE ISNULL(d.DeleteStatus, 0) = 0
+      AND d.DirectoryVisible = 1
+      AND d.VerificationStatus = N'Verified'
+    ORDER BY d.DoctorId;
+
+SELECT TOP 1 @PatientId = m.PatientId
+FROM dbo.PatientUserMap m
+INNER JOIN dbo.UserMaster um ON um.UserId = m.UserId
+WHERE ISNULL(m.DeleteStatus, 0) = 0
+  AND ISNULL(um.DeleteStatus, 0) = 0
+  AND um.UserName IN (N'Tufan_Patient', N'tufanpowar001@gmail.com')
+ORDER BY CASE WHEN um.UserName = N'Tufan_Patient' THEN 0 ELSE 1 END;
+
+IF @PatientId IS NULL
+    SELECT TOP 1 @PatientId = p.PatientID
+    FROM dbo.Patient p
+    WHERE ISNULL(p.DeleteStatus, 0) = 0
+    ORDER BY p.PatientID;
 
 IF @DoctorId IS NULL OR @DoctorUserId IS NULL OR @PatientId IS NULL
 BEGIN
@@ -116,24 +136,34 @@ ELSE
 -- ---------------------------------------------------------------------------
 -- 10 EnquiryDetails
 -- ---------------------------------------------------------------------------
-IF NOT EXISTS (SELECT 1 FROM dbo.EnquiryDetails WHERE EmailId LIKE N's2.enquiry.%@homeocentrum.dev')
+IF NOT EXISTS (SELECT 1 FROM dbo.EnquiryDetails WHERE EnquiryName LIKE N'S2 Guest %')
 BEGIN
     INSERT INTO dbo.EnquiryDetails (EnquiryName, EnquiryDate, EmailId, MobileNo, EnquiryDetails, EnquiryStatus, TicketStatus, AssignedTo)
     VALUES
-        (N'S2 Guest 01', DATEADD(DAY,  0, @SeedDate), N's2.enquiry.01@homeocentrum.dev', N'9000000101', N'S2-TESTED: looking for a doctor in Pune', 1, N'New',    NULL),
-        (N'S2 Guest 02', DATEADD(DAY,  0, @SeedDate), N's2.enquiry.02@homeocentrum.dev', N'9000000102', N'S2-TESTED: tele consult fees', 1, N'New',    @DoctorUserId),
-        (N'S2 Guest 03', DATEADD(DAY, -1, @SeedDate), N's2.enquiry.03@homeocentrum.dev', N'9000000103', N'S2-TESTED: clinic hours', 1, N'Open',   @DoctorUserId),
-        (N'S2 Guest 04', DATEADD(DAY, -1, @SeedDate), N's2.enquiry.04@homeocentrum.dev', N'9000000104', N'S2-TESTED: paediatric homeopathy', 1, N'Open',   NULL),
-        (N'S2 Guest 05', DATEADD(DAY, -2, @SeedDate), N's2.enquiry.05@homeocentrum.dev', N'9000000105', N'S2-TESTED: booking not confirmed', 1, N'New',    NULL),
-        (N'S2 Guest 06', DATEADD(DAY, -2, @SeedDate), N's2.enquiry.06@homeocentrum.dev', N'9000000106', N'S2-TESTED: privacy question', 1, N'New',    NULL),
-        (N'S2 Guest 07', DATEADD(DAY, -3, @SeedDate), N's2.enquiry.07@homeocentrum.dev', N'9000000107', N'S2-TESTED: want in-clinic slot', 1, N'Open',   @DoctorUserId),
-        (N'S2 Guest 08', DATEADD(DAY, -3, @SeedDate), N's2.enquiry.08@homeocentrum.dev', N'9000000108', N'S2-TESTED: closed after callback', 0, N'Closed', @DoctorUserId),
-        (N'S2 Guest 09', DATEADD(DAY, -4, @SeedDate), N's2.enquiry.09@homeocentrum.dev', N'9000000109', N'S2-TESTED: medicine order enquiry', 1, N'New',    NULL),
-        (N'S2 Guest 10', DATEADD(DAY, -4, @SeedDate), N's2.enquiry.10@homeocentrum.dev', N'9000000110', N'S2-TESTED: doctor registration help', 1, N'New',    NULL);
+        (N'S2 Guest 01', DATEADD(DAY,  0, @SeedDate), N'tufanpowar001@gmail.com', N'7768046064', N'S2-TESTED: looking for a doctor in Pune', 1, N'New',    NULL),
+        (N'S2 Guest 02', DATEADD(DAY,  0, @SeedDate), N'tufanpowar001@gmail.com', N'7768046064', N'S2-TESTED: tele consult fees', 1, N'New',    @DoctorUserId),
+        (N'S2 Guest 03', DATEADD(DAY, -1, @SeedDate), N'tufanpowar001@gmail.com', N'7768046064', N'S2-TESTED: clinic hours', 1, N'Open',   @DoctorUserId),
+        (N'S2 Guest 04', DATEADD(DAY, -1, @SeedDate), N'tufanpowar001@gmail.com', N'7768046064', N'S2-TESTED: paediatric homeopathy', 1, N'Open',   NULL),
+        (N'S2 Guest 05', DATEADD(DAY, -2, @SeedDate), N'tufanpowar001@gmail.com', N'7768046064', N'S2-TESTED: booking not confirmed', 1, N'New',    NULL),
+        (N'S2 Guest 06', DATEADD(DAY, -2, @SeedDate), N'tufanpowar001@gmail.com', N'7768046064', N'S2-TESTED: privacy question', 1, N'New',    NULL),
+        (N'S2 Guest 07', DATEADD(DAY, -3, @SeedDate), N'tufanpowar001@gmail.com', N'7768046064', N'S2-TESTED: want in-clinic slot', 1, N'Open',   @DoctorUserId),
+        (N'S2 Guest 08', DATEADD(DAY, -3, @SeedDate), N'tufanpowar001@gmail.com', N'7768046064', N'S2-TESTED: closed after callback', 0, N'Closed', @DoctorUserId),
+        (N'S2 Guest 09', DATEADD(DAY, -4, @SeedDate), N'tufanpowar001@gmail.com', N'7768046064', N'S2-TESTED: medicine order enquiry', 1, N'New',    NULL),
+        (N'S2 Guest 10', DATEADD(DAY, -4, @SeedDate), N'tufanpowar001@gmail.com', N'7768046064', N'S2-TESTED: doctor registration help', 1, N'New',    NULL);
     PRINT 'INSERTED 10 EnquiryDetails S2-TESTED';
 END
 ELSE
-    PRINT 'SKIP EnquiryDetails S2-TESTED already present';
+BEGIN
+    UPDATE dbo.EnquiryDetails
+    SET MobileNo = N'7768046064',
+        EmailId = N'tufanpowar001@gmail.com'
+    WHERE EnquiryName LIKE N'S2 Guest %'
+      AND (
+            ISNULL(MobileNo, N'') <> N'7768046064'
+            OR ISNULL(EmailId, N'') <> N'tufanpowar001@gmail.com'
+          );
+    PRINT 'SKIP EnquiryDetails S2-TESTED already present (mobile aligned)';
+END
 
 -- ---------------------------------------------------------------------------
 -- 10 CogRun logs
@@ -237,14 +267,14 @@ END
 -- One verified PatientAuth OTP (code 123456 hashed) for booking API tests
 -- ---------------------------------------------------------------------------
 IF OBJECT_ID(N'dbo.OtpChallenge', N'U') IS NOT NULL
-   AND NOT EXISTS (SELECT 1 FROM dbo.OtpChallenge WHERE Action = N'PatientAuth' AND EntityId = N'9000000018' AND DestinationMasked LIKE N'%S2%')
+   AND NOT EXISTS (SELECT 1 FROM dbo.OtpChallenge WHERE Action = N'PatientAuth' AND EntityId = N'7768046064' AND DestinationMasked LIKE N'%S2%')
 BEGIN
     INSERT INTO dbo.OtpChallenge (
         Action, EntityType, EntityId, DestinationMasked, OtpHash,
         ExpiresAt, AttemptCount, CreatedAt, VerifiedAt
     )
     VALUES (
-        N'PatientAuth', N'Mobile', N'9000000018', N'S2******0018',
+        N'PatientAuth', N'Mobile', N'7768046064', N'S2******6064',
         CONVERT(VARCHAR(64), HASHBYTES(N'SHA2_256', CONVERT(VARBINARY(32), N'123456')), 2),
         DATEADD(DAY, 7, GETUTCDATE()),
         0,
@@ -258,7 +288,7 @@ ELSE
 
 COMMIT TRAN;
 
-DECLARE @Enq INT = (SELECT COUNT(*) FROM dbo.EnquiryDetails WHERE EmailId LIKE N's2.enquiry.%@homeocentrum.dev');
+DECLARE @Enq INT = (SELECT COUNT(*) FROM dbo.EnquiryDetails WHERE EnquiryName LIKE N'S2 Guest %');
 DECLARE @Cog INT = (SELECT COUNT(*) FROM dbo.CogRun WHERE InputJson LIKE N'%"marker":"S2-TESTED"%');
 DECLARE @Book INT = (SELECT COUNT(*) FROM dbo.PatientAppointment WHERE BookingToken LIKE N'S2TESTED%');
 DECLARE @Kyc INT = (SELECT COUNT(*) FROM dbo.DoctorPayeeKyc WHERE ISNULL(DeleteStatus, 0) = 0);

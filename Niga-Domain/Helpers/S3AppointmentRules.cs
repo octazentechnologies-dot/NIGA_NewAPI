@@ -9,6 +9,7 @@ namespace Niga_Domain.Helpers
         public const string Tele = "Tele";
         public const string Cancelled = "CANCELLED";
         public const string Unpaid = "UNPAID";
+        public const string Paid = "PAID";
 
         public static readonly string[] CancelReasons =
         {
@@ -38,5 +39,9 @@ namespace Niga_Domain.Helpers
 
         public static bool IsCancelled(string? status)
             => string.Equals(status, Cancelled, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>REC-13.02 — clinic SPA must not mark appointments paid; Account/webhook does.</summary>
+        public static bool IsPaid(string? paymentStatus)
+            => string.Equals(paymentStatus, Paid, StringComparison.OrdinalIgnoreCase);
     }
 }

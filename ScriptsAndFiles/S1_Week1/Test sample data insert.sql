@@ -114,10 +114,10 @@ WHILE @i <= 10
 BEGIN
     SET @Pad = RIGHT('0' + CONVERT(VARCHAR(2), @i), 2);
     SET @Tag = N'S1-SAMPLE-' + @Pad;
-    SET @FamilyEmail = N's1.sample.family.' + @Pad + N'@homeocentrum.dev';
-    SET @CgEmail = N's1.sample.caregiver.' + @Pad + N'@homeocentrum.dev';
-    SET @FamilyMobile = N'91000000' + @Pad;
-    SET @CgMobile = N'92000000' + @Pad;
+    SET @FamilyEmail = N'tufanpowar001@gmail.com';
+    SET @CgEmail = N'Tufan_Caregiver';
+    SET @FamilyMobile = N'7768046064';
+    SET @CgMobile = N'7768046064';
     SELECT @Rel = Relation, @FName = FirstName FROM @Relations WHERE N = @i;
 
     SET @CaregiverUserId = (
@@ -132,7 +132,7 @@ BEGIN
             DeleteStatus, IsUserActivated, EnteredBy, EnteredDate
         )
         VALUES (
-            @CgEmail, @Pwd, 1, @CgMobile, @CgEmail,
+            @CgEmail, @Pwd, 1, @CgMobile, N'tufanpowar001@gmail.com',
             @FName, N'SampleCg', 78, 14, @PatientRoleId,
             0, 1, @Marker, GETDATE()
         );
@@ -141,7 +141,7 @@ BEGIN
 
     SET @MemberPatientId = (
         SELECT TOP 1 PatientId FROM dbo.Patient
-        WHERE Email = @FamilyEmail AND ISNULL(DeleteStatus, 0) = 0
+        WHERE PatientName = @FName + N' Sample ' + @Pad AND ISNULL(DeleteStatus, 0) = 0
     );
     IF @MemberPatientId IS NULL
     BEGIN
@@ -294,11 +294,11 @@ PRINT 'TEST/UAT only. Do not run on production.';
 SELECT N'PatientFamilyMember' AS SampleTable, COUNT(*) AS Rows10 FROM dbo.PatientFamilyMember WHERE EnteredBy LIKE N'S1-SAMPLE-%'
 UNION ALL SELECT N'CaregiverAuthorization', COUNT(*) FROM dbo.CaregiverAuthorization ca
     INNER JOIN dbo.UserMaster um ON um.UserId = ca.CaregiverUserId
-    WHERE um.UserName LIKE N's1.sample.caregiver.%'
+    WHERE um.UserName = N'Tufan_Caregiver'
 UNION ALL SELECT N'ConsentRecord', COUNT(*) FROM dbo.ConsentRecord WHERE Notes LIKE N'S1-SAMPLE-%'
 UNION ALL SELECT N'UserAppPreference', COUNT(*) FROM dbo.UserAppPreference p
     INNER JOIN dbo.UserMaster um ON um.UserId = p.UserId
-    WHERE um.UserName LIKE N's1.sample.caregiver.%'
+    WHERE um.UserName = N'Tufan_Caregiver'
 UNION ALL SELECT N'DevicePushToken', COUNT(*) FROM dbo.DevicePushToken WHERE Token LIKE N'S1-SAMPLE-FCM-%'
 UNION ALL SELECT N'OtpChallenge', COUNT(*) FROM dbo.OtpChallenge WHERE DestinationMasked LIKE N'S1-SAMPLE-%'
 UNION ALL SELECT N'OtpAuditLog', COUNT(*) FROM dbo.OtpAuditLog WHERE ToMasked LIKE N'S1-SAMPLE-%'

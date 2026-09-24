@@ -16,6 +16,56 @@ Login once, keep data.token, send it on every call that says TOKEN = yes.
 
 WHO CALLS IT
   Patient app       PAT-16 onward, waitlist, instant consult, own visit changes.
+
+================================================================================
+DEV LOGINS (HomeoCentrum_Dev) — use these in every sample. Do not invent other emails/mobiles.
+================================================================================
+Date       : 23-Sep-2026
+Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
+Clinic login HOST = Old-API  POST http://127.0.0.1:5001/api/Account/Login
+New HTTP HOST     = New-API  http://127.0.0.1:5038/api
+Password for every Tufan_* row: 123456
+Email (all our users): tufanpowar001@gmail.com
+Mobile (all our users): 7768046064
+
+Username          Role              userId   Notes
+Tufan_Admin       Admin             10030    /dashboard
+Tufan_Doctor      Doctor            10032    DoctorID 1010  /doctordashboard
+Tufan_Reception   Reception         staff    DoctorID 1010  DoctorReceptionStaff (not UserMaster)
+Tufan_Account     Account           10029    /accountdashboard
+Tufan_Pharmacy    PharmacyPartner   10034    /pharmacydashboard
+Tufan_Patient     Patient           10033    PatientId 3046
+Tufan_Caregiver   Patient           10031    caregiver on Tufan_Patient
+Tufan_NoMenu      EmptyMenuProbe    10035    GetMenuByRole must be 200 []
+
+REQUEST  (clinic web / doctor / account / pharmacy / patient password login)
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Doctor",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10032,
+    "userName": "TUFAN DOCTOR",
+    "role": "Doctor",
+    "roleId": 2,
+    "token": "<JWT>",
+    "doctorId": 1010,
+    "isPlanActive": false
+  }
+}
+
+Patient login uses userName "Tufan_Patient". Reception uses "Tufan_Reception".
+Admin uses "Tufan_Admin". Account uses "Tufan_Account". Pharmacy uses "Tufan_Pharmacy".
+Header on TOKEN=yes calls: Authorization: Bearer <data.token>
+
   Doctor mobile app DMO context, refill, tele room the doctor opens. No case-taking.
   Clinic web        Reception and doctor browser: schedule, case paper, call next.
   Common for all    POST /api/Account/Login on Old-API, published GET /api/Help, GET /health.
@@ -53,8 +103,24 @@ Doctor login uses userName "Tufan_Doctor". Reception uses "Tufan_Reception".
 A disabled reception row returns 401 "Invalid username or password".
 
 ================================================================================
-PAT-16  Slot picker   TOKEN = no
+PAT-16.02  Slot picker (wire Phase 8–15 API)   TOKEN = no
 ================================================================================
+Wire the patient app slot picker to the public Phase 8–15 slot engine.
+Do NOT invent a local/fake slot list. Same calculator as clinic APT-08.03.
+
+Endpoint (anonymous — patient JWT not required for browse):
+  GET /api/Public/Doctors/{doctorId}/Slots?date=YYYY-MM-DD
+
+Engine:
+  IPatientAppointmentService.GetAppointmentSlotsAsync
+  (also used by GET /api/PatientAppointment/GetAppointmentSlots for clinic)
+
+UI mapping:
+  hasSchedule=false or slots=[]  → empty state
+  HTTP error / timeout           → error / offline
+  status values                  → available | booked | break | past
+  Never show patient names/ids (API omits them on this public route).
+
 REQUEST
 GET http://127.0.0.1:5038/api/Public/Doctors/1010/Slots?date=2026-12-20
 
@@ -106,7 +172,7 @@ POST http://127.0.0.1:5038/api/Public/Doctors/1010/Bookings
 Content-Type: application/json
 
 {
-  "mobile": "9000001444",
+  "mobile": "7768046064",
   "patientName": "Sanjay Patil",
   "email": "tufanpowar001@gmail.com",
   "appointmentDate": "2026-12-20",
@@ -142,10 +208,66 @@ RESPONSE 403
 { "success": false, "message": "Verify PatientAuth OTP before booking." }
 
 ================================================================================
-PAT-18  Checkout
+PAT-18.02  Checkout (wire Phase 8–15 API)
 ================================================================================
-Do not add a pay call on New-API. Razorpay stays on Old-API.
-This week the booking response paymentStatus stays "PENDING".
+Patient app checkout must use New-API fee + booking hold + consult order APIs.
+Do NOT invent local paid/signed state. Do NOT POST PaymentStatus=PAID from the client
+(Account / webhook / reception collection is SoT — REC-13 / Phase 6).
+
+Flow
+  1) Browse fee     GET  /api/Fees/Public/{doctorId}          TOKEN = no
+  2) Hold booking   POST /api/Public/Doctors/{id}/Bookings    TOKEN = no (OTP session)
+                    → paymentStatus=PENDING, consultFee, payAtClinicAllowed, bookingToken
+  3) Poll hold      GET  /api/Public/Bookings/{bookingToken}  TOKEN = no
+  4) Start checkout POST /api/Payments/ConsultOrders         TOKEN = yes (patient owns visit)
+                    body: { patientAppId, payAtClinic?, amount?, idempotencyKey? }
+                    → PAY_AT_CLINIC (UNPAID until reception) or AWAITING_GATEWAY (Razorpay)
+  5) Status         GET  /api/Payments/Appointments/{patientAppId}  TOKEN = yes
+
+UI mapping
+  loading / offline / error / offline → network + HTTP codes
+  show consultFee + currency from Fees/Public or booking response
+  pay at clinic CTA only when payAtClinicEnabled / payAtClinicAllowed
+  paid badge only from API paymentStatus (never local fake PAID)
+
+--------------------------------------------------------------------------------
+REQUEST — public fee (anonymous)
+GET http://127.0.0.1:5038/api/Fees/Public/1010
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "doctorId": 1010,
+    "inClinicFee": 550.00,
+    "teleFee": 400.00,
+    "instantSurcharge": 0,
+    "currency": "INR",
+    "payAtClinicEnabled": true,
+    "isVerified": true,
+    "source": "config"
+  }
+}
+
+--------------------------------------------------------------------------------
+REQUEST — create consult order (patient JWT)
+POST http://127.0.0.1:5038/api/Payments/ConsultOrders
+Authorization: Bearer <patient token>
+Content-Type: application/json
+
+{ "patientAppId": 27341, "payAtClinic": true, "idempotencyKey": "pat18-checkout-1" }
+
+RESPONSE 200 (pay at clinic)
+{
+  "success": true,
+  "message": "Pay at clinic recorded. The visit stays unpaid until reception collection.",
+  "data": { "paymentOrderId": 12, "status": "PAY_AT_CLINIC", "method": "PAY_AT_CLINIC", "amount": 550.00 }
+}
+
+Already paid → 409. Fee not configured → 400 FEE_NOT_CONFIGURED.
+Pay at clinic disabled → 400 PAY_AT_CLINIC_DISABLED.
+
+NOTE: Gateway Razorpay keys stay server-side. Client never sets PaymentStatus=PAID.
 
 ================================================================================
 PAT-19  Payment status   TOKEN = no
@@ -221,8 +343,25 @@ RESPONSE 200
 }
 
 ================================================================================
-PAT-21  Reschedule   TOKEN = yes
+PAT-21.02  Reschedule appointment (wire Phase 8–15 API)   TOKEN = yes
 ================================================================================
+Patient app reschedule must call New-API — no local fake availability / paid state.
+
+Flow
+  1) Load visit (patient-owned) then pick a new open slot:
+       GET /api/Public/Doctors/{doctorId}/Slots?date=YYYY-MM-DD   (PAT-16.02)
+  2) Confirm move:
+       POST /api/PatientAppointment/RescheduleAppointment
+       Authorization: Bearer <patient JWT who owns the visit>
+  3) Optional history:
+       GET /api/PatientAppointment/ChangeLog/{patientAppId}
+
+Rules
+  - allowPatient=true on GuardAppointment (owner patient, treating doctor, reception/admin per ACL)
+  - Slot must be available on the shared APT-08.03 engine; booked → 409 + alternatives[]
+  - Cancelled visit → 409 cannot reschedule
+  - paymentStatus in response is from DB (do not invent PAID locally)
+
 REQUEST
 POST http://127.0.0.1:5038/api/PatientAppointment/RescheduleAppointment
 Authorization: Bearer <token>
@@ -264,6 +403,9 @@ RESPONSE 409
   ]
 }
 
+RESPONSE 403 — JWT does not own the visit / not treating clinic staff
+RESPONSE 404 — appointment not found
+
 ================================================================================
 PAT-22  Cancel   TOKEN = yes
 ================================================================================
@@ -296,26 +438,82 @@ RESPONSE 400
 { "statusCode": 400, "message": "ReasonText is required when ReasonCode is Other.", "appointment": null, "alternatives": [] }
 
 ================================================================================
-PAT-23  Waitlist join   TOKEN = no
+PAT-23.02  Waitlist offer (wire Phase 8–15 API)   TOKEN = no
 ================================================================================
-REQUEST
+Patient app waitlist-offer screen wires to New-API. No local fake paid/booked state.
+
+Flow
+  1) Join (does not reserve a slot; status=JOINED):
+       POST /api/Waitlist/Join
+  2) Poll until an offer appears (status=OFFERED) when clinic cancels and frees that day:
+       GET /api/Waitlist/Offers?contactMobile=7768046064&doctorId=1010
+       (optional patientId= instead of / with contactMobile)
+  3) After OFFERED, patient books via PAT-16 slots + public booking (still PENDING pay).
+     Offer does not auto-book and does not set PaymentStatus=PAID.
+
+Clinic cancel returns waitlistOffer on CancelAppointment (APT-06.04) for staff UI;
+patient discovery is the Offers poll above.
+
+--------------------------------------------------------------------------------
+REQUEST — join
 POST http://127.0.0.1:5038/api/Waitlist/Join
 Content-Type: application/json
 
 {
   "doctorId": 1010,
   "patientId": 3065,
-  "requestedDate": "2026-12-01",
+  "requestedDate": "2026-12-20",
   "consultMode": "In-clinic",
   "contactName": "Sanjay Patil",
-  "contactMobile": "9000000991"
+  "contactMobile": "7768046064"
 }
 
 RESPONSE 200
 {
   "success": true,
+  "bookingWaitlistId": 12,
+  "status": "JOINED",
   "message": "Joined the waitlist. The slot is not reserved and no offer is sent."
 }
+
+--------------------------------------------------------------------------------
+REQUEST — poll offers
+GET http://127.0.0.1:5038/api/Waitlist/Offers?contactMobile=7768046064&doctorId=1010
+
+RESPONSE 200 (waiting)
+{
+  "success": true,
+  "hasOffer": false,
+  "data": [
+    {
+      "bookingWaitlistId": 12,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2026-12-20T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Sanjay Patil",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-24T14:00:00"
+    }
+  ]
+}
+
+RESPONSE 200 (offered after cancel frees the day)
+{
+  "success": true,
+  "hasOffer": true,
+  "data": [
+    {
+      "bookingWaitlistId": 12,
+      "status": "OFFERED",
+      "doctorId": 1010,
+      "requestedDate": "2026-12-20T00:00:00"
+    }
+  ]
+}
+
+UI: empty = no rows; loading/error/offline = network; hasOffer=true → show accept/book CTA (no fake PAID).
 
 ================================================================================
 PAT-24 / PAT-25  Instant consult   TOKEN = yes (patient)
@@ -328,7 +526,7 @@ Content-Type: application/json
 {
   "patientId": 3065,
   "contactName": "Sanjay Patil",
-  "contactMobile": "9000000992"
+  "contactMobile": "7768046064"
 }
 
 RESPONSE 200  doctor is online
@@ -456,25 +654,62 @@ RESPONSE 200
 Poll until status is "Active", then call Token.
 
 ================================================================================
-PAT-28 / DMO-08  Token and rejoin   TOKEN = yes
+PAT-28.02  Live video consultation (wire Phase 8–15 API)   TOKEN = yes
 ================================================================================
-REQUEST
+Patient app live-video screen wires to tele session APIs (web + mobile same JSON).
+Vendor token is a stub — do not invent local "in call / paid" state.
+
+Flow
+  1) Device probe (anonymous):
+       GET /api/Tele/DeviceCheck
+  2) Waiting room poll until Active (PAT-27):
+       GET /api/Tele/Sessions/{sessionId}
+  3) Join live video:
+       POST /api/Tele/Sessions/{sessionId}/Token
+  4) Dropped call while Active:
+       POST /api/Tele/Sessions/{sessionId}/Rejoin
+  5) Join failure (optional):
+       POST /api/Tele/Sessions/{sessionId}/JoinFailure  { "code": "..." }
+
+Rules
+  - Same Token/Rejoin contract for Patient App + Doctor App + Doctor Web (TEL-04.01)
+  - Rejoin only while Status=Active → else 409
+  - After End → Rejoin 409
+  - recordAllowed / paymentStatus come from API only (no local fake PAID)
+
+--------------------------------------------------------------------------------
+REQUEST — device check
+GET http://127.0.0.1:5038/api/Tele/DeviceCheck
+
+RESPONSE 200
+{
+  "success": true,
+  "camera": "client",
+  "microphone": "client",
+  "speaker": "client",
+  "connection": "client",
+  "vendor": "stub"
+}
+
+--------------------------------------------------------------------------------
+REQUEST — join token
 POST http://127.0.0.1:5038/api/Tele/Sessions/15/Token
-Authorization: Bearer <token>
+Authorization: Bearer <patient or doctor token>
 
 RESPONSE 200
 {
   "success": true,
   "vendor": "stub",
+  "clients": [ "web", "mobile" ],
   "teleSessionId": 15,
-  "roomId": "15",
-  "token": "Base64StubToken",
-  "expiresAt": "2026-09-22T19:20:00",
+  "roomId": "room-15",
+  "token": "stub....",
+  "expiresAt": "2026-09-22T19:20:00Z",
   "recordAllowed": false,
   "status": "Active"
 }
 
-REQUEST
+REQUEST — rejoin
 POST http://127.0.0.1:5038/api/Tele/Sessions/15/Rejoin
 Authorization: Bearer <token>
 
@@ -483,9 +718,6 @@ Same JSON as Token. Only while status is Active.
 
 RESPONSE 409
 { "success": false, "message": "Rejoin is only available while the session is Active." }
-
-RESPONSE 409 after End
-{ "success": false, "message": "Session has ended." }
 
 ================================================================================
 PAT-29  Recording consent   TOKEN = yes
@@ -503,25 +735,44 @@ RESPONSE 200
 recordAllowed becomes true only after both the doctor and the patient send accepted true.
 
 ================================================================================
-PAT-30  Join failure   TOKEN = yes
+PAT-30.02  Fallback & join failure handling (wire Phase 8–15 API)   TOKEN = yes
 ================================================================================
+When live video join fails, patient app posts a standardised code and drives UI from
+the API response (retry / rejoin / support). Do not invent local paid or "in call" state.
+
 REQUEST
-POST http://127.0.0.1:5038/api/Tele/Sessions/15/JoinFailure
-Authorization: Bearer <token>
+POST http://127.0.0.1:5038/api/Tele/Sessions/{sessionId}/JoinFailure
+Authorization: Bearer <patient or doctor token>
 Content-Type: application/json
 
 { "code": "DEVICE_DENIED" }
+
+Canonical codes (aliases accepted; unknown → JOIN_FAILED):
+  DEVICE_DENIED, NETWORK_ERROR, TOKEN_FAILED, VENDOR_ERROR,
+  BROWSER_UNSUPPORTED, JOIN_FAILED
 
 RESPONSE 200
 {
   "success": false,
   "code": "DEVICE_DENIED",
+  "message": "Camera or microphone was denied. Allow access and retry.",
   "retry": true,
   "rejoin": false,
-  "supportPath": "/doctor/support"
+  "supportPath": "/support",
+  "allowedCodes": [
+    "DEVICE_DENIED", "NETWORK_ERROR", "TOKEN_FAILED",
+    "VENDOR_ERROR", "BROWSER_UNSUPPORTED", "JOIN_FAILED"
+  ]
 }
 
-rejoin is true only when the session status is still Active.
+UI mapping
+  retry=true           → Retry CTA (Token again)
+  rejoin=true          → Rejoin CTA (only when session still Active)
+  BROWSER_UNSUPPORTED  → retry=false (switch browser/app)
+  supportPath          → open help/support (patient: /support; doctor: /doctor/support)
+  offline/HTTP error   → offline/error screens; then retry JoinFailure when back
+
+Events are stored on TeleSessionEvent (code = canonical). No PaymentStatus change.
 
 ================================================================================
 In-call chat   TOKEN = yes
@@ -1127,7 +1378,7 @@ RESPONSE 200
       "requestedDate": "2026-12-01T00:00:00",
       "consultMode": "InClinic",
       "contactName": "Sanjay Patil",
-      "contactMobile": "9000000991",
+      "contactMobile": "7768046064",
       "status": "JOINED",
       "createdAt": "2026-09-22T18:00:00"
     }

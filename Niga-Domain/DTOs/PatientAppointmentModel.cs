@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -37,10 +37,15 @@ namespace Niga_Domain.DTOs
         public string? CancelReasonCode { get; set; }
         public decimal? ConsultFee { get; set; }
         public string? BookingChannel { get; set; }
-        }
-
-
+        /// <summary>REC-08.02 — set when CallNext stamps the waiting patient.</summary>
+        public DateTime? CalledAt { get; set; }
+        public int? QueuePosition { get; set; }
+        /// <summary>REC-08.03 — 1-based display order for the live queue panel.</summary>
+        public int QueueOrder { get; set; }
+        /// <summary>REC-08.03 — minutes past appointment time (negative = not yet due).</summary>
+        public int? WaitMinutes { get; set; }
     }
+}
 
 public class UpdateAppointmentStatusModel
 {
