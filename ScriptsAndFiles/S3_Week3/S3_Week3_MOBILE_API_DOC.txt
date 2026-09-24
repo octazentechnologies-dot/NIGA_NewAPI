@@ -1269,6 +1269,45 @@ A tele visit comes back with appointment.status "E-CONSULT".
 RESPONSE 404
 { "statusCode": 404, "message": "No waiting patient to call.", "appointment": null, "alternatives": [] }
 
+--------------------------------------------------------------------------------
+SUP-07.02 / SUP-07.03  Patient assistance request + staff assisted book
+TOKEN = patient for request; reception/doctor/admin for list + AssistedBook
+
+Patient asks clinic to book (AssistedRequest ticket)
+REQUEST
+POST http://127.0.0.1:5038/api/Support/AssistanceRequest
+Authorization: Bearer <patient token>
+Content-Type: application/json
+
+{
+  "patientId": 3046,
+  "doctorId": 1010,
+  "notes": "Prefer morning",
+  "preferredDate": "2026-10-01",
+  "contactMobile": "7768046064"
+}
+
+RESPONSE 200
+{ "success": true, "supportTicketId": 47, "message": "Assistance request submitted." }
+
+Staff list open AssistedRequest tickets
+REQUEST
+GET http://127.0.0.1:5038/api/Support/AssistanceRequests
+Authorization: Bearer <reception or admin token>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": [
+    {
+      "supportTicketId": 47,
+      "subject": "Assisted booking request",
+      "body": "Prefer morning | PatientId=3046 | PreferredDate=2026-10-01 | ContactMobile=7768046064",
+      "status": "OPEN"
+    }
+  ]
+}
+
 Assisted book
 REQUEST
 POST http://127.0.0.1:5038/api/Support/AssistedBook

@@ -44,8 +44,9 @@ namespace Niga_Domain.DTOs
         public string? SlotDate { get; set; }
         public string? SlotTime { get; set; }
         public string Sms { get; set; } = "skipped";
-        public string Push { get; set; } = "skipped";
-        public string Detail { get; set; } = "SMS and push run when Phase 12 communications exist. No auto-booking.";
+        public string WhatsApp { get; set; } = "skipped";
+        public string Push { get; set; } = "later";
+        public string Detail { get; set; } = "SMS/WhatsApp via configured providers. No auto-booking.";
     }
 
     /// <summary>

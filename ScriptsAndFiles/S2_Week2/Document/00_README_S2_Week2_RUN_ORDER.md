@@ -4,6 +4,8 @@ Scripts live in **New-API only**:
 
 `NIGA_NewAPI/ScriptsAndFiles/S2_Week2/Database scripts`
 
+Do **not** run Week 2 scripts from `NIGA_NewAPI/Database/Scripts` — Tufan seed 15–28 and role menus live here (see `ScriptsAndFiles/README.md`).
+
 Run on the shared SQL Server database (`HomeoCentrum_Dev`).  
 Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 

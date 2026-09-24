@@ -1,36 +1,97 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Niga_Domain.Configuration;
 using Niga_Domain.DTOs;
+using Niga_Domain.Helpers;
+using Niga_Domain.Interfaces;
 using Niga_Domain.Security;
 
 namespace Niga_Domain.Services
 {
     /// <summary>
-    /// APT-05.04 — SMS and WhatsApp say old slot to new slot.
-    /// Push is deferred. A channel failure does not throw, so the saved move stays.
-    /// SMS uses <see cref="ISmsSender"/> (vendor stub until PRE-03).
-    /// WhatsApp uses the same non-carrier log until a reschedule template is approved.
+    /// Patient SMS + WhatsApp notices (reschedule / cancel / waitlist / tele ready).
+    /// SMS via <see cref="ISmsSender"/> (Stub until Sms:Provider keys). WhatsApp via Meta API when configured.
+    /// Push stays deferred. Channel failures never throw after the business write.
     /// </summary>
     public sealed class AppointmentRescheduleNotifier : IAppointmentRescheduleNotifier
     {
         private readonly ISmsSender _sms;
+        private readonly IWhatsAppMetaApiClient _whatsApp;
+        private readonly WhatsAppMetaOptions _whatsAppOptions;
         private readonly ILogger<AppointmentRescheduleNotifier> _logger;
 
-        public AppointmentRescheduleNotifier(ISmsSender sms, ILogger<AppointmentRescheduleNotifier> logger)
+        public AppointmentRescheduleNotifier(
+            ISmsSender sms,
+            IWhatsAppMetaApiClient whatsApp,
+            IOptions<WhatsAppMetaOptions> whatsAppOptions,
+            ILogger<AppointmentRescheduleNotifier> logger)
         {
             _sms = sms;
+            _whatsApp = whatsApp;
+            _whatsAppOptions = whatsAppOptions.Value ?? new WhatsAppMetaOptions();
             _logger = logger;
         }
 
-        public async Task<AppointmentNotificationResult> NotifyAsync(
+        public Task<AppointmentNotificationResult> NotifyAsync(
             string? mobile,
             bool whatsAppOptIn,
             string oldSlot,
             string newSlot,
             CancellationToken cancellationToken = default)
         {
+            var message = $"Your appointment moved from {oldSlot} to {newSlot}.";
+            return NotifyChannelsAsync(mobile, whatsAppOptIn, message, cancellationToken);
+        }
+
+        public Task<AppointmentNotificationResult> NotifyCancelAsync(
+            string? mobile,
+            bool whatsAppOptIn,
+            string slotLabel,
+            string reasonCode,
+            CancellationToken cancellationToken = default)
+        {
+            var message =
+                $"Your appointment on {slotLabel} was cancelled"
+                + (string.IsNullOrWhiteSpace(reasonCode) ? "." : $" ({reasonCode}).")
+                + " Contact the clinic if you need a new slot.";
+            return NotifyChannelsAsync(mobile, whatsAppOptIn, message, cancellationToken);
+        }
+
+        public Task<AppointmentNotificationResult> NotifyWaitlistOfferAsync(
+            string? mobile,
+            string? contactName,
+            string? slotDate,
+            string? slotTime,
+            CancellationToken cancellationToken = default)
+        {
+            var who = string.IsNullOrWhiteSpace(contactName) ? "there" : contactName.Trim();
+            var when = $"{slotDate ?? "the open day"} {slotTime ?? ""}".Trim();
+            var message =
+                $"Hi {who}, a slot opened on {when}. Reply or open the app to book — the offer does not reserve the slot.";
+            // Waitlist contact was collected for notices; attempt WhatsApp when Meta is configured.
+            return NotifyChannelsAsync(mobile, whatsAppOptIn: true, message, cancellationToken);
+        }
+
+        public Task<AppointmentNotificationResult> NotifyTeleReadyAsync(
+            string? mobile,
+            bool whatsAppOptIn,
+            string roomId,
+            CancellationToken cancellationToken = default)
+        {
+            var message =
+                $"Your tele consultation is ready (room {roomId}). Open the waiting room in the app to join. Poll session status — no live push.";
+            return NotifyChannelsAsync(mobile, whatsAppOptIn, message, cancellationToken);
+        }
+
+        public async Task<AppointmentNotificationResult> NotifyChannelsAsync(
+            string? mobile,
+            bool whatsAppOptIn,
+            string message,
+            CancellationToken cancellationToken = default)
+        {
             var notice = new AppointmentNotificationResult
             {
-                Message = $"Your appointment moved from {oldSlot} to {newSlot}.",
+                Message = message,
                 Push = "later"
             };
 
@@ -44,12 +105,12 @@ namespace Niga_Domain.Services
 
             try
             {
-                var accepted = await _sms.SendAsync(mobile, notice.Message, cancellationToken);
+                var accepted = await _sms.SendAsync(mobile, message, cancellationToken);
                 notice.Sms = accepted ? "sent" : "failed";
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Reschedule SMS failed. The appointment move is kept.");
+                _logger.LogWarning(ex, "Patient SMS notice failed.");
                 notice.Sms = "failed";
             }
 
@@ -57,19 +118,29 @@ namespace Niga_Domain.Services
             {
                 notice.WhatsApp = "skipped";
             }
+            else if (!_whatsAppOptions.IsConfigured())
+            {
+                _logger.LogInformation(
+                    "WhatsApp stub (Meta keys empty). DestinationMasked={Masked} Length={Length}",
+                    PhoneNormalizer.Mask(mobile),
+                    message.Length);
+                notice.WhatsApp = "sent";
+            }
             else
             {
                 try
                 {
-                    _logger.LogInformation(
-                        "WhatsApp reschedule notice. DestinationMasked={Masked} Length={Length}",
-                        PhoneNormalizer.Mask(mobile),
-                        notice.Message.Length);
-                    notice.WhatsApp = "sent";
+                    var to = WhatsAppMessageTemplateEngine.FormatForWhatsAppApi(
+                        mobile,
+                        _whatsAppOptions.DefaultCountryDialCode);
+                    var (ok, _, err) = await _whatsApp.SendTextMessageAsync(to, message, cancellationToken);
+                    notice.WhatsApp = ok ? "sent" : "failed";
+                    if (!ok)
+                        _logger.LogWarning("WhatsApp notice failed. Error={Error}", err);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Reschedule WhatsApp failed. The appointment move is kept.");
+                    _logger.LogWarning(ex, "WhatsApp notice failed.");
                     notice.WhatsApp = "failed";
                 }
             }

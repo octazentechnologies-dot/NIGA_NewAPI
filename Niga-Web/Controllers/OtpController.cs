@@ -11,7 +11,7 @@ using Niga_Domain.Services;
 
 namespace Niga_Domain.API.Controllers
 {
-    /// <summary>SEC-07.02 / SEC-07.03 — Generic OTP request/verify + audit (SMS stub).</summary>
+    /// <summary>SEC-07.02 / SEC-07.03 — Generic OTP request/verify + audit (SMS via ISmsSender).</summary>
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
@@ -74,8 +74,8 @@ namespace Niga_Domain.API.Controllers
             var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
             var masked = MaskDestination(request.Destination);
 
-            // TODO: production OTP delivery via SMS vendor. Until then only Dev/challenge OTP
-            // (devCode in Development) — test mobile 7768046064.
+            // Delivery via ISmsSender (ConfigurableSmsSender — Stub / Msg91 / Twilio).
+            // Raw code is included in the SMS body; Dev also returns devCode for local QA.
 
             var challenge = new OtpChallenge
             {
@@ -104,16 +104,15 @@ namespace Niga_Domain.API.Controllers
 
             await _smsSender.SendAsync(
                 request.Destination,
-                "Your Homeocentrum verification code is valid for 10 minutes.");
+                $"Your Homeocentrum verification code is {code}. Valid for {OtpTtlMinutes} minutes. Do not share this code.");
 
-            // TODO PRE-03: do not return raw OTP once SMS vendor + DLT templates are live.
-            // Until then only Dev/challenge OTP (devCode) on 7768046064 / Development.
+            // When Sms:Provider is Stub, OTP is also returned as devCode in Development only.
             var payload = new Dictionary<string, object?>
             {
                 ["otpChallengeId"] = challenge.OtpChallengeId,
                 ["destinationMasked"] = masked,
                 ["expiresAt"] = challenge.ExpiresAt,
-                ["message"] = "OTP sent (SMS stub — provider not configured)."
+                ["message"] = "OTP sent via SMS (Stub until Sms:Provider keys are set)."
             };
             if (HttpContext.RequestServices.GetService<IHostEnvironment>()?.IsDevelopment() == true)
                 payload["devCode"] = code;

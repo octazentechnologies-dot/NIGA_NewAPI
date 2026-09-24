@@ -1,25 +1,40 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Niga_Domain.Data;
 using Niga_Domain.DTOs;
 using Niga_Domain.Helpers;
 using Niga_Domain.Interfaces;
 using Niga_Domain.Master;
+using Niga_Domain.Services;
+using Niga_Domain.Services.Tele;
 
 namespace Niga_Domain.Repositories
 {
     /// <summary>
     /// S3 Week 3 HTTP behind the appointment service.
-    /// No SMS, WhatsApp, Razorpay, or waitlist auto-offer.
+    /// Tele Token/Rejoin uses <see cref="ITeleVideoVendor"/> (Stub until TeleVideo keys).
+    /// Waiting room / device check / chat / summary stay poll-based (no SignalR).
     /// </summary>
     public class S3Week3Service : IS3Week3Service
     {
         private readonly NIGACentrumContext _context;
         private readonly IPatientAppointmentService _appointments;
+        private readonly ITeleVideoVendor _teleVideo;
+        private readonly IAppointmentRescheduleNotifier _notifier;
+        private readonly ILogger<S3Week3Service> _logger;
 
-        public S3Week3Service(NIGACentrumContext context, IPatientAppointmentService appointments)
+        public S3Week3Service(
+            NIGACentrumContext context,
+            IPatientAppointmentService appointments,
+            ITeleVideoVendor teleVideo,
+            IAppointmentRescheduleNotifier notifier,
+            ILogger<S3Week3Service> logger)
         {
             _context = context;
             _appointments = appointments;
+            _teleVideo = teleVideo;
+            _notifier = notifier;
+            _logger = logger;
         }
 
         public async Task<S3ActionResult> JoinWaitlistAsync(JoinWaitlistRequest request)
@@ -419,6 +434,25 @@ namespace Niga_Domain.Repositories
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
                 UPDATE dbo.TeleSession SET Status = N'Active', StartedAt = {now} WHERE TeleSessionId = {sessionId}");
             await LogEventAsync(sessionId, "Started", null);
+
+            // Best-effort SMS/WhatsApp — patient still polls GetSession / queue (no SignalR).
+            try
+            {
+                var patient = await _context.Patients.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.PatientId == session.PatientId);
+                if (patient != null && !string.IsNullOrWhiteSpace(patient.MobileNo))
+                {
+                    await _notifier.NotifyTeleReadyAsync(
+                        patient.MobileNo,
+                        patient.IsWhatsAppOptIn == true,
+                        session.RoomId ?? ("room-" + sessionId));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Tele ready notice failed. Session {SessionId} is Active.", sessionId);
+            }
+
             return S3ActionResult.Ok(new { success = true, status = "Active", teleSessionId = sessionId });
         }
 
@@ -439,7 +473,8 @@ namespace Niga_Domain.Repositories
         }
 
         /// <summary>
-        /// TEL-03.02 / TEL-04.01 — stub vendor token, identical payload for web and mobile clients.
+        /// TEL-03.02 / TEL-04.01 — vendor token (Stub until TeleVideo keys). Same payload for web and mobile.
+        /// Device check / waiting room / rejoin / join-failure remain orchestration APIs; media plane is vendor SDK.
         /// </summary>
         public async Task<S3ActionResult> IssueTokenAsync(int sessionId, S3Caller caller, bool rejoin)
         {
@@ -453,20 +488,37 @@ namespace Niga_Domain.Repositories
             if (string.Equals(session.Status, "Ended", StringComparison.OrdinalIgnoreCase))
                 return S3ActionResult.Fail(409, "Session has ended.");
 
-            var expiresAt = DateTime.UtcNow.AddMinutes(60);
-            var token = "stub." + Convert.ToBase64String(Guid.NewGuid().ToByteArray())
-                .TrimEnd('=').Replace('+', '-').Replace('/', '_');
-            await LogEventAsync(sessionId, rejoin ? "RejoinToken" : "Token", "vendor=stub;clients=web,mobile");
+            var role = string.Equals(caller.Role, "Doctor", StringComparison.OrdinalIgnoreCase) ? "doctor" : "patient";
+            var issued = await _teleVideo.IssueTokenAsync(new TeleVideoIssueRequest
+            {
+                AppointmentId = Guid.Empty,
+                RoomId = session.RoomId ?? ("room-" + session.TeleSessionId),
+                Role = role,
+                UserAccountId = caller.UserId,
+                TtlMinutes = 60
+            });
+
+            var vendorLower = (issued.Vendor ?? "Stub").ToLowerInvariant();
+            await LogEventAsync(
+                sessionId,
+                rejoin ? "RejoinToken" : "Token",
+                "vendor=" + vendorLower + ";clients=web,mobile");
+
             return S3ActionResult.Ok(new
             {
                 success = true,
-                vendor = "stub",
+                vendor = vendorLower,
+                isStub = vendorLower == "stub"
+                    || (issued.ClientConfig != null
+                        && issued.ClientConfig.TryGetValue("ready", out var ready)
+                        && ready == "false"),
                 // TEL-04.01 — one contract for Patient App + Doctor App + Doctor Web
                 clients = new[] { "web", "mobile" },
                 teleSessionId = session.TeleSessionId,
-                roomId = session.RoomId,
-                token,
-                expiresAt,
+                roomId = issued.RoomId,
+                token = issued.Token,
+                expiresAt = issued.ExpiresAtUtc,
+                clientConfig = issued.ClientConfig,
                 recordAllowed = session.RecordAllowed,
                 status = session.Status
             });

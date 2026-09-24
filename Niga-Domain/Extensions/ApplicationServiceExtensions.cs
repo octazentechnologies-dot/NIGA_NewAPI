@@ -59,9 +59,16 @@ namespace Niga_Domain.Extensions
             services.AddSingleton<IJwtDenylistService, JwtDenylistService>();
             services.AddScoped<IAuditEventWriter, AuditEventWriter>();
             services.AddSingleton<ISignedFileUrlService, SignedFileUrlService>();
-            // TODO PRE-03: wire SMS vendor (MSG91 / Twilio / Exotel + India DLT template IDs) and replace StubSmsSender.
-            services.AddSingleton<ISmsSender, StubSmsSender>();
-            services.AddSingleton<IAppointmentRescheduleNotifier, AppointmentRescheduleNotifier>();
+            // PRE-03 — Sms:Provider = Stub | Msg91 | Twilio (keys empty → stub log). OTP + appointment notices use ISmsSender.
+            services.Configure<SmsOptions>(config.GetSection(SmsOptions.SectionName));
+            services.Configure<TeleVideoOptions>(config.GetSection(TeleVideoOptions.SectionName));
+            services.AddHttpClient("SmsVendor", client => client.Timeout = TimeSpan.FromSeconds(30));
+            services.AddSingleton<ISmsSender, ConfigurableSmsSender>();
+            services.AddSingleton<Niga_Domain.Services.Tele.StubTeleVideoVendor>();
+            services.AddSingleton<Niga_Domain.Services.Tele.AgoraTeleVideoVendor>();
+            services.AddSingleton<Niga_Domain.Services.Tele.ITeleVideoVendor, Niga_Domain.Services.Tele.ConfigurableTeleVideoVendor>();
+            // Scoped: WhatsApp Meta typed client + SMS for reschedule/cancel/waitlist/tele notices.
+            services.AddScoped<IAppointmentRescheduleNotifier, AppointmentRescheduleNotifier>();
             services.Configure<Niga_Domain.DTOs.SmtpSettingsModel>(config.GetSection("smtp"));
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<ISectionRepository, SectionService>();

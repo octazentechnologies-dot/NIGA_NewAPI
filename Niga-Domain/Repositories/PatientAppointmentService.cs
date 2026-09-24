@@ -1021,6 +1021,28 @@ namespace Niga_Domain.Repositories
 
             try
             {
+                var slotLabel =
+                    $"{appointment.AppointmentDate:yyyy-MM-dd} {appointment.AppointmentTime:HH\\:mm\\:ss}";
+                result.Notification = await _rescheduleNotifier.NotifyCancelAsync(
+                    appointment.Patient?.MobileNo,
+                    appointment.Patient?.IsWhatsAppOptIn == true,
+                    slotLabel,
+                    request.ReasonCode);
+            }
+            catch (Exception ex)
+            {
+                result.Notification = new AppointmentNotificationResult
+                {
+                    Sms = "failed",
+                    WhatsApp = "failed",
+                    Push = "later",
+                    Detail = "Cancel notification failed. The cancel is kept."
+                };
+                System.Diagnostics.Trace.TraceWarning("Cancel notify failed after save: {0}", ex.Message);
+            }
+
+            try
+            {
                 result.RefundPolicy = await EnqueueRefundPolicyAsync(appointment, byUserId, request.ReasonCode);
             }
             catch (Exception ex)
@@ -1074,45 +1096,27 @@ namespace Niga_Domain.Repositories
             offer.ContactName = next.ContactName;
             try
             {
-                await MarkPhase12NoticeAsync(offer);
+                var notice = await _rescheduleNotifier.NotifyWaitlistOfferAsync(
+                    next.ContactMobile,
+                    next.ContactName,
+                    offer.SlotDate,
+                    offer.SlotTime);
+                offer.Sms = notice.Sms;
+                offer.WhatsApp = notice.WhatsApp;
+                offer.Push = notice.Push;
+                offer.Detail = string.IsNullOrWhiteSpace(notice.Detail)
+                    ? "Waitlist offer notice sent. No auto-booking."
+                    : notice.Detail + " No auto-booking.";
             }
             catch (Exception ex)
             {
-                offer.Sms = "phase12";
-                offer.Push = "phase12";
-                offer.Detail = "SMS and push were not sent. The waitlist offer is kept.";
-                System.Diagnostics.Trace.TraceWarning("Waitlist Phase 12 notice failed: {0}", ex.Message);
+                offer.Sms = "failed";
+                offer.WhatsApp = "failed";
+                offer.Push = "later";
+                offer.Detail = "SMS and WhatsApp failed. The waitlist offer is kept. No auto-booking.";
+                System.Diagnostics.Trace.TraceWarning("Waitlist offer notice failed: {0}", ex.Message);
             }
             return offer;
-        }
-
-        /// <summary>
-        /// WEB-11.04 — send SMS and push only after Phase 12 communications tables exist.
-        /// They are not in this database yet, so the offer is kept and no carrier is called.
-        /// </summary>
-        private async Task MarkPhase12NoticeAsync(WaitlistOfferResult offer)
-        {
-            var smsReady = await Phase12FlagAsync(
-                $"SELECT CASE WHEN OBJECT_ID(N'dbo.SmsMessageLog', N'U') IS NULL THEN 0 ELSE 1 END AS Value");
-            var pushReady = await Phase12FlagAsync(
-                $"SELECT CASE WHEN OBJECT_ID(N'dbo.DeviceToken', N'U') IS NULL THEN 0 ELSE 1 END AS Value");
-            // COM-01 / COM-03 are Phase 12. Until those tables exist, do not call a carrier.
-            offer.Sms = smsReady ? "queued" : "phase12";
-            offer.Push = pushReady ? "queued" : "phase12";
-            offer.Detail = smsReady && pushReady
-                ? "Phase 12 communications are present. No auto-booking."
-                : "SMS and push wait for Phase 12. No message was sent. No auto-booking.";
-        }
-
-        private async Task<bool> Phase12FlagAsync(FormattableString sql)
-        {
-            var rows = await _context.Database.SqlQuery<Phase12FlagRow>(sql).ToListAsync();
-            return rows.FirstOrDefault()?.Value == 1;
-        }
-
-        private sealed class Phase12FlagRow
-        {
-            public int Value { get; set; }
         }
 
         private async Task<CancelRefundPolicyResult> EnqueueRefundPolicyAsync(
@@ -1202,6 +1206,7 @@ namespace Niga_Domain.Repositories
         {
             public int BookingWaitlistId { get; set; }
             public string ContactName { get; set; } = "";
+            public string ContactMobile { get; set; } = "";
         }
 
         private sealed class CancelPaymentOrderRow

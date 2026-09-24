@@ -4,6 +4,8 @@ Scripts live in **New-API only**:
 
 `NIGA_NewAPI/ScriptsAndFiles/S1_Week1/Database scripts`
 
+Do **not** run Week 1 scripts from `NIGA_NewAPI/Database/Scripts` — use this folder only (see `ScriptsAndFiles/README.md`).
+
 Run on the shared SQL Server database (`HomeoCentrum_*`).  
 Do **not** run from the app. SSMS / Azure Data Studio / `sqlcmd` is expected.
 

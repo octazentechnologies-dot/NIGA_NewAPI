@@ -97,6 +97,7 @@ RECEPTION (New-API, reception JWT. NameIdentifier is the staff id. DoctorID is t
   POST    /api/Reception/CasePaper
   GET     /api/Reception/CasePaper?patientId=
   POST    /api/Support/AssistedBook       BookingChannel=Assisted. Same slot rules as create.
+  GET     /api/Support/AssistanceRequests open AssistedRequest tickets for staff
 
 PUBLIC / PATIENT BOOKING (New-API, no token)
   GET  /api/Public/Doctors/{id}/Slots     same slot engine as GetAppointmentSlots. Cancelled rows do not occupy a slot.
@@ -104,6 +105,7 @@ PUBLIC / PATIENT BOOKING (New-API, no token)
                                           ConsultMode stored. PaymentStatus stays PENDING. Response adds consultFee.
   GET  /api/Public/Bookings/{bookingToken} same consultFee.
   POST /api/Waitlist/Join                 stores JOINED. Does not reserve the slot. Does not offer the next person.
+  GET  /api/Waitlist/Offers               poll JOINED/OFFERED by contactMobile and/or patientId (optional doctorId).
 
 TELE (New-API. Vendor is stub. Token TTL 60 minutes. Room id = session id.)
   POST /api/Tele/Availability             treating doctor. Heartbeat expires after 2 minutes.
@@ -122,6 +124,9 @@ SUPPORT (New-API)
   GET  /api/Support/Tickets               admin only, optional status and priority
   PUT  /api/Support/Tickets/{id}
   POST/GET /api/Support/Tickets/{id}/Messages
+  POST /api/Support/AssistanceRequest     patient asks staff to book (AssistedRequest ticket)
+  GET  /api/Support/AssistanceRequests    staff list of open AssistedRequest tickets
+  POST /api/Support/AssistedBook          staff completes booking (BookingChannel=Assisted)
   GET  /api/Help  and GET /api/Help/{slug}   public. Unpublished slug is 404.
   POST /api/Help                             admin
 
@@ -353,6 +358,16 @@ SAMPLE PAYLOAD:
 OUTPUT     : { success, message: "Joined the waitlist. The slot is not reserved and no offer is sent." }
 
 --------------------------------------------------------------------------------
+URL        : GET /api/Waitlist/Offers?contactMobile=&doctorId=&patientId=
+USE        : Patient app polls waitlist offer status (JOINED / OFFERED).
+             Offer is created when clinic cancels and frees a slot (APT-06). No auto-book / no fake paid.
+             Require contactMobile and/or patientId. doctorId optional filter.
+HOST       : New-API
+TOKEN      : no (or patient JWT — same query)
+SAMPLE     : GET /api/Waitlist/Offers?contactMobile=7768046064&doctorId=1010
+OUTPUT     : { success, hasOffer, data: [ waitlist rows with status JOINED|OFFERED ] }
+
+--------------------------------------------------------------------------------
 URL        : GET /api/Waitlist?doctorId=
 USE        : Open JOINED rows for that doctor.
 HOST       : New-API
@@ -400,9 +415,32 @@ TOKEN      : doctor or that doctor's reception
 OUTPUT     : { success, data: [ { receptionCasePaperId, patientAppId, patientId, doctorId, caseId, chiefComplaint, createdByRole, createdAt } ] }
 
 --------------------------------------------------------------------------------
+URL        : POST /api/Support/AssistanceRequest
+USE        : Patient asks clinic staff to book on their behalf (SUP-07).
+             Creates SupportTicket Category=AssistedRequest. Body may include PatientId / PreferredDate / ContactMobile.
+HOST       : New-API
+TOKEN      : patient JWT (or anonymous with contactMobile — Prefer patient token)
+SAMPLE PAYLOAD:
+{
+  "patientId": 3046,
+  "doctorId": 1010,
+  "notes": "Prefer morning",
+  "preferredDate": "2026-10-01",
+  "contactMobile": "7768046064"
+}
+OUTPUT     : { success, supportTicketId, message }
+
+--------------------------------------------------------------------------------
+URL        : GET /api/Support/AssistanceRequests
+USE        : Open / in-progress AssistedRequest tickets for reception or admin.
+HOST       : New-API
+TOKEN      : reception, doctor, or admin
+OUTPUT     : { success, data: [ { supportTicketId, subject, body, status, createdAt } ] }
+
+--------------------------------------------------------------------------------
 URL        : POST /api/Support/AssistedBook
 USE        : Staff books for a patient. BookingChannel=Assisted. Same slot validation as create.
-             Does not take payment.
+             Does not take payment. Requires existing PatientId (UI may resolve name/mobile to id first).
 HOST       : New-API
 TOKEN      : doctor, that doctor's reception, or admin. Another clinic is 403. Patient is 403.
 SAMPLE PAYLOAD:

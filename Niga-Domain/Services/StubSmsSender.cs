@@ -8,7 +8,7 @@ namespace Niga_Domain.Services
 {
     /// <summary>
     /// SEC-07.02 — Does not call a carrier. Logs a masked destination only.
-    /// TODO PRE-03: swap this registration for MSG91 / Twilio / etc. + DLT template IDs when the vendor is live.
+    /// Prefer <see cref="ConfigurableSmsSender"/> (DI default). Kept for explicit stub tests.
     /// </summary>
     public sealed class StubSmsSender : ISmsSender
     {
