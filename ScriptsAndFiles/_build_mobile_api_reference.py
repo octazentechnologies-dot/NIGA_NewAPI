@@ -23,9 +23,9 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = Path(__file__).resolve().parent
 XLSX = ROOT / "NIGA_NewAPI" / "ScriptsAndFiles" / "Homeocentrum_All_New_And_Updated+APIs.xlsx"
-NEW_CTRL = ROOT / "NIGA_NewAPI" / "Niga-Web" / "Controllers"
-OLD_CTRL = ROOT / "NIGA_OldAPI" / "NIGA.Centrum.API" / "Controllers"
-NEW_DTO = ROOT / "NIGA_NewAPI" / "Niga-Domain"
+NEW_CTRL = ROOT / "NIGA_NewAPI" / "Homeocentrum.Niga.NewAPI" / "Controllers"
+OLD_CTRL = ROOT / "NIGA_OldAPI" / "Homeocentrum.Niga.OldAPI" / "Controllers"
+NEW_DTO = ROOT / "NIGA_NewAPI" / "Homeocentrum.Niga.NewAPI.Domain"
 URL_HELPER = ROOT / "NIGAHomeopathy_UI" / "src" / "helpers" / "url_helper.js"
 REAL_HELPER = ROOT / "NIGAHomeopathy_UI" / "src" / "helpers" / "realbackend_helper.js"
 SWAGGER_OLD = ROOT / ".tmp" / "swagger_old.json"

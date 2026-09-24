@@ -10,7 +10,7 @@ Clients **poll** `GET Tele/Session/{id}`, queue, chat list — no SignalR hub.
 
 Live A/V media only appears when `TeleVideo:Vendor` is set and vendor keys are filled. Until then Token/Rejoin return a **Stub** token + `clientConfig` so SPA/mobile share one contract.
 
-## appsettings (Niga-Web)
+## appsettings (`Homeocentrum.Niga.NewAPI`)
 
 ```json
 "Sms": {
