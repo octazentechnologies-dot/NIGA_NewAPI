@@ -196,6 +196,10 @@ app.Use(async (context, next) =>
     await next();
 });
 
+// Same favicon as the SPA website tab (also overrides Swagger UI's default icons).
+app.UseHomeocentrumFavicon();
+app.UseStaticFiles();
+
 // Swagger is behind SwaggerAuth. The sign-in page fills the docs URL from this browser host.
 app.UseMiddleware<SwaggerGateMiddleware>("Homeocentrum New API");
 app.UseSwagger();
@@ -203,6 +207,13 @@ app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Homeocentrum New API");
     c.DocumentTitle = "Homeocentrum New API";
+    c.HeadContent =
+        "<link rel=\"icon\" type=\"image/png\" href=\"/favicon.png\" />" +
+        "<link rel=\"shortcut icon\" href=\"/favicon.ico\" />" +
+        "<script>document.addEventListener('DOMContentLoaded',function(){" +
+        "document.querySelectorAll('link[rel*=\"icon\"]').forEach(function(el){el.parentNode.removeChild(el);});" +
+        "var l=document.createElement('link');l.rel='icon';l.type='image/png';l.href='/favicon.png?v=hc';document.head.appendChild(l);" +
+        "});</script>";
 });
 
 app.UseCors(builder => 
