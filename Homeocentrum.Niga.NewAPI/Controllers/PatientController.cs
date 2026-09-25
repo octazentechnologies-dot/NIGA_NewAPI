@@ -47,6 +47,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, UserId))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
 
+            // Route {UserId} is the clinic owner (Doctor.UserId). Always bind it — query UserId alone was optional and broke search.
+            parameterParams.UserId = (int)UserId;
+
             var patientList = await _patientService.GetCases(parameterParams);
             Response.AddPaginationHeader(patientList.CurrentPage, patientList.PageSize,
                 patientList.TotalCount, patientList.TotalPages);

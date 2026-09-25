@@ -187,21 +187,36 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
         {
             var errorResponseModel = new ErrorResponseModel();
 
-            // var doctorEntity = context.Doctors.FirstOrDefault(x => x.UserId == parameter.UserId);
+            // parameter.UserId is Doctor.UserId (JWT / route). Case rows store DoctorId (FK), not UserId.
+            var clinicUserId = parameter.UserId ?? 0;
+            var doctorId = await context.Doctors.AsNoTracking()
+                .Where(d => d.DeleteStatus != true && d.UserId == clinicUserId)
+                .Select(d => (int?)d.DoctorId)
+                .FirstOrDefaultAsync();
+            if (doctorId == null && clinicUserId > 0)
+            {
+                // Legacy callers sometimes passed DoctorId in the UserId slot.
+                doctorId = await context.Doctors.AsNoTracking()
+                    .Where(d => d.DeleteStatus != true && d.DoctorId == clinicUserId)
+                    .Select(d => (int?)d.DoctorId)
+                    .FirstOrDefaultAsync();
+            }
 
-            // if (doctorEntity == null)
-            // {
-            //     errorResponseModel.StatusCode = HttpStatusCode.NotFound;
-            //     errorResponseModel.Message = "Doctor not found";
-            //     return null;
-            // }
+            if (doctorId == null)
+            {
+                return new PagedList<PatientModel>(
+                    Array.Empty<PatientModel>(),
+                    0,
+                    parameter.PageNumber,
+                    parameter.PageSize);
+            }
 
             // Single LINQ query – no Include, no foreach
             var patientModelList =
                 from c in context.CaseEntryDetails
                 join p in context.Patients on c.PatientId equals p.PatientId
                 join d in context.Doctors on c.DoctorId equals d.DoctorId
-                where c.DoctorId == parameter.UserId && c.DeleteStatus == false
+                where c.DoctorId == doctorId.Value && c.DeleteStatus == false
                 orderby c.PatientId descending
                 select new PatientModel
                 {
@@ -247,24 +262,14 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
 
             if (!string.IsNullOrEmpty(parameter.search))
             {
-                var search = parameter.search;
+                // EF Core cannot translate string.Contains(..., StringComparison) — use
+                // single-arg Contains (SQL LIKE; CI collation covers case-insensitive match).
+                var search = parameter.search.Trim();
                 patientModelList = patientModelList.Where(x =>
-                    (
-                        !string.IsNullOrEmpty(x.PatientName)
-                        && x.PatientName.Contains(search, StringComparison.OrdinalIgnoreCase)
-                    )
-                    || (
-                        !string.IsNullOrEmpty(x.MobileNo)
-                        && x.MobileNo.Contains(search, StringComparison.OrdinalIgnoreCase)
-                    )
-                    || (
-                        !string.IsNullOrEmpty(x.Address)
-                        && x.Address.Contains(search, StringComparison.OrdinalIgnoreCase)
-                    )
-                    || (
-                        !string.IsNullOrEmpty(x.DiagnosisIds)
-                        && x.DiagnosisIds.Contains(search, StringComparison.OrdinalIgnoreCase)
-                    )
+                    (x.PatientName != null && x.PatientName.Contains(search))
+                    || (x.MobileNo != null && x.MobileNo.Contains(search))
+                    || (x.Address != null && x.Address.Contains(search))
+                    || (x.DiagnosisIds != null && x.DiagnosisIds.Contains(search))
                 );
             }
 

@@ -209,7 +209,33 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 .FirstOrDefaultAsync();
 
             if (caseEntry == null)
-                return S3ActionResult.Fail(404, "Case not found for this patient under the treating doctor.");
+            {
+                // REC-12 — reception may log chief complaint before the doctor opens the board.
+                // Create a minimal CaseEntryDetail for this clinic doctor when none exists.
+                var patientOk = await _context.Patients.AsNoTracking()
+                    .AnyAsync(p => p.PatientId == request.PatientId && p.DeleteStatus != true);
+                if (!patientOk)
+                    return S3ActionResult.Fail(404, "Patient not found.");
+
+                var doctor = await _context.Doctors.AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.DoctorId == doctorId && d.DeleteStatus != true);
+                if (doctor == null)
+                    return S3ActionResult.Fail(404, "Treating doctor not found for this clinic.");
+
+                var now = DateTime.Now;
+                caseEntry = new CaseEntryDetail
+                {
+                    PatientId = request.PatientId,
+                    DoctorId = doctorId,
+                    UserId = doctor.UserId,
+                    DateodFirstVisit = now,
+                    DeleteStatus = false,
+                    EnteredBy = userId > 0 ? userId.ToString() : "Reception",
+                    EnteredDate = now,
+                };
+                _context.CaseEntryDetails.Add(caseEntry);
+                await _context.SaveChangesAsync();
+            }
 
             var saved = new List<object>();
             foreach (var text in parts)

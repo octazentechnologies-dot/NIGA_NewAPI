@@ -50,6 +50,7 @@ HEADERS = [
     "Task IDs",
     "What it is used for",
     "Sample request",
+    "Sample Real request",
     "Sample response",
     "API Number",
     "Source doc",
@@ -516,6 +517,7 @@ def write_sheet(wb: Workbook, name: str, rows: list[dict], start_sr: int = 1):
                 r["tasks"],
                 r["use"],
                 r["sample_request"],
+                r.get("sample_real_request") or "",
                 r["sample_response"],
                 r["api_number"],
                 r["source"],
@@ -523,10 +525,10 @@ def write_sheet(wb: Workbook, name: str, rows: list[dict], start_sr: int = 1):
         )
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:{get_column_letter(len(HEADERS))}{ws.max_row}"
-    widths = [6, 48, 10, 22, 28, 22, 18, 12, 18, 10, 12, 10, 12, 14, 10, 14, 36, 40, 40, 12, 22]
+    widths = [6, 48, 10, 22, 28, 22, 18, 12, 18, 10, 12, 10, 12, 14, 10, 14, 36, 40, 55, 40, 12, 22]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=18, max_col=19):
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=18, max_col=20):
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top")
     return ws

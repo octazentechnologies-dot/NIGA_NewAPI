@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -295,7 +296,11 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     var queryLink = $"{siteUrl}/reset-password?token={Uri.EscapeDataString(rawToken)}";
                     resetLink = pathLink;
 
-                    var greeting = WebUtility.HtmlEncode(user.FirstName ?? user.UserName ?? "there");
+                    var fullName = string.Join(" ", new[] { user.FirstName, user.LastName }
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Select(s => s!.Trim()));
+                    var greeting = WebUtility.HtmlEncode(
+                        !string.IsNullOrWhiteSpace(fullName) ? fullName : (user.UserName ?? "there"));
                     var body = new StringBuilder();
                     body.Append("<body style='font-family:Arial,sans-serif;color:#1f2937;'>");
                     body.Append("<p>Hello " + greeting + ",</p>");

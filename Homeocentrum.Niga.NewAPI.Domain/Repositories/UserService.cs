@@ -378,7 +378,12 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 var strBody = new StringBuilder();
                 strBody.Append("<body style='font-family:Arial,sans-serif;color:#1f2937;'>");
                 strBody.Append("<h2 style='color:#1e88e5;'>Welcome to Homeocentrum</h2>");
-                strBody.Append("<p>Hello Dr. " + (userEntity.FirstName ?? userEntity.UserName) + ",</p>");
+                var doctorName = string.Join(" ", new[] { userEntity.FirstName, userEntity.LastName }
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Select(s => s!.Trim()));
+                if (string.IsNullOrWhiteSpace(doctorName))
+                    doctorName = userEntity.UserName ?? "Doctor";
+                strBody.Append("<p>Hello Dr. " + doctorName + ",</p>");
                 strBody.Append("<p>Your account has been created successfully.</p>");
                 strBody.Append("<p>Please sign in and choose a subscription plan to start practising.</p>");
                 strBody.Append("<p><a href='" + siteUrl + "/login?UserId=" + Uri.EscapeDataString(encryptedUserId) + "' style='display:inline-block;padding:10px 18px;background:#1e88e5;color:#fff;text-decoration:none;border-radius:6px;'>Sign in to Homeocentrum</a></p>");
@@ -414,7 +419,12 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 var strBody = new StringBuilder();
                 strBody.Append("<body style='font-family:Arial,sans-serif;color:#1f2937;'>");
                 strBody.Append("<h2 style='color:#1e88e5;'>Activate your Homeocentrum account</h2>");
-                strBody.Append("<p>Hello Dr. " + (userEntity.FirstName ?? userEntity.UserName) + ",</p>");
+                var doctorName = string.Join(" ", new[] { userEntity.FirstName, userEntity.LastName }
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Select(s => s!.Trim()));
+                if (string.IsNullOrWhiteSpace(doctorName))
+                    doctorName = userEntity.UserName ?? "Doctor";
+                strBody.Append("<p>Hello Dr. " + doctorName + ",</p>");
                 strBody.Append("<p>Confirm your email to activate login. Directory listing stays pending until verification.</p>");
                 strBody.Append("<p><a href='" + link + "' style='display:inline-block;padding:10px 18px;background:#1e88e5;color:#fff;text-decoration:none;border-radius:6px;'>Activate account</a></p>");
                 strBody.Append("<p style='color:#6b7280;font-size:12px;'>This link expires in 48 hours.</p>");

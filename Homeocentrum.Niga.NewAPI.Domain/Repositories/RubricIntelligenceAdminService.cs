@@ -182,6 +182,27 @@ public class RubricIntelligenceAdminService : IRubricIntelligenceAdminService
         return (true, "Metaphor deleted.");
     }
 
+    public async Task<(bool Success, string Message, int DeletedCount)> DeleteAllMetaphorsAsync(
+        int adminUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    {
+        var rows = await _context.RubricMetaphorDictionaries
+            .Where(x => x.IsActive)
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+            return (true, "No active metaphors to delete.", 0);
+
+        foreach (var entity in rows)
+        {
+            var before = CloneMetaphor(entity);
+            entity.IsActive = false;
+            entity.VersionNo += 1;
+            await WriteAuditAsync("Metaphor", entity.MetaphorId, "DeleteAll", before, entity, adminUserId, ipAddress, cancellationToken);
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return (true, $"Deleted {rows.Count} metaphor(s).", rows.Count);
+    }
+
     public async Task<(bool Success, string Message)> ApproveMetaphorAsync(
         int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default)
     {
@@ -326,6 +347,28 @@ public class RubricIntelligenceAdminService : IRubricIntelligenceAdminService
         await WriteAuditAsync("Alias", id, "Delete", CloneAlias(entity), entity, adminUserId, ipAddress, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
         return (true, "Alias deleted.");
+    }
+
+    public async Task<(bool Success, string Message, int DeletedCount)> DeleteAllAliasesAsync(
+        int adminUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    {
+        var rows = await _context.RubricAliases
+            .Where(x => x.IsActive)
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+            return (true, "No active aliases to delete.", 0);
+
+        foreach (var entity in rows)
+        {
+            entity.IsActive = false;
+            entity.ChangedBy = adminUserId;
+            entity.ChangedDate = DateTime.UtcNow;
+            entity.VersionNo += 1;
+            await WriteAuditAsync("Alias", entity.RubricAliasId, "DeleteAll", CloneAlias(entity), entity, adminUserId, ipAddress, cancellationToken);
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return (true, $"Deleted {rows.Count} alias(es).", rows.Count);
     }
 
     public Task<List<RubricMetaphorDictionary>> SearchApprovedMetaphorsAsync(

@@ -57,9 +57,28 @@ public class AudioCaseTakingBackgroundService : BackgroundService
                     requeued);
             }
         }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            _logger.LogInformation("Audio case orphan re-queue cancelled during host shutdown/startup.");
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to re-queue orphaned Uploaded audio case sessions on startup.");
+            // Hosting restarts often cancel SQL mid-flight; do not escalate to LogError
+            // (EventLog dispose during failed bind caused AggregateException BackgroundService failed).
+            var cancelled = ex is OperationCanceledException
+                || (ex is Microsoft.Data.SqlClient.SqlException sql
+                    && sql.Message.Contains("cancelled", StringComparison.OrdinalIgnoreCase));
+            try
+            {
+                if (cancelled)
+                    _logger.LogWarning(ex, "Orphaned audio re-queue skipped (startup cancelled).");
+                else
+                    _logger.LogWarning(ex, "Failed to re-queue orphaned Uploaded audio case sessions on startup.");
+            }
+            catch
+            {
+                // Swallow logger dispose races during failed host start.
+            }
         }
 
         var workers = Math.Clamp(_options.MaxConcurrentProcessingWorkers, 1, 8);

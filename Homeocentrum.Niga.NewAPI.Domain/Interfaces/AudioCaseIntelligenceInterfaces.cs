@@ -380,6 +380,9 @@ public interface IRubricIntelligenceAdminService
     Task<(bool Success, string Message)> DeleteMetaphorAsync(
         int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default);
 
+    Task<(bool Success, string Message, int DeletedCount)> DeleteAllMetaphorsAsync(
+        int adminUserId, string? ipAddress, CancellationToken cancellationToken = default);
+
     Task<(bool Success, string Message)> ApproveMetaphorAsync(
         int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default);
 
@@ -399,6 +402,9 @@ public interface IRubricIntelligenceAdminService
 
     Task<(bool Success, string Message)> DeleteAliasAsync(
         int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default);
+
+    Task<(bool Success, string Message, int DeletedCount)> DeleteAllAliasesAsync(
+        int adminUserId, string? ipAddress, CancellationToken cancellationToken = default);
 
     Task<List<RubricMetaphorDictionary>> SearchApprovedMetaphorsAsync(
         IEnumerable<string> normalizedTerms, string? language, CancellationToken cancellationToken = default);

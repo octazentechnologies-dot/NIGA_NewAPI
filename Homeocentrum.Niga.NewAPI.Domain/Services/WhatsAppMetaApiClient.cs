@@ -50,10 +50,23 @@ public class WhatsAppMetaApiClient : IWhatsAppMetaApiClient
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError(
-                    "Meta media upload failed. StatusCode={StatusCode}, Response={Response}",
-                    response.StatusCode,
-                    responseBody);
+                var authFailure = (int)response.StatusCode == 401
+                    || responseBody.Contains("\"code\":190", StringComparison.Ordinal)
+                    || responseBody.Contains("OAuthException", StringComparison.OrdinalIgnoreCase);
+                if (authFailure)
+                {
+                    _logger.LogWarning(
+                        "Meta media upload skipped — WhatsApp token unauthorized. StatusCode={StatusCode}, Response={Response}",
+                        response.StatusCode,
+                        responseBody);
+                }
+                else
+                {
+                    _logger.LogError(
+                        "Meta media upload failed. StatusCode={StatusCode}, Response={Response}",
+                        response.StatusCode,
+                        responseBody);
+                }
                 return (false, null, ExtractMetaError(responseBody) ?? $"Media upload failed ({(int)response.StatusCode}).");
             }
 
@@ -171,10 +184,25 @@ public class WhatsAppMetaApiClient : IWhatsAppMetaApiClient
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError(
-                    "Meta message send failed. StatusCode={StatusCode}, Response={Response}",
-                    response.StatusCode,
-                    responseBody);
+                // OAuth / expired token (HTTP 401, Meta code 190) is config — do not LogError
+                // (daily ERROR matrix + email alert). Appointment cancel/reschedule still succeeds.
+                var authFailure = (int)response.StatusCode == 401
+                    || responseBody.Contains("\"code\":190", StringComparison.Ordinal)
+                    || responseBody.Contains("OAuthException", StringComparison.OrdinalIgnoreCase);
+                if (authFailure)
+                {
+                    _logger.LogWarning(
+                        "Meta message send skipped — WhatsApp token unauthorized. StatusCode={StatusCode}, Response={Response}",
+                        response.StatusCode,
+                        responseBody);
+                }
+                else
+                {
+                    _logger.LogError(
+                        "Meta message send failed. StatusCode={StatusCode}, Response={Response}",
+                        response.StatusCode,
+                        responseBody);
+                }
                 return (false, null, ExtractMetaError(responseBody) ?? $"Message send failed ({(int)response.StatusCode}).");
             }
 

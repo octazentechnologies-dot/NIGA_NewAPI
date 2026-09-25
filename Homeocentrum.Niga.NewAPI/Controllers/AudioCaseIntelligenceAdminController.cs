@@ -110,6 +110,17 @@ public class AudioCaseIntelligenceAdminController : ControllerBase
             : ThreeDBodyPartApiResponseHelper.Failure(message);
     }
 
+    [HttpDelete("metaphors")]
+    public async Task<object> DeleteAllMetaphors()
+    {
+        var userId = User.GetUserId();
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var (success, message, deletedCount) = await _adminService.DeleteAllMetaphorsAsync(userId, ip);
+        return success
+            ? ThreeDBodyPartApiResponseHelper.Success(new { deletedCount }, message)
+            : ThreeDBodyPartApiResponseHelper.Failure(message);
+    }
+
     [HttpPost("metaphors/{id:long}/approve")]
     public async Task<object> ApproveMetaphor(long id)
     {
@@ -189,6 +200,17 @@ public class AudioCaseIntelligenceAdminController : ControllerBase
         var (success, message) = await _adminService.DeleteAliasAsync(userId, id, ip);
         return success
             ? ThreeDBodyPartApiResponseHelper.Success(new { id }, message)
+            : ThreeDBodyPartApiResponseHelper.Failure(message);
+    }
+
+    [HttpDelete("aliases")]
+    public async Task<object> DeleteAllAliases()
+    {
+        var userId = User.GetUserId();
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var (success, message, deletedCount) = await _adminService.DeleteAllAliasesAsync(userId, ip);
+        return success
+            ? ThreeDBodyPartApiResponseHelper.Success(new { deletedCount }, message)
             : ThreeDBodyPartApiResponseHelper.Failure(message);
     }
 }

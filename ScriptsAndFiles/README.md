@@ -17,9 +17,11 @@ Run on `HomeoCentrum_Dev` in numbered order.
 `NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx`
 
 - Regenerated from New-API controllers (+ Old-API rows kept where marked).
-- Includes Sample request / Sample response columns.
+- Includes Sample request / Sample Real request / Sample response columns.
+- Sample Real request: 3 copy-paste examples with real HomeoCentrum_Dev ids (no `:id`).
 - New-API: `http://127.0.0.1:5002` — Old-API: `http://127.0.0.1:5001`
-- Rebuild: `python ScriptsAndFiles/_rebuild_api_catalog_xlsx.py`
+- Rebuild catalog: `python ScriptsAndFiles/_rebuild_api_catalog_xlsx.py`
+- Enrich real samples: `python ScriptsAndFiles/_enrich_sample_real_requests.py`
 
 Do not maintain separate `.md` / `.txt` API documentation copies for handoff.
 

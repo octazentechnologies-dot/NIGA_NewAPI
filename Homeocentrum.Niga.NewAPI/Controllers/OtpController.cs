@@ -1,7 +1,10 @@
+using System.Net;
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
@@ -11,7 +14,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Services;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
-    /// <summary>SEC-07.02 / SEC-07.03 — Generic OTP request/verify + audit (SMS via ISmsSender).</summary>
+    /// <summary>SEC-07.02 / SEC-07.03 — Generic OTP request/verify + audit (SMS via ISmsSender; email via SMTP).</summary>
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
@@ -25,11 +28,17 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
         private readonly NIGACentrumContext _context;
         private readonly ISmsSender _smsSender;
+        private readonly IOptions<SmtpSettingsModel> _mailSettings;
+        private readonly EmailSenderService _emailSender = new();
 
-        public OtpController(NIGACentrumContext context, ISmsSender smsSender)
+        public OtpController(
+            NIGACentrumContext context,
+            ISmsSender smsSender,
+            IOptions<SmtpSettingsModel> mailSettings)
         {
             _context = context;
             _smsSender = smsSender;
+            _mailSettings = mailSettings;
         }
 
         [HttpPost("RequestOtp")]
@@ -102,17 +111,38 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             });
             await _context.SaveChangesAsync();
 
-            await _smsSender.SendAsync(
-                request.Destination,
-                $"Your Homeocentrum verification code is {code}. Valid for {OtpTtlMinutes} minutes. Do not share this code.");
+            var otpText =
+                $"Your Homeocentrum verification code is {code}. Valid for {OtpTtlMinutes} minutes. Do not share this code.";
+            var isEmailDestination = LooksLikeEmail(request.Destination);
+            var delivered = false;
+            var channel = isEmailDestination ? "email" : "sms";
 
-            // When Sms:Provider is Stub, OTP is also returned as devCode in Development only.
+            if (isEmailDestination)
+            {
+                delivered = _emailSender.SendMail(new EmailSenderModel
+                {
+                    ToAddress = request.Destination.Trim(),
+                    Subject = "Homeocentrum - Verification code",
+                    Body = BuildOtpEmailBody(code, OtpTtlMinutes),
+                    isHtml = true
+                }, _mailSettings.Value);
+            }
+            else
+            {
+                delivered = await _smsSender.SendAsync(request.Destination, otpText);
+            }
+
+            // When Sms:Provider is Stub (or Dev), OTP is also returned as devCode for local QA.
             var payload = new Dictionary<string, object?>
             {
                 ["otpChallengeId"] = challenge.OtpChallengeId,
                 ["destinationMasked"] = masked,
                 ["expiresAt"] = challenge.ExpiresAt,
-                ["message"] = "OTP sent via SMS (Stub until Sms:Provider keys are set)."
+                ["channel"] = channel,
+                ["delivered"] = delivered,
+                ["message"] = delivered
+                    ? $"OTP sent via {channel}."
+                    : $"OTP created but {channel} delivery did not confirm. Check provider/SMTP settings."
             };
             if (HttpContext.RequestServices.GetService<IHostEnvironment>()?.IsDevelopment() == true)
                 payload["devCode"] = code;
@@ -219,6 +249,22 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
             if (d.Length <= 4) return "****";
             return new string('*', d.Length - 4) + d[^4..];
+        }
+
+        private static bool LooksLikeEmail(string destination) =>
+            !string.IsNullOrWhiteSpace(destination) && destination.Contains('@');
+
+        private static string BuildOtpEmailBody(string code, int ttlMinutes)
+        {
+            var safeCode = WebUtility.HtmlEncode(code);
+            var body = new StringBuilder();
+            body.Append("<body style='font-family:Arial,sans-serif;color:#1f2937;'>");
+            body.Append("<p>Hello,</p>");
+            body.Append($"<p>Your Homeocentrum verification code is <strong>{safeCode}</strong>.</p>");
+            body.Append($"<p>This code is valid for {ttlMinutes} minutes. Do not share it with anyone.</p>");
+            body.Append("<p>If you did not request this, ignore this email.</p>");
+            body.Append("</body>");
+            return body.ToString();
         }
     }
 }
