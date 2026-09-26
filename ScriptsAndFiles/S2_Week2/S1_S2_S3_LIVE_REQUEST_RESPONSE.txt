@@ -1,0 +1,2518 @@
+HOMEOcentrum W1–W3 LIVE API REQUEST/RESPONSE
+Date 23-Sep-2026
+Hosts: Old-API http://127.0.0.1:5001   New-API http://127.0.0.1:5038
+All our users: UserName Tufan_<role>  email tufanpowar001@gmail.com  mobile 7768046064  password 123456
+
+--------------------------------------------------------------------------------
+LOGIN Tufan_Admin
+--------------------------------------------------------------------------------
+REQUEST
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Admin",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10030,
+    "userName": "Tufan Admin",
+    "firstName": null,
+    "lastName": null,
+    "isSuperUser": true,
+    "role": "Admin",
+    "token": "<JWT>",
+    "firmIds": null,
+    "roleId": 1,
+    "doctorId": null,
+    "receptionStaffId": null,
+    "doctorUserId": null,
+    "isPlanActive": false,
+    "islastFiveDays": false,
+    "daysRemaining": 0
+  },
+  "warning": null
+}
+
+--------------------------------------------------------------------------------
+LOGIN Tufan_Doctor
+--------------------------------------------------------------------------------
+REQUEST
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Doctor",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10032,
+    "userName": "Tufan Doctor",
+    "firstName": null,
+    "lastName": null,
+    "isSuperUser": false,
+    "role": "Doctor",
+    "token": "<JWT>",
+    "firmIds": null,
+    "roleId": 3,
+    "doctorId": 1010,
+    "receptionStaffId": null,
+    "doctorUserId": null,
+    "isPlanActive": true,
+    "islastFiveDays": false,
+    "daysRemaining": 363
+  },
+  "warning": null
+}
+
+--------------------------------------------------------------------------------
+LOGIN Tufan_Reception
+--------------------------------------------------------------------------------
+REQUEST
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Reception",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10032,
+    "userName": "Tufan Reception",
+    "firstName": "Tufan",
+    "lastName": "Reception",
+    "isSuperUser": false,
+    "role": "Reception",
+    "token": "<JWT>",
+    "firmIds": "2",
+    "roleId": 4,
+    "doctorId": 1010,
+    "receptionStaffId": 4,
+    "doctorUserId": 10032,
+    "isPlanActive": true,
+    "islastFiveDays": false,
+    "daysRemaining": 363
+  }
+}
+
+--------------------------------------------------------------------------------
+LOGIN Tufan_Account
+--------------------------------------------------------------------------------
+REQUEST
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Account",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10029,
+    "userName": "Tufan Account",
+    "firstName": null,
+    "lastName": null,
+    "isSuperUser": false,
+    "role": "Account",
+    "token": "<JWT>",
+    "firmIds": null,
+    "roleId": 6,
+    "doctorId": null,
+    "receptionStaffId": null,
+    "doctorUserId": null,
+    "isPlanActive": false,
+    "islastFiveDays": false,
+    "daysRemaining": 0
+  },
+  "warning": null
+}
+
+--------------------------------------------------------------------------------
+LOGIN Tufan_Pharmacy
+--------------------------------------------------------------------------------
+REQUEST
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Pharmacy",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10034,
+    "userName": "Tufan Pharmacy",
+    "firstName": null,
+    "lastName": null,
+    "isSuperUser": false,
+    "role": "PharmacyPartner",
+    "token": "<JWT>",
+    "firmIds": null,
+    "roleId": 7,
+    "doctorId": null,
+    "receptionStaffId": null,
+    "doctorUserId": null,
+    "isPlanActive": false,
+    "islastFiveDays": false,
+    "daysRemaining": 0
+  },
+  "warning": null
+}
+
+--------------------------------------------------------------------------------
+LOGIN Tufan_Patient
+--------------------------------------------------------------------------------
+REQUEST
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Patient",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10033,
+    "userName": "Tufan Patient",
+    "firstName": null,
+    "lastName": null,
+    "isSuperUser": false,
+    "role": "Patient",
+    "token": "<JWT>",
+    "firmIds": null,
+    "roleId": 5,
+    "doctorId": null,
+    "receptionStaffId": null,
+    "doctorUserId": null,
+    "isPlanActive": false,
+    "islastFiveDays": false,
+    "daysRemaining": 0
+  },
+  "warning": null
+}
+
+--------------------------------------------------------------------------------
+LOGIN Tufan_Caregiver
+--------------------------------------------------------------------------------
+REQUEST
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Caregiver",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10031,
+    "userName": "Tufan Caregiver",
+    "firstName": null,
+    "lastName": null,
+    "isSuperUser": false,
+    "role": "Patient",
+    "token": "<JWT>",
+    "firmIds": null,
+    "roleId": 5,
+    "doctorId": null,
+    "receptionStaffId": null,
+    "doctorUserId": null,
+    "isPlanActive": false,
+    "islastFiveDays": false,
+    "daysRemaining": 0
+  },
+  "warning": null
+}
+
+--------------------------------------------------------------------------------
+LOGIN Tufan_NoMenu
+--------------------------------------------------------------------------------
+REQUEST
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_NoMenu",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10035,
+    "userName": "Tufan NoMenu",
+    "firstName": null,
+    "lastName": null,
+    "isSuperUser": false,
+    "role": "EmptyMenuProbe",
+    "token": "<JWT>",
+    "firmIds": null,
+    "roleId": 8,
+    "doctorId": null,
+    "receptionStaffId": null,
+    "doctorUserId": null,
+    "isPlanActive": false,
+    "islastFiveDays": false,
+    "daysRemaining": 0
+  },
+  "warning": null
+}
+
+--------------------------------------------------------------------------------
+S1 GET languages
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/mastersAPI/GetLanguages
+
+RESPONSE 200
+[
+  {
+    "languageId": 1,
+    "languageName": "English",
+    "description": "English Language ",
+    "isDeleted": false
+  },
+  {
+    "languageId": 2,
+    "languageName": "Marathi ",
+    "description": "Marathi Language",
+    "isDeleted": false
+  },
+  {
+    "languageId": 3,
+    "languageName": "Hindi",
+    "description": "",
+    "isDeleted": false
+  }
+]
+
+--------------------------------------------------------------------------------
+S1 GET Welcome/Patient
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Welcome/Patient
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "version": "1",
+    "audience": "Patient",
+    "slides": [
+      {
+        "welcomeSlideId": 1,
+        "sortOrder": 1,
+        "title": "Welcome to Homeocentrum",
+        "body": "Your homeopathy care in one place \u00e2\u20ac\u201d appointments, family, and prescriptions.",
+        "version": "1"
+      },
+      {
+        "welcomeSlideId": 2,
+        "sortOrder": 2,
+        "title": "Family first",
+        "body": "Add family members and book for them with one account.",
+        "version": "1"
+      },
+      {
+        "welcomeSlideId": 3,
+        "sortOrder": 3,
+        "title": "Your privacy",
+        "body": "We ask for consent before sharing or recording. You can withdraw anytime.",
+        "version": "1"
+      }
+    ]
+  }
+}
+
+--------------------------------------------------------------------------------
+S1 GET PatientProfile/Me
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/PatientProfile/Me
+Authorization: Bearer <Tufan_Patient JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "userId": 10033,
+    "firstName": "Tufan",
+    "lastName": "Patient",
+    "email": "tufanpowar001@gmail.com",
+    "mobileNo": "7768046064",
+    "patientId": 3046,
+    "patientName": "Tufan Patient",
+    "dateOfBirth": "1990-01-01T00:00:00",
+    "gender": 0,
+    "age": 36,
+    "preferredLanguageId": 1,
+    "welcomeVersionSeen": "1"
+  }
+}
+
+--------------------------------------------------------------------------------
+S1 GET Family
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Family
+Authorization: Bearer <Tufan_Patient JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "ownerPatientId": 3046,
+  "ownerPatientName": "Tufan Patient",
+  "isActingAsCaregiver": false,
+  "data": [
+    {
+      "familyMemberId": 22,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3047,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Audit Spouse S2",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 23,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3048,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 24,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3049,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 25,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3050,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 26,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3051,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 27,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3052,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 28,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3053,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 29,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3056,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 30,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3057,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 31,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3058,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 32,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3068,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 33,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3069,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 34,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3070,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 35,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3072,
+      "relationId": 1,
+      "relation": "Aunt",
+      "patientName": "S1 Live Test Spouse Upd",
+      "mobileNo": "7768046064",
+      "email": "tufanpowar001@gmail.com"
+    },
+    {
+      "familyMemberId": 36,
+      "ownerPatientId": 3046,
+      "memberPatientId": 3073,
+      "relationId": 15,
+      "relation": "Spouse",
+      "patientName": "Anita Live",
+     
+
+--------------------------------------------------------------------------------
+S1 GET Caregiver/Lookup
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Caregiver/Lookup?contact=7768046064
+Authorization: Bearer <Tufan_Patient JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "caregiverUserId": 10009,
+    "displayName": "S1 CaregiverTested",
+    "contact": "tufanpowar001@gmail.com"
+  }
+}
+
+--------------------------------------------------------------------------------
+S1 GET Consent/PrivacyStatus
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Consent/PrivacyStatus
+Authorization: Bearer <Tufan_Patient JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "required": true,
+    "granted": true,
+    "consentRecordId": 71,
+    "grantedAt": "2026-09-23T01:12:08.593",
+    "withdrawnAt": null
+  }
+}
+
+--------------------------------------------------------------------------------
+S1 GET Profile/Me doctor
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Profile/Me
+Authorization: Bearer <Tufan_Doctor JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "doctorId": 1010,
+    "userId": 10032,
+    "firstName": "Tufan",
+    "middleName": null,
+    "lastName": "Doctor",
+    "clinicName": "Tufan Homeopathy Clinic",
+    "emailId": "tufanpowar001@gmail.com",
+    "mobileNo": "7768046064",
+    "city": "Pune",
+    "addressLine1": "Tufan team clinic",
+    "addressLine2": "",
+    "state": "Maharashtra",
+    "stateId": 14,
+    "pincode": "",
+    "qualificationId": 2,
+    "qualificationName": "BHMS",
+    "passingUniversity": "MUHS Nashik",
+    "passingCertNo": "DEV-TUFAN-DOC-1010",
+    "consultFeeInClinic": 550.0,
+    "consultFeeTele": 420.0,
+    "photoPath": null,
+    "workingHoursNote": "Mon-Sat 10:00-18:00 QA",
+    "isOnline": true,
+    "verificationStatus": "Verified",
+    "directoryVisible": true,
+    "kyc": {
+      "accountHolder": "Tufan Doctor",
+      "bankName": "S2-TESTED Bank",
+      "accountNumber": "XXXX00001010",
+      "ifsc": "HDFC0001234",
+      "pan": "ABCDE1234F"
+    }
+  }
+}
+
+--------------------------------------------------------------------------------
+S1 GET GetMenuByRole doctor
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/mastersAPI/GetMenuByRole
+Authorization: Bearer <Tufan_Doctor JWT>
+
+RESPONSE 200
+[
+  {
+    "menuId": 10,
+    "moduleId": 4,
+    "moduleName": null,
+    "menuName": "Dashboard",
+    "menuNameMarathi": "",
+    "menuType": "Menu",
+    "parentMenuId": null,
+    "menuUrl": "/doctordashboard",
+    "description": "Clinic doctor SPA (ADM-B04)",
+    "menuIcon": "ri-dashboard-2-line",
+    "actionName": null,
+    "controllerName": null,
+    "isLeaf": true,
+    "showInMainMenu": true,
+    "seqNo": 100,
+    "firmIds": "0",
+    "enteredBy": null,
+    "enteredDate": null,
+    "changedBy": null,
+    "changedDate": null,
+    "deleteStatus": false
+  },
+  {
+    "menuId": 11,
+    "moduleId": 4,
+    "moduleName": null,
+    "menuName": "Patient Board",
+    "menuNameMarathi": "",
+    "menuType": "Menu",
+    "parentMenuId": null,
+    "menuUrl": "/doctor/patientboard",
+    "description": "Clinic doctor SPA (ADM-B04)",
+    "menuIcon": "ri-user-heart-line",
+    "actionName": null,
+    "controllerName": null,
+    "isLeaf": true,
+    "showInMainMenu": true,
+    "seqNo": 110,
+    "firmIds": "0",
+    "enteredBy": null,
+    "enteredDate": null,
+    "changedBy": null,
+    "changedDate": null,
+    "deleteStatus": false
+  },
+  {
+    "menuId": 12,
+    "moduleId": 4,
+    "moduleName": null,
+    "menuName": "Anatomy",
+    "menuNameMarathi": "",
+    "menuType": "Menu",
+    "parentMenuId": null,
+    "menuUrl": "/doctor/anatomy",
+    "description": "Clinic doctor SPA (ADM-B04)",
+    "menuIcon": "ri-body-scan-line",
+    "actionName": null,
+    "controllerName": null,
+    "isLeaf": true,
+    "showInMainMenu": true,
+    "seqNo": 120,
+    "firmIds": "0",
+    "enteredBy": null,
+    "enteredDate": null,
+    "changedBy": null,
+    "changedDate": null,
+    "deleteStatus": false
+  },
+  {
+    "menuId": 14,
+    "moduleId": 4,
+    "moduleName": null,
+    "menuName": "Reception Staff",
+    "menuNameMarathi": "",
+    "menuType": "Menu",
+    "parentMenuId": null,
+    "menuUrl": "/doctor/reception-staff",
+    "description": "S2 Week 2 doctor SPA",
+    "menuIcon": "ri-user-star-line",
+    "actionName": null,
+    "controllerName": null,
+    "isLeaf": true,
+    "showInMainMenu": true,
+    "seqNo": 140,
+    "firmIds": "0",
+    "enteredBy": null,
+    "enteredDate": null,
+    "changedBy": null,
+    "changedDate": null,
+    "deleteStatus": false
+  },
+  {
+    "menuId": 15,
+    "moduleId": 4,
+    "moduleName": null,
+    "menuName": "Profile",
+    "menuNameMarathi": "",
+    "menuType": "Menu",
+    "parentMenuId": null,
+    "menuUrl": "/profile",
+    "description": "S2 Week 2 doctor SPA",
+    "menuIcon": "ri-user-settings-line",
+    "actionName": null,
+    "controllerName": null,
+    "isLeaf": true,
+    "showInMainMenu": true,
+    "seqNo": 150,
+    "firmIds": "0",
+    "enteredBy": null,
+    "enteredDate": null,
+    "changedBy": null,
+    "changedDate": null,
+    "deleteStatus": false
+  },
+  {
+    "menuId": 67,
+    "moduleId": 4,
+    "moduleName": null,
+    "menuName": "Schedule",
+    "menuNameMarathi": "",
+    "menuType": "Menu",
+    "parentMenuId": null,
+    "menuUrl": "/doctor/schedule",
+    "description": "S3 Week 3",
+    "menuIcon": "ri-calendar-2-line",
+    "actionName": null,
+    "controllerName": null,
+    "isLeaf": true,
+    "showInMainMenu": true,
+    "seqNo": 160,
+    "firmIds": "0",
+    "enteredBy": null,
+    "enteredDate": null,
+    "changedBy": null,
+    "changedDate": null,
+    "deleteStatus": false
+  },
+  {
+    "menuId": 68,
+    "moduleId": 4,
+    "moduleName": null,
+    "menuName": "Support",
+    "menuNameMarathi": "",
+    "menuType": "Menu",
+    "parentMenuId": null,
+    "menuUrl": "/doctor/support",
+    "description": "S3 Week 3",
+    "menuIcon": "ri-customer-service-2-line",
+    "actionName": null,
+    "controllerName": null,
+    "isLeaf": true,
+    "showInMainMenu": true,
+    "seqNo": 170,
+    "firmIds": "0",
+    "enteredBy": null,
+    "enteredDate": null,
+    "changedBy": null,
+    "changedDate": null,
+    "deleteStatus": false
+  },
+  {
+    "menuId": 69,
+    "moduleId": 4,
+    "moduleName": null,
+    "menuName": "Teleconsult",
+    "menuNameMarathi": ""
+
+--------------------------------------------------------------------------------
+S1 GET GetMenuByRole NoMenu
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/mastersAPI/GetMenuByRole
+Authorization: Bearer <Tufan_NoMenu JWT>
+
+RESPONSE 200
+[]
+
+--------------------------------------------------------------------------------
+S2 GET Public/Doctors
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Public/Doctors?pageNumber=1&pageSize=5
+
+RESPONSE 200
+{
+  "success": true,
+  "pageNumber": 1,
+  "pageSize": 5,
+  "totalRecords": 9,
+  "data": [
+    {
+      "doctorId": 4,
+      "displayName": "demo test user demo test user",
+      "qualification": null,
+      "city": "Pune",
+      "clinicName": "demo test user demo test user",
+      "consultFeeInClinic": 550.0,
+      "consultFeeTele": 420.0,
+      "isOnline": true,
+      "verified": true,
+      "isVerified": true,
+      "photoPath": null,
+      "rankingSummary": "Verified credentials \u00b7 Currently online"
+    },
+    {
+      "doctorId": 1010,
+      "displayName": "Tufan Doctor",
+      "qualification": "BHMS",
+      "city": "Pune",
+      "clinicName": "Tufan Homeopathy Clinic",
+      "consultFeeInClinic": 550.0,
+      "consultFeeTele": 420.0,
+      "isOnline": true,
+      "verified": true,
+      "isVerified": true,
+      "photoPath": null,
+      "rankingSummary": "Verified credentials \u00b7 BHMS \u00b7 Currently online"
+    },
+    {
+      "doctorId": 3,
+      "displayName": "NIKHIL JAMDAR",
+      "qualification": null,
+      "city": "Pune",
+      "clinicName": "NIKHIL JAMDAR",
+      "consultFeeInClinic": 500.0,
+      "consultFeeTele": 380.0,
+      "isOnline": true,
+      "verified": true,
+      "isVerified": true,
+      "photoPath": null,
+      "rankingSummary": "Verified credentials \u00b7 Currently online"
+    },
+    {
+      "doctorId": 1,
+      "displayName": "gourav nikam",
+      "qualification": null,
+      "city": "Pune",
+      "clinicName": "gourav nikam",
+      "consultFeeInClinic": 450.0,
+      "consultFeeTele": 340.0,
+      "isOnline": true,
+      "verified": true,
+      "isVerified": true,
+      "photoPath": null,
+      "rankingSummary": "Verified credentials \u00b7 Currently online"
+    },
+    {
+      "doctorId": 8,
+      "displayName": "Gourav Nikam",
+      "qualification": "abc",
+      "city": "kolhapur",
+      "clinicName": "Gourav Nikam",
+      "consultFeeInClinic": 750.0,
+      "consultFeeTele": 580.0,
+      "isOnline": false,
+      "verified": true,
+      "isVerified": true,
+      "photoPath": null,
+      "rankingSummary": "Verified credentials \u00b7 abc"
+    }
+  ]
+}
+
+--------------------------------------------------------------------------------
+S2 GET Public/Doctors/1010
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Public/Doctors/1010
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "workingHoursNote": "Mon-Sat 10:00-18:00 QA",
+    "verificationStatus": "Verified",
+    "rankingReasons": [
+      "Platform verification completed (directory eligible).",
+      "Qualification: BHMS",
+      "Published consultation fees.",
+      "Doctor is online now."
+    ],
+    "doctorId": 1010,
+    "displayName": "Tufan Doctor",
+    "qualification": "BHMS",
+    "city": "Pune",
+    "clinicName": "Tufan Homeopathy Clinic",
+    "consultFeeInClinic": 550.0,
+    "consultFeeTele": 420.0,
+    "isOnline": true,
+    "verified": true,
+    "isVerified": true,
+    "photoPath": null,
+    "rankingSummary": "Verified credentials \u00b7 BHMS \u00b7 Currently online"
+  }
+}
+
+--------------------------------------------------------------------------------
+S2 GET Public/Doctors/1010/Slots
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Public/Doctors/1010/Slots?date=2026-12-20
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "doctorId": 1010,
+    "appointmentDate": "2026-12-20T00:00:00",
+    "hasSchedule": true,
+    "intervalMinutes": 15,
+    "slots": [
+      {
+        "time": "09:00:00",
+        "label": "09:00 AM",
+        "status": "available"
+      },
+      {
+        "time": "09:15:00",
+        "label": "09:15 AM",
+        "status": "booked"
+      },
+      {
+        "time": "09:30:00",
+        "label": "09:30 AM",
+        "status": "booked"
+      },
+      {
+        "time": "09:45:00",
+        "label": "09:45 AM",
+        "status": "booked"
+      },
+      {
+        "time": "10:00:00",
+        "label": "10:00 AM",
+        "status": "booked"
+      },
+      {
+        "time": "10:15:00",
+        "label": "10:15 AM",
+        "status": "booked"
+      },
+      {
+        "time": "10:30:00",
+        "label": "10:30 AM",
+        "status": "break"
+      },
+      {
+        "time": "10:45:00",
+        "label": "10:45 AM",
+        "status": "booked"
+      },
+      {
+        "time": "11:00:00",
+        "label": "11:00 AM",
+        "status": "booked"
+      },
+      {
+        "time": "11:15:00",
+        "label": "11:15 AM",
+        "status": "booked"
+      },
+      {
+        "time": "11:30:00",
+        "label": "11:30 AM",
+        "status": "booked"
+      },
+      {
+        "time": "11:45:00",
+        "label": "11:45 AM",
+        "status": "booked"
+      },
+      {
+        "time": "12:00:00",
+        "label": "12:00 PM",
+        "status": "booked"
+      }
+    ]
+  }
+}
+
+--------------------------------------------------------------------------------
+S2 GET Public/Policies/Booking
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Public/Policies/Booking
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "policyType": "Booking",
+    "version": "2026.09",
+    "title": "Booking consent",
+    "bodyHtml": "<p>S2-TESTED booking consent. Recording and pharmacy share require explicit consent. Version 2026.09.</p>",
+    "effectiveAt": "2026-09-19T17:42:09.61"
+  }
+}
+
+--------------------------------------------------------------------------------
+S2 GET Public/Articles
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Public/Articles
+
+RESPONSE 200
+{
+  "success": true,
+  "pageNumber": 1,
+  "pageSize": 20,
+  "totalRecords": 4,
+  "data": [
+    {
+      "blogId": 5,
+      "blogHead": "Dev sample health article",
+      "blogSubHead": "Homeopathy care",
+      "blogDate": "2026-09-22T22:51:16.117",
+      "blogImage1": null,
+      "bodyUrl": "/api/Public/Articles/5"
+    },
+    {
+      "blogId": 3,
+      "blogHead": "S2-TESTED care article",
+      "blogSubHead": "Homeopathy care category sample",
+      "blogDate": "2026-09-18T00:00:00",
+      "blogImage1": null,
+      "bodyUrl": "/api/Public/Articles/3"
+    },
+    {
+      "blogId": 1,
+      "blogHead": "test",
+      "blogSubHead": "demo",
+      "blogDate": "2025-12-13T00:00:00",
+      "blogImage1": "data:image/jpeg;base64,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
+
+--------------------------------------------------------------------------------
+S2 GET PatientPortal/Home
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/PatientPortal/Home
+Authorization: Bearer <Tufan_Patient JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "patientId": 3046,
+    "patientName": "Tufan Patient",
+    "familyCount": 25,
+    "caregiverCount": 2,
+    "upcomingAppointments": 5,
+    "nextAppointments": [
+      {
+        "patientAppId": 27249,
+        "patientId": 3046,
+        "patientName": null,
+        "mobileNo": null,
+        "email": null,
+        "appointmentDate": "2026-09-23T00:00:00",
+        "appointmentTime": "09:00:00",
+        "status": "E-CONSULT",
+        "deleteStatus": null,
+        "userId": 10032,
+        "doctorId": 1010,
+        "doctorName": null,
+        "caseId": 0,
+        "message": null,
+        "address": null,
+        "age": null,
+        "gender": null,
+        "dateOfBirth": null,
+        "isWhatsAppOptIn": false,
+        "whatsAppOptInDate": null,
+        "visitType": null,
+        "consultMode": null,
+        "paymentStatus": null,
+        "isTele": null,
+        "bookingToken": null,
+        "paymentMethod": null,
+        "payAtClinicAllowed": null,
+        "cancelReasonCode": null,
+        "consultFee": null,
+        "bookingChannel": null
+      },
+      {
+        "patientAppId": 27260,
+        "patientId": 3046,
+        "patientName": null,
+        "mobileNo": null,
+        "email": null,
+        "appointmentDate": "2026-09-23T00:00:00",
+        "appointmentTime": "09:00:00",
+        "status": "WALK-IN",
+        "deleteStatus": null,
+        "userId": 10032,
+        "doctorId": 1010,
+        "doctorName": null,
+        "caseId": 0,
+        "message": null,
+        "address": null,
+        "age": null,
+        "gender": null,
+        "dateOfBirth": null,
+        "isWhatsAppOptIn": false,
+        "whatsAppOptInDate": null,
+        "visitType": null,
+        "consultMode": null,
+        "paymentStatus": null,
+        "isTele": null,
+        "bookingToken": null,
+        "paymentMethod": null,
+        "payAtClinicAllowed": null,
+        "cancelReasonCode": null,
+        "consultFee": null,
+        "bookingChannel": null
+      },
+      {
+        "patientAppId": 27262,
+        "patientId": 3046,
+        "patientName": null,
+        "mobileNo": null,
+        "email": null,
+        "appointmentDate": "2026-09-23T00:00:00",
+        "appointmentTime": "09:30:00",
+        "status": "NOT ARRIVED",
+        "deleteStatus": null,
+        "userId": 10032,
+        "doctorId": 1010,
+        "doctorName": null,
+        "caseId": 0,
+        "message": null,
+        "address": null,
+        "age": null,
+        "gender": null,
+        "dateOfBirth": null,
+        "isWhatsAppOptIn": false,
+        "whatsAppOptInDate": null,
+        "visitType": null,
+        "consultMode": null,
+        "paymentStatus": null,
+        "isTele": null,
+        "bookingToken": null,
+        "paymentMethod": null,
+        "payAtClinicAllowed": null,
+        "cancelReasonCode": null,
+        "consultFee": null,
+        "bookingChannel": null
+      },
+      {
+        "patientAppId": 27263,
+        "patientId": 3046,
+        "patientName": null,
+        "mobileNo": null,
+        "email": null,
+        "appointmentDate": "2026-09-23T00:00:00",
+        "appointmentTime": "09:45:00",
+        "status": "E-CONSULT",
+        "deleteStatus": null,
+        "userId": 10032,
+        "doctorId": 1010,
+        "doctorName": null,
+        "caseId": 0,
+        "message": null,
+        "address": null,
+        "age": null,
+        "gender": null,
+        "dateOfBirth": null,
+        "isWhatsAppOptIn": false,
+        "whatsAppOptInDate": null,
+        "visitType": null,
+        "consultMode": null,
+        "paymentStatus": null,
+        "isTele": null,
+        "bookingToken": null,
+        "paymentMethod": null,
+        "payAtClinicAllowed": null,
+        "cancelReasonCode": null,
+        "consultFee": null,
+        "bookingChannel": null
+      },
+      {
+        "patientAppId": 27153,
+        "patientId": 3046,
+        "patientName": null,
+        "mobileNo": null,
+        "email": null,
+        "appointmentDate": "2026-09-23T00:00:00",
+        "appointmentT
+
+--------------------------------------------------------------------------------
+S2 GET Availability/Me
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Availability/Me
+Authorization: Bearer <Tufan_Doctor JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "doctorId": 1010,
+    "isOnline": true,
+    "workingHoursNote": "Mon-Sat 10:00-18:00 QA",
+    "todaySchedule": {
+      "doctorDailyScheduleId": 11037,
+      "doctorId": 1010,
+      "scheduleDate": "2026-09-23T00:00:00",
+      "slotIntervalMinutes": 15,
+      "workStartTime": "09:00:00",
+      "workEndTime": "18:00:00",
+      "isLocked": true,
+      "breakStartTime": null,
+      "breakEndTime": null
+    },
+    "weekSchedules": [
+      {
+        "doctorDailyScheduleId": 11037,
+        "doctorId": 1010,
+        "scheduleDate": "2026-09-23T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "09:00:00",
+        "workEndTime": "18:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+        "breakEndTime": null
+      },
+      {
+        "doctorDailyScheduleId": 11038,
+        "doctorId": 1010,
+        "scheduleDate": "2026-09-24T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "10:00:00",
+        "workEndTime": "18:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+        "breakEndTime": null
+      },
+      {
+        "doctorDailyScheduleId": 11039,
+        "doctorId": 1010,
+        "scheduleDate": "2026-09-25T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "10:00:00",
+        "workEndTime": "18:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+        "breakEndTime": null
+      },
+      {
+        "doctorDailyScheduleId": 11040,
+        "doctorId": 1010,
+        "scheduleDate": "2026-09-26T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "10:00:00",
+        "workEndTime": "18:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+        "breakEndTime": null
+      },
+      {
+        "doctorDailyScheduleId": 11056,
+        "doctorId": 1010,
+        "scheduleDate": "2026-09-27T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "09:00:00",
+        "workEndTime": "12:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+        "breakEndTime": null
+      },
+      {
+        "doctorDailyScheduleId": 11041,
+        "doctorId": 1010,
+        "scheduleDate": "2026-09-28T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "10:00:00",
+        "workEndTime": "18:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+        "breakEndTime": null
+      },
+      {
+        "doctorDailyScheduleId": 11042,
+        "doctorId": 1010,
+        "scheduleDate": "2026-09-29T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "10:00:00",
+        "workEndTime": "18:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+        "breakEndTime": null
+      },
+      {
+        "doctorDailyScheduleId": 11043,
+        "doctorId": 1010,
+        "scheduleDate": "2026-09-30T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "10:00:00",
+        "workEndTime": "18:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+        "breakEndTime": null
+      },
+      {
+        "doctorDailyScheduleId": 11044,
+        "doctorId": 1010,
+        "scheduleDate": "2026-10-01T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "10:00:00",
+        "workEndTime": "18:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+        "breakEndTime": null
+      },
+      {
+        "doctorDailyScheduleId": 11045,
+        "doctorId": 1010,
+        "scheduleDate": "2026-10-02T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "10:00:00",
+        "workEndTime": "18:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+        "breakEndTime": null
+      },
+      {
+        "doctorDailyScheduleId": 11046,
+        "doctorId": 1010,
+        "scheduleDate": "2026-10-03T00:00:00",
+        "slotIntervalMinutes": 15,
+        "workStartTime": "10:00:00",
+        "workEndTime": "18:00:00",
+        "isLocked": true,
+        "breakStartTime": null,
+     
+
+--------------------------------------------------------------------------------
+S2 GET Enquiry inbox admin
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Enquiry?pageNumber=1&pageSize=5
+Authorization: Bearer <Tufan_Admin JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": [
+    {
+      "enquiryId": 65,
+      "enquiryName": "LineByLine Contact",
+      "enquiryDate": "2026-09-22T20:22:38.35",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "Line-by-line W1-3 enquiry",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 64,
+      "enquiryName": "LineByLine Contact",
+      "enquiryDate": "2026-09-22T20:01:09.707",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "Line-by-line W1-3 enquiry",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 63,
+      "enquiryName": "LineByLine QA",
+      "enquiryDate": "2026-09-22T19:54:07.533",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "Week 1-3 line-by-line UI enquiry.",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 62,
+      "enquiryName": "S2 Audit",
+      "enquiryDate": "2026-09-22T19:46:58.537",
+      "emailId": "tufanpowar@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "Second pass audit enquiry",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 61,
+      "enquiryName": "LineByLine Contact",
+      "enquiryDate": "2026-09-22T19:45:45.45",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "Line-by-line W1-3 enquiry",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 60,
+      "enquiryName": "QA Tester W123",
+      "enquiryDate": "2026-09-22T19:38:27.5",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "Week 1-3 UI retest contact form.",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 59,
+      "enquiryName": "QA API Tester",
+      "enquiryDate": "2026-09-22T19:35:26.297",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "Manual API tester enquiry \u2014 Week 1-3 retest.",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 58,
+      "enquiryName": "QA API Tester",
+      "enquiryDate": "2026-09-22T19:33:03.973",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "Manual API tester enquiry \u2014 Week 1-3 retest.",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 57,
+      "enquiryName": "QA Contact",
+      "enquiryDate": "2026-09-22T19:32:26.773",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "Dev live enquiry from API test",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 56,
+      "enquiryName": "QA API Tester",
+      "enquiryDate": "2026-09-22T18:13:04.243",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "Manual API tester enquiry \u2014 Week 1-3 retest.",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 55,
+      "enquiryName": "QA Tester",
+      "enquiryDate": "2026-09-22T17:55:13.34",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7768046064",
+      "enquiryDetails": "End-user contact form retest after Enquiry wire-up.",
+      "enquiryStatus": true,
+      "ticketStatus": "New",
+      "assignedTo": null
+    },
+    {
+      "enquiryId": 54,
+      "enquiryName": "QA API Tester",
+      "enquiryDate": "2026-09-22T17:50:00.133",
+      "emailId": "tufanpowar001@gmail.com",
+      "mobileNo": "7
+
+--------------------------------------------------------------------------------
+S3 GET GetDailySchedule
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/PatientAppointment/GetDailySchedule?doctorId=1010&scheduleDate=2026-12-20
+Authorization: Bearer <Tufan_Doctor JWT>
+
+RESPONSE 200
+{
+  "doctorDailyScheduleId": 11048,
+  "doctorId": 1010,
+  "scheduleDate": "2026-12-20T00:00:00",
+  "slotIntervalMinutes": 15,
+  "workStartTime": "09:00:00",
+  "workEndTime": "12:00:00",
+  "isLocked": true,
+  "breakStartTime": "10:30:00",
+  "breakEndTime": "10:45:00"
+}
+
+--------------------------------------------------------------------------------
+S3 GET GetAppointmentSlots
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/PatientAppointment/GetAppointmentSlots?doctorId=1010&appointmentDate=2026-12-20
+Authorization: Bearer <Tufan_Doctor JWT>
+
+RESPONSE 200
+{
+  "doctorId": 1010,
+  "appointmentDate": "2026-12-20T00:00:00",
+  "intervalMinutes": 15,
+  "workStartTime": "09:00:00",
+  "workEndTime": "12:00:00",
+  "hasSchedule": true,
+  "slots": [
+    {
+      "time": "09:00:00",
+      "label": "09:00 AM",
+      "status": "available",
+      "patientAppId": null,
+      "patientName": null
+    },
+    {
+      "time": "09:15:00",
+      "label": "09:15 AM",
+      "status": "booked",
+      "patientAppId": 27170,
+      "patientName": "Clinic Demo Vivek"
+    },
+    {
+      "time": "09:30:00",
+      "label": "09:30 AM",
+      "status": "booked",
+      "patientAppId": 27172,
+      "patientName": "Clinic Demo Vivek"
+    },
+    {
+      "time": "09:45:00",
+      "label": "09:45 AM",
+      "status": "booked",
+      "patientAppId": 27165,
+      "patientName": "Clinic Demo Vivek"
+    },
+    {
+      "time": "10:00:00",
+      "label": "10:00 AM",
+      "status": "booked",
+      "patientAppId": 27163,
+      "patientName": "Clinic Demo Priya"
+    },
+    {
+      "time": "10:15:00",
+      "label": "10:15 AM",
+      "status": "booked",
+      "patientAppId": 27175,
+      "patientName": "Clinic Demo Vivek"
+    },
+    {
+      "time": "10:30:00",
+      "label": "10:30 AM",
+      "status": "break",
+      "patientAppId": null,
+      "patientName": null
+    },
+    {
+      "time": "10:45:00",
+      "label": "10:45 AM",
+      "status": "booked",
+      "patientAppId": 27178,
+      "patientName": "Clinic Demo Vivek"
+    },
+    {
+      "time": "11:00:00",
+      "label": "11:00 AM",
+      "status": "booked",
+      "patientAppId": 27196,
+      "patientName": "Clinic Demo Vivek"
+    },
+    {
+      "time": "11:15:00",
+      "label": "11:15 AM",
+      "status": "booked",
+      "patientAppId": 27168,
+      "patientName": "Clinic Demo Vivek"
+    },
+    {
+      "time": "11:30:00",
+      "label": "11:30 AM",
+      "status": "booked",
+      "patientAppId": 27207,
+      "patientName": "Clinic Demo Vivek"
+    },
+    {
+      "time": "11:45:00",
+      "label": "11:45 AM",
+      "status": "booked",
+      "patientAppId": 27219,
+      "patientName": "Clinic Demo Vivek"
+    },
+    {
+      "time": "12:00:00",
+      "label": "12:00 PM",
+      "status": "booked",
+      "patientAppId": 27222,
+      "patientName": "Clinic Demo Vivek"
+    }
+  ]
+}
+
+--------------------------------------------------------------------------------
+S3 GET GetAppointmentsByDate
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/PatientAppointment/GetAppointmentsByDate?userId=10032&appointmentDate=2026-12-20
+Authorization: Bearer <Tufan_Doctor JWT>
+
+RESPONSE 200
+[
+  {
+    "patientAppId": 27173,
+    "patientId": 3065,
+    "patientName": "Clinic Demo Priya",
+    "mobileNo": "7768046064",
+    "email": "tufanpowar001@gmail.com",
+    "appointmentDate": "2026-12-20T00:00:00",
+    "appointmentTime": "09:00:00",
+    "status": "CANCELLED",
+    "deleteStatus": false,
+    "userId": 10032,
+    "doctorId": 1010,
+    "doctorName": null,
+    "caseId": 0,
+    "message": null,
+    "address": "Tufan Homeopathy Clinic demo",
+    "age": 35,
+    "gender": 1,
+    "dateOfBirth": "1991-12-15T00:00:00",
+    "isWhatsAppOptIn": false,
+    "whatsAppOptInDate": null,
+    "visitType": "InClinic",
+    "consultMode": "InClinic",
+    "paymentStatus": "UNPAID",
+    "isTele": false,
+    "bookingToken": null,
+    "paymentMethod": null,
+    "payAtClinicAllowed": true,
+    "cancelReasonCode": "Duplicate",
+    "consultFee": null,
+    "bookingChannel": "Assisted"
+  },
+  {
+    "patientAppId": 27176,
+    "patientId": 3065,
+    "patientName": "Clinic Demo Priya",
+    "mobileNo": "7768046064",
+    "email": "tufanpowar001@gmail.com",
+    "appointmentDate": "2026-12-20T00:00:00",
+    "appointmentTime": "09:00:00",
+    "status": "CANCELLED",
+    "deleteStatus": false,
+    "userId": 10032,
+    "doctorId": 1010,
+    "doctorName": null,
+    "caseId": 0,
+    "message": null,
+    "address": "Tufan Homeopathy Clinic demo",
+    "age": 35,
+    "gender": 1,
+    "dateOfBirth": "1991-12-15T00:00:00",
+    "isWhatsAppOptIn": false,
+    "whatsAppOptInDate": null,
+    "visitType": "InClinic",
+    "consultMode": "InClinic",
+    "paymentStatus": "UNPAID",
+    "isTele": false,
+    "bookingToken": null,
+    "paymentMethod": null,
+    "payAtClinicAllowed": true,
+    "cancelReasonCode": "Duplicate",
+    "consultFee": null,
+    "bookingChannel": "Assisted"
+  },
+  {
+    "patientAppId": 27179,
+    "patientId": 3065,
+    "patientName": "Clinic Demo Priya",
+    "mobileNo": "7768046064",
+    "email": "tufanpowar001@gmail.com",
+    "appointmentDate": "2026-12-20T00:00:00",
+    "appointmentTime": "09:00:00",
+    "status": "CANCELLED",
+    "deleteStatus": false,
+    "userId": 10032,
+    "doctorId": 1010,
+    "doctorName": null,
+    "caseId": 0,
+    "message": null,
+    "address": "Tufan Homeopathy Clinic demo",
+    "age": 35,
+    "gender": 1,
+    "dateOfBirth": "1991-12-15T00:00:00",
+    "isWhatsAppOptIn": false,
+    "whatsAppOptInDate": null,
+    "visitType": "InClinic",
+    "consultMode": "InClinic",
+    "paymentStatus": "UNPAID",
+    "isTele": false,
+    "bookingToken": null,
+    "paymentMethod": null,
+    "payAtClinicAllowed": true,
+    "cancelReasonCode": "Duplicate",
+    "consultFee": null,
+    "bookingChannel": "Assisted"
+  },
+  {
+    "patientAppId": 27197,
+    "patientId": 3065,
+    "patientName": "Clinic Demo Priya",
+    "mobileNo": "7768046064",
+    "email": "tufanpowar001@gmail.com",
+    "appointmentDate": "2026-12-20T00:00:00",
+    "appointmentTime": "09:00:00",
+    "status": "CANCELLED",
+    "deleteStatus": false,
+    "userId": 10032,
+    "doctorId": 1010,
+    "doctorName": null,
+    "caseId": 0,
+    "message": null,
+    "address": "Tufan Homeopathy Clinic demo",
+    "age": 35,
+    "gender": 1,
+    "dateOfBirth": "1991-12-15T00:00:00",
+    "isWhatsAppOptIn": false,
+    "whatsAppOptInDate": null,
+    "visitType": "InClinic",
+    "consultMode": "InClinic",
+    "paymentStatus": "UNPAID",
+    "isTele": false,
+    "bookingToken": null,
+    "paymentMethod": null,
+    "payAtClinicAllowed": true,
+    "cancelReasonCode": "Duplicate",
+    "consultFee": null,
+    "bookingChannel": "Assisted"
+  },
+  {
+    "patientAppId": 27208,
+    "patientId": 3065,
+    "patientName": "Clinic Demo Priya",
+    "mobileNo": "7768046064",
+    "email": "tufanpowar001@gmail.com",
+    "appointmentDate": "2026-12-20T00:00:00",
+    "appointmentTime": "09:00:00",
+    "status": "CANCELLED",
+    "deleteStatus": false,
+    "userId": 10032,
+    "doctorId": 1010,
+    "doctorName": null,
+    "caseId": 0,
+    "message": null,
+    "address": "Tufan Homeopathy Clinic demo",
+    "age": 35,
+    
+
+--------------------------------------------------------------------------------
+S3 GET Queue
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/PatientAppointment/Queue?doctorId=1010
+Authorization: Bearer <Tufan_Reception JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": [
+    {
+      "patientAppId": 27249,
+      "patientId": 3046,
+      "patientName": "Tufan Patient",
+      "mobileNo": "7768046064",
+      "email": null,
+      "appointmentDate": "2026-09-23T00:00:00",
+      "appointmentTime": "09:00:00",
+      "status": "E-CONSULT",
+      "deleteStatus": false,
+      "userId": 10032,
+      "doctorId": 1010,
+      "doctorName": null,
+      "caseId": 0,
+      "message": null,
+      "address": null,
+      "age": null,
+      "gender": null,
+      "dateOfBirth": null,
+      "isWhatsAppOptIn": false,
+      "whatsAppOptInDate": null,
+      "visitType": "Tele",
+      "consultMode": "Tele",
+      "paymentStatus": "PENDING",
+      "isTele": true,
+      "bookingToken": null,
+      "paymentMethod": null,
+      "payAtClinicAllowed": true,
+      "cancelReasonCode": null,
+      "consultFee": null,
+      "bookingChannel": "Public"
+    },
+    {
+      "patientAppId": 27260,
+      "patientId": 3046,
+      "patientName": "Tufan Patient",
+      "mobileNo": "7768046064",
+      "email": null,
+      "appointmentDate": "2026-09-23T00:00:00",
+      "appointmentTime": "09:00:00",
+      "status": "WALK-IN",
+      "deleteStatus": false,
+      "userId": 10032,
+      "doctorId": 1010,
+      "doctorName": null,
+      "caseId": 0,
+      "message": null,
+      "address": null,
+      "age": null,
+      "gender": null,
+      "dateOfBirth": null,
+      "isWhatsAppOptIn": false,
+      "whatsAppOptInDate": null,
+      "visitType": "InClinic",
+      "consultMode": "InClinic",
+      "paymentStatus": "PAID",
+      "isTele": false,
+      "bookingToken": null,
+      "paymentMethod": null,
+      "payAtClinicAllowed": true,
+      "cancelReasonCode": null,
+      "consultFee": null,
+      "bookingChannel": "Staff"
+    },
+    {
+      "patientAppId": 27261,
+      "patientId": 3065,
+      "patientName": "Clinic Demo Priya",
+      "mobileNo": "7768046064",
+      "email": null,
+      "appointmentDate": "2026-09-23T00:00:00",
+      "appointmentTime": "09:15:00",
+      "status": "WALK-IN",
+      "deleteStatus": false,
+      "userId": 10032,
+      "doctorId": 1010,
+      "doctorName": null,
+      "caseId": 0,
+      "message": null,
+      "address": null,
+      "age": null,
+      "gender": null,
+      "dateOfBirth": null,
+      "isWhatsAppOptIn": false,
+      "whatsAppOptInDate": null,
+      "visitType": "InClinic",
+      "consultMode": "InClinic",
+      "paymentStatus": "UNPAID",
+      "isTele": false,
+      "bookingToken": null,
+      "paymentMethod": null,
+      "payAtClinicAllowed": true,
+      "cancelReasonCode": null,
+      "consultFee": null,
+      "bookingChannel": "Staff"
+    },
+    {
+      "patientAppId": 27263,
+      "patientId": 3046,
+      "patientName": "Tufan Patient",
+      "mobileNo": "7768046064",
+      "email": null,
+      "appointmentDate": "2026-09-23T00:00:00",
+      "appointmentTime": "09:45:00",
+      "status": "E-CONSULT",
+      "deleteStatus": false,
+      "userId": 10032,
+      "doctorId": 1010,
+      "doctorName": null,
+      "caseId": 0,
+      "message": null,
+      "address": null,
+      "age": null,
+      "gender": null,
+      "dateOfBirth": null,
+      "isWhatsAppOptIn": false,
+      "whatsAppOptInDate": null,
+      "visitType": "Tele",
+      "consultMode": "Tele",
+      "paymentStatus": "PAID",
+      "isTele": true,
+      "bookingToken": null,
+      "paymentMethod": null,
+      "payAtClinicAllowed": false,
+      "cancelReasonCode": null,
+      "consultFee": null,
+      "bookingChannel": "Public"
+    },
+    {
+      "patientAppId": 27246,
+      "patientId": 3077,
+      "patientName": "Sanjay Patil",
+      "mobileNo": "7768046064",
+      "email": null,
+      "appointmentDate": "2026-09-23T00:00:00",
+      "appointmentTime": "10:00:00",
+      "status": "WALK-IN",
+      "deleteStatus": false,
+      "userId": 10032,
+      "doctorId": 1010,
+      "doctorName": null,
+      "caseId": 0,
+      "message": null,
+      "address": null,
+      "age": null,
+      "gender": null,
+      "dateOfBirth": nu
+
+--------------------------------------------------------------------------------
+S3 GET Reception/Profile
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Reception/Profile
+Authorization: Bearer <Tufan_Reception JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "receptionStaffId": 4,
+    "doctorId": 1010,
+    "fullName": "Tufan Reception",
+    "contactNumber": "7768046064",
+    "emailId": "tufanpowar001@gmail.com",
+    "address": "Tufan team clinic",
+    "isActive": true
+  }
+}
+
+--------------------------------------------------------------------------------
+S3 GET Help
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Help
+
+RESPONSE 200
+{
+  "success": true,
+  "data": [
+    {
+      "helpArticleId": 1,
+      "title": "Booking a visit",
+      "slug": "booking-a-visit",
+      "body": "Choose a doctor, an open slot, and in-clinic or tele. A full day can take a waitlist join. Joining does not reserve the slot.",
+      "isPublished": true
+    },
+    {
+      "helpArticleId": 4,
+      "title": "Cancel a visit",
+      "slug": "s3-static-cancel",
+      "body": "Cancel before the visit starts. Reason Other needs a short note. A cancelled visit does not hold the slot.",
+      "isPublished": true
+    }
+  ]
+}
+
+--------------------------------------------------------------------------------
+S3 GET Tele/Availability/1010
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Tele/Availability/1010
+
+RESPONSE 200
+{
+  "success": true,
+  "data": {
+    "doctorId": 1010,
+    "isOnline": false,
+    "lastHeartbeat": "2026-09-23T01:52:39.97"
+  }
+}
+
+--------------------------------------------------------------------------------
+S3 GET Support/Tickets/Mine
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Support/Tickets/Mine
+Authorization: Bearer <Tufan_Patient JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": [
+    {
+      "supportTicketId": 31,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "booking",
+      "subject": "Line-by-line ticket",
+      "status": "IN_PROGRESS",
+      "priority": "HIGH",
+      "assigneeUserId": null,
+      "slaDueAt": "2026-09-24T01:52:40.16",
+      "createdAt": "2026-09-23T01:52:40.16"
+    },
+    {
+      "supportTicketId": 30,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "booking",
+      "subject": "Line-by-line ticket",
+      "status": "IN_PROGRESS",
+      "priority": "HIGH",
+      "assigneeUserId": null,
+      "slaDueAt": "2026-09-24T01:31:10.593",
+      "createdAt": "2026-09-23T01:31:10.593"
+    },
+    {
+      "supportTicketId": 29,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "booking",
+      "subject": "Second pass ticket",
+      "status": "Closed",
+      "priority": "High",
+      "assigneeUserId": null,
+      "slaDueAt": "2026-09-24T01:16:33.787",
+      "createdAt": "2026-09-23T01:16:33.787"
+    },
+    {
+      "supportTicketId": 28,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "booking",
+      "subject": "Line-by-line ticket",
+      "status": "IN_PROGRESS",
+      "priority": "HIGH",
+      "assigneeUserId": null,
+      "slaDueAt": "2026-09-24T01:15:46.283",
+      "createdAt": "2026-09-23T01:15:46.283"
+    },
+    {
+      "supportTicketId": 27,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "booking",
+      "subject": "QA live support ticket",
+      "status": "IN_PROGRESS",
+      "priority": "HIGH",
+      "assigneeUserId": null,
+      "slaDueAt": "2026-09-24T01:02:27.743",
+      "createdAt": "2026-09-23T01:02:27.743"
+    },
+    {
+      "supportTicketId": 26,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "Booking",
+      "subject": "S3-STATIC booking help",
+      "status": "OPEN",
+      "priority": "NORMAL",
+      "assigneeUserId": null,
+      "slaDueAt": null,
+      "createdAt": "2026-09-22T23:15:11.9"
+    },
+    {
+      "supportTicketId": 25,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "booking",
+      "subject": "QA live support ticket",
+      "status": "IN_PROGRESS",
+      "priority": "HIGH",
+      "assigneeUserId": null,
+      "slaDueAt": "2026-09-23T22:53:22.577",
+      "createdAt": "2026-09-22T22:53:22.577"
+    },
+    {
+      "supportTicketId": 24,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "Payment",
+      "subject": "Dev sample CLOSED ticket",
+      "status": "CLOSED",
+      "priority": "LOW",
+      "assigneeUserId": 10031,
+      "slaDueAt": "2026-09-22T20:50:42.8",
+      "createdAt": "2026-09-22T22:50:42.8"
+    },
+    {
+      "supportTicketId": 22,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "Booking",
+      "subject": "Dev sample OPEN ticket",
+      "status": "OPEN",
+      "priority": "NORMAL",
+      "assigneeUserId": null,
+      "slaDueAt": "2026-09-23T22:50:42.8",
+      "createdAt": "2026-09-22T22:50:42.8"
+    },
+    {
+      "supportTicketId": 21,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "booking",
+      "subject": "Second pass ticket",
+      "status": "Closed",
+      "priority": "High",
+      "assigneeUserId": null,
+      "slaDueAt": "2026-09-23T17:59:30.683",
+      "createdAt": "2026-09-22T17:59:30.683"
+    },
+    {
+      "supportTicketId": 18,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "booking",
+      "subject": "Second pass ticket",
+      "status": "Closed",
+      "priority": "High",
+      "assigneeUserId": null,
+      "slaDueAt": "2026-09-23T17:46:49.717",
+      "createdAt": "2026-09-22T17:46:49.717"
+    },
+    {
+      "supportTicketId": 15,
+      "reporterUserId": 10033,
+      "reporterRole": "Patient",
+      "category": "booking",
+      "subject":
+
+--------------------------------------------------------------------------------
+S3 GET Waitlist
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Waitlist?doctorId=1010
+Authorization: Bearer <Tufan_Doctor JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": [
+    {
+      "bookingWaitlistId": 1,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2026-12-01T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Week3 Wait",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T15:51:09.85"
+    },
+    {
+      "bookingWaitlistId": 2,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2026-12-01T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Week3 Wait",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T15:51:55.153"
+    },
+    {
+      "bookingWaitlistId": 3,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2026-12-01T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Week3 Wait",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T15:52:16.603"
+    },
+    {
+      "bookingWaitlistId": 4,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2026-12-01T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Week3 Wait",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T15:52:45.6"
+    },
+    {
+      "bookingWaitlistId": 5,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2026-12-01T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Week3 Wait",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T15:53:09.233"
+    },
+    {
+      "bookingWaitlistId": 6,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2026-12-01T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Week3 Wait",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T15:53:59.33"
+    },
+    {
+      "bookingWaitlistId": 7,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2026-12-01T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Week3 Wait",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T16:07:12.877"
+    },
+    {
+      "bookingWaitlistId": 8,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2026-12-01T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Week3 Wait",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T16:25:24.04"
+    },
+    {
+      "bookingWaitlistId": 9,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2026-12-01T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Week3 Wait",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T16:56:09.26"
+    },
+    {
+      "bookingWaitlistId": 10,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2027-04-02T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Second Pass",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T17:05:05.877"
+    },
+    {
+      "bookingWaitlistId": 11,
+      "doctorId": 1010,
+      "patientId": null,
+      "requestedDate": "2027-04-02T00:00:00",
+      "consultMode": "Tele",
+      "contactName": "No Offer",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T17:05:05.89"
+    },
+    {
+      "bookingWaitlistId": 12,
+      "doctorId": 1010,
+      "patientId": 3065,
+      "requestedDate": "2027-04-03T00:00:00",
+      "consultMode": "InClinic",
+      "contactName": "Second Pass",
+      "contactMobile": "7768046064",
+      "status": "JOINED",
+      "createdAt": "2026-09-22T17:08:43.193"
+    },
+    {
+      "bookingWaitlistId": 13,
+      "doctorId": 1010,
+      "patientId": null,
+      "requestedDate": "2027-04-03T00:00:00",
+      "consultMode": "Tele",
+      "contactName": "No Offer",
+      "contac
+
+--------------------------------------------------------------------------------
+S1 OTP Request Login
+--------------------------------------------------------------------------------
+REQUEST
+POST http://127.0.0.1:5038/api/Otp/RequestOtp
+Content-Type: application/json
+
+{
+  "action": "Login",
+  "entityType": "Mobile",
+  "entityId": "7768046064"
+}
+
+RESPONSE 400
+{
+  "success": false,
+  "message": "Please check the highlighted fields.",
+  "traceId": "0HNOP6C1T9CE5:00000001",
+  "errors": {
+    "Destination": [
+      "The Destination field is required."
+    ]
+  }
+}
+
+--------------------------------------------------------------------------------
+Account dashboard token check
+--------------------------------------------------------------------------------
+REQUEST
+GET http://127.0.0.1:5038/api/Otp/Audit?pageNumber=1&pageSize=5
+Authorization: Bearer <Tufan_Account JWT>
+
+RESPONSE 200
+{
+  "success": true,
+  "data": [
+    {
+      "otpAuditLogId": 62,
+      "action": "VerifyOtp",
+      "entityType": "Mobile",
+      "entityId": "9999999999",
+      "toMasked": "******9999",
+      "success": false,
+      "at": "2026-09-22T20:22:36.68",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 61,
+      "action": "VerifyOtp",
+      "entityType": "Mobile",
+      "entityId": "7768046064",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T20:22:36.663",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 60,
+      "action": "RequestOtp",
+      "entityType": "Mobile",
+      "entityId": "7768046064",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T20:22:36.56",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 59,
+      "action": "RequestOtp",
+      "entityType": "User",
+      "entityId": "10033",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T20:10:49.517",
+      "actorUserId": 10033
+    },
+    {
+      "otpAuditLogId": 58,
+      "action": "RequestOtp",
+      "entityType": "User",
+      "entityId": "10033",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T20:09:46.457",
+      "actorUserId": 10033
+    },
+    {
+      "otpAuditLogId": 57,
+      "action": "VerifyOtp",
+      "entityType": "Mobile",
+      "entityId": "9999999999",
+      "toMasked": "******9999",
+      "success": false,
+      "at": "2026-09-22T20:01:09.023",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 56,
+      "action": "VerifyOtp",
+      "entityType": "Mobile",
+      "entityId": "7768046064",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T20:01:09.013",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 55,
+      "action": "RequestOtp",
+      "entityType": "Mobile",
+      "entityId": "7768046064",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T20:01:08.983",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 54,
+      "action": "RequestOtp",
+      "entityType": "User",
+      "entityId": "10033",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T19:49:16.58",
+      "actorUserId": 10033
+    },
+    {
+      "otpAuditLogId": 53,
+      "action": "RequestOtp",
+      "entityType": "Mobile",
+      "entityId": "7768046064",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T19:46:58.48",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 52,
+      "action": "VerifyOtp",
+      "entityType": "Mobile",
+      "entityId": "9999999999",
+      "toMasked": "******9999",
+      "success": false,
+      "at": "2026-09-22T19:45:44.767",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 51,
+      "action": "VerifyOtp",
+      "entityType": "Mobile",
+      "entityId": "7768046064",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T19:45:44.76",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 50,
+      "action": "RequestOtp",
+      "entityType": "Mobile",
+      "entityId": "7768046064",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T19:45:44.717",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 49,
+      "action": "RequestOtp",
+      "entityType": "Mobile",
+      "entityId": "7768046064",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T19:32:25.037",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 48,
+      "action": "RequestOtp",
+      "entityType": "Mobile",
+      "entityId": "7768046064",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T17:22:53.567",
+      "actorUserId": null
+    },
+    {
+      "otpAuditLogId": 47,
+      "action": "RequestOtp",
+      "entityType": "Mobile",
+      "entityId": "7768046064",
+      "toMasked": "******6064",
+      "success": true,
+      "at": "2026-09-22T17:21:40.

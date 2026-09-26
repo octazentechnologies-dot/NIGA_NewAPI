@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Homeocentrum.Niga.NewAPI</AssemblyName>
+    <RootNamespace>Homeocentrum.Niga.NewAPI</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AutoMapper" Version="13.0.1" />
+    <PackageReference Include="itext7" Version="8.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="8.0.5" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0-preview.3.24172.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.0-preview.3.24172.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+    <PackageReference Include="RazorLight" Version="2.3.1" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Homeocentrum.Niga.NewAPI.Domain\Homeocentrum.Niga.NewAPI.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Data\ParentChild\" />
+    <Folder Include="Views\" />
+  </ItemGroup>
+
+  <!-- Rebuild copies Domain.dll into this output folder. A running host exe locks that file (MSB3027). -->
+  <Target Name="StopRunningNewApiHost" BeforeTargets="BeforeBuild;BeforeRebuild;BeforeClean">
+    <Exec Command="cmd /c taskkill /F /IM Homeocentrum.Niga.NewAPI.exe /T &gt;nul 2&gt;&amp;1 &amp; taskkill /F /IM Niga-Web.exe /T &gt;nul 2&gt;&amp;1 &amp; exit /b 0" IgnoreExitCode="true" />
+  </Target>
+</Project>

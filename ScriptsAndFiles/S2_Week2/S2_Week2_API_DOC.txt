@@ -9,6 +9,60 @@ Host rule  : New HTTP -> New-API (nigahomeoAPI). Existing URL stays on the host 
 Sample data: 07_TEST_Sample_Data_Insert.sql + 08_CARE_CATEGORIES_RECEPTION_ARTICLES.sql
              (care categories, Dev reception s2.reception, article body).
 Every API below has USE (what the screen/app uses it for), plus HOST, TOKEN, SAMPLE, INPUTS, OUTPUT.
+
+================================================================================
+DEV LOGINS (HomeoCentrum_Dev) — use these in every sample. Do not invent other emails/mobiles.
+================================================================================
+Date       : 23-Sep-2026
+Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
+Clinic login HOST = Old-API  POST http://127.0.0.1:5001/api/Account/Login
+New HTTP HOST     = New-API  http://127.0.0.1:5038/api
+Password for every Tufan_* row: 123456
+Email (all our users): tufanpowar001@gmail.com
+Mobile (all our users): 7768046064
+
+Username          Role              userId   Notes
+Tufan_Admin       Admin             10030    /dashboard
+Tufan_Doctor      Doctor            10032    DoctorID 1010  /doctordashboard
+Tufan_Reception   Reception         staff    DoctorID 1010  DoctorReceptionStaff (not UserMaster)
+Tufan_Account     Account           10029    /accountdashboard
+Tufan_Pharmacy    PharmacyPartner   10034    /pharmacydashboard
+Tufan_Patient     Patient           10033    PatientId 3046
+Tufan_Caregiver   Patient           10031    caregiver on Tufan_Patient
+Tufan_NoMenu      EmptyMenuProbe    10035    GetMenuByRole must be 200 []
+
+REQUEST  (clinic web / doctor / account / pharmacy / patient password login)
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Doctor",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10032,
+    "userName": "TUFAN DOCTOR",
+    "role": "Doctor",
+    "roleId": 3,
+    "token": "<JWT>",
+    "doctorId": 1010,
+    "isPlanActive": false
+  }
+}
+
+Patient login uses userName "Tufan_Patient". Reception uses "Tufan_Reception".
+Admin uses "Tufan_Admin". Account uses "Tufan_Account". Pharmacy uses "Tufan_Pharmacy".
+Header on TOKEN=yes calls: Authorization: Bearer <data.token>
+Other environment: replace http://127.0.0.1:5001 and http://127.0.0.1:5038 with that Old-API and New-API host.
+Numeric ids in samples (userId 10032, doctorId 1010, patientId 3046) are HomeoCentrum_Dev.
+Use data.userId and data.doctorId from the login response on any other database.
+Live copy-paste REQUEST/RESPONSE for Week 1–3 APIs: S1_S2_S3_LIVE_REQUEST_RESPONSE.txt (same ScriptsAndFiles week folder, Documents, Desktop).
+
 --------------------------------------------------------------------------------
 SUGGESTED FLOWS
 --------------------------------------------------------------------------------
@@ -118,9 +172,9 @@ HOST       : New-API
 TOKEN      : no (requires verified PatientAuth bookingSessionId)
 SAMPLE PAYLOAD:
 {
-  "mobile": "9000000018",
+  "mobile": "7768046064",
   "patientName": "S2 Test Patient",
-  "email": "s2.book@homeocentrum.dev",
+  "email": "tufanpowar001@gmail.com",
   "appointmentDate": "2026-09-18T00:00:00",
   "appointmentTime": "10:30",
   "visitType": "InClinic",
@@ -184,7 +238,7 @@ USE        : Anonymous OTP for public booking (WEB-04). Writes OtpChallenge
              Action=PatientAuth. Does not use Login OTP. Rate limit 3 / minute.
 HOST       : New-API
 TOKEN      : no
-SAMPLE PAYLOAD: { "mobile": "9000000018" }
+SAMPLE PAYLOAD: { "mobile": "7768046064" }
 INPUTS     : mobile
 OUTPUT     : { success, otpChallengeId, expiresAt, destinationMasked, devCode? }
              devCode is returned only when ASPNETCORE_ENVIRONMENT=Development
@@ -195,7 +249,7 @@ USE        : Verify PatientAuth OTP and return bookingSessionId required by
              POST /api/Public/Doctors/{id}/Bookings.
 HOST       : New-API
 TOKEN      : no
-SAMPLE PAYLOAD: { "mobile": "9000000018", "code": "123456" }
+SAMPLE PAYLOAD: { "mobile": "7768046064", "code": "123456" }
 INPUTS     : mobile, code
 OUTPUT     : { success, bookingSessionId, mobile }
 
@@ -283,7 +337,7 @@ USE        : Public contact form on New-API (additive). Landing page still posts
 HOST       : New-API
 TOKEN      : no
 SAMPLE PAYLOAD:
-{ "enquiryName": "Guest", "emailId": "s2.enquiry.01@homeocentrum.dev", "mobileNo": "9000000101",
+{ "enquiryName": "Guest", "emailId": "tufanpowar001@gmail.com", "mobileNo": "7768046064",
   "enquiryDetails": "Need a doctor in Pune" }
 INPUTS     : enquiryName, enquiryDetails required
 OUTPUT     : { success, data: { enquiryId, ticketStatus: "New" } }
@@ -509,7 +563,7 @@ URL        : POST /api/Caregiver/Grant
 USE        : Grant caregiver access with OTP Action=GrantCaregiver (PAT-07). Send caregiverContact; omit ids.
 HOST       : New-API
 TOKEN      : patient JWT
-SAMPLE PAYLOAD: { "caregiverContact": "s1.caregiver.tested@homeocentrum.dev", "otpChallengeId": 1, "otpCode": "123456", "scope": "booking" }
+SAMPLE PAYLOAD: { "caregiverContact": "Tufan_Caregiver", "otpChallengeId": 1, "otpCode": "123456", "scope": "booking" }
 OUTPUT     : { success, data: CaregiverAuthorizationDto }
 
 --------------------------------------------------------------------------------
@@ -549,12 +603,13 @@ HOST       : Old-API  API_URL
 
 --------------------------------------------------------------------------------
 URL        : POST /api/Account/Login
-USE        : Clinic login. Reception token now includes RoleName=Reception and
-             DoctorUserID (owning doctor's UserMaster id) for New-API backup/ACL.
+USE        : Clinic login. Reception token includes RoleName=Reception,
+             DoctorID, and doctorUserId (owning doctor's UserMaster id) for
+             New-API dashboard stats. PatientBoardBackup stays DoctorOnly 403.
 HOST       : Old-API
 TOKEN      : no
-SAMPLE PAYLOAD: { "userName": "tufanpowar001@gmail.com", "password": "123456" }
-OUTPUT     : { success, data: { userId, role, token, ... } }
+SAMPLE PAYLOAD: { "userName": "Tufan_Reception", "password": "123456" }
+OUTPUT     : { success, data: { userId, role, token, doctorId, receptionStaffId, doctorUserId, ... } }
 
 --------------------------------------------------------------------------------
 URL        : GET /api/patient/{userId}
@@ -637,7 +692,7 @@ USE        : Landing contact form. Existing URL. Now stores TicketStatus=New (WE
 HOST       : Old-API  (Landing marketingApi.js API_BASE)
 TOKEN      : no on POST; GET/Delete require JWT
 SAMPLE PAYLOAD:
-{ "enquiryName": "Guest", "emailId": "s2.enquiry.01@homeocentrum.dev", "mobileNo": "9000000101",
+{ "enquiryName": "Guest", "emailId": "tufanpowar001@gmail.com", "mobileNo": "7768046064",
   "enquiryDetails": "Need a doctor in Pune" }
 INPUTS     : enquiryName, emailId, mobileNo, enquiryDetails
 OUTPUT     : EnquiryDetailModel including ticketStatus, assignedTo
@@ -720,6 +775,30 @@ SAMPLE PAYLOAD: { "userId": 2 }
 OUTPUT     : existing buckets + isOnline, teleQueueCount, unpaidCount
 
 --------------------------------------------------------------------------------
+URL        : GET /api/doctorDashBoard/GetPatientStats?userId=
+USE        : Status-bucket counts on doctor home (DOC-08). Reception may read the
+             owning doctor's stats (DOC-02.02) until Phase 5 splits chrome.
+HOST       : New-API
+TOKEN      : doctor or reception JWT
+SAMPLE     : GET /api/doctorDashBoard/GetPatientStats?userId=10032
+INPUTS     : userId (Reception JWT remaps to DoctorUserID), optional fromDate, toDate
+OUTPUT     : dictionary of status -> count. Empty clinic is 200 with zeros, not 404/500.
+AUTHZ      : Doctor or Reception (clinic dashboard reader). Account/Patient/Pharmacy 403.
+             Unauthenticated 401. Reception query userId is remapped to JWT DoctorUserID.
+
+--------------------------------------------------------------------------------
+URL        : GET /api/doctorDashBoard/GetPatientStatsCharts?userId=&period=
+USE        : Pie/bar charts on doctor home (DOC-02.02). Reception is allowed.
+             Case-taking APIs stay DoctorOnly.
+HOST       : New-API  (UI getPatientStatsCharts)
+TOKEN      : doctor or reception JWT
+SAMPLE     : GET /api/doctorDashBoard/GetPatientStatsCharts?userId=10032&period=ALL
+INPUTS     : userId, period=ALL|1M|3M|6M, optional fromDate+toDate when period=ALL
+OUTPUT     : PatientStatsChartsResponseModel { period, fromDate, toDate, pieChart.series[6], barChart }
+             Empty clinic is 200 with zeros (not 404/500). Account/Patient/Pharmacy 403. Unauthenticated 401.
+             Reception query userId is remapped to JWT DoctorUserID before the userId>0 check.
+
+--------------------------------------------------------------------------------
 URL        : GET /api/doctorDashBoard/ExportPatients
 USE        : Export patients Excel / CSV / PDF (DOC-06). Already on New-API.
 HOST       : New-API
@@ -733,9 +812,16 @@ URL        : POST /api/PatientBoardBackup/Save
              GET  /api/PatientBoardBackup/Summary|Latest
              POST /api/PatientBoardBackup/Delete
 USE        : Session restore (CLN-19). Intensity-on-clipboard is merged into the
-             backup payload (CLN-07). DoctorOnly — reception 403, patient 403.
+             backup payload (CLN-07). DoctorOnly is an authorization filter so
+             Reception/Patient get 403 before model validation (missing BackupPayload
+             used to return 400). Treating doctor only.
 HOST       : New-API
-TOKEN      : doctor JWT
+TOKEN      : doctor JWT (Save/Summary/Latest/Delete)
+STATUS     : 401 unauthenticated or invalid JWT
+             403 Reception / Patient / Account / Pharmacy (authorization filter runs before model validation)
+             400 treating doctor with missing BackupPayload
+             200 treating doctor with valid payload
+INPUTS     : Save body { backupPayload (required), patientCount, schemaVersion }
 OUTPUT     : existing backup DTOs
 
 --------------------------------------------------------------------------------
@@ -805,8 +891,8 @@ DOC-05  URL  POST /api/patient/ImportPatients  (existing)
         USE  Import patients — ACL caller userId or reception DoctorUserID. No new HTTP.
 DOC-07  URL  POST /api/doctorDashBoard  (Old-API list) / GET api/doctorDashBoard (New-API)
         USE  Recent activity — ACL same as GetCountApp. No new HTTP.
-DOC-08  URL  GET /api/doctorDashBoard/GetPatientStats  (existing)
-        USE  Stats — doctor JWT only (reception 403). No new HTTP.
+DOC-08  URL  GET /api/doctorDashBoard/GetPatientStats + GetPatientStatsCharts
+        USE  Stats/charts — doctor or reception JWT (owning DoctorUserID). Not Patient.
 WEB-09  URL  GET/POST /api/Profile/Me/Credentials + CredentialDocuments
         USE  TRU-01 DoctorVerification + DoctorCredentialDocument
 Doctor mobile must NOT call case-taking (clipboard / CenterOfGravity / audio).

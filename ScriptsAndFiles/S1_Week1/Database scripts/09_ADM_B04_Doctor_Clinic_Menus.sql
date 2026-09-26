@@ -5,6 +5,7 @@ Created      : 20-09-2026
 Script       : 09_ADM_B04_Doctor_Clinic_Menus.sql
 Purpose      : Seed Clinic module + doctor SPA menus and RoleDetails (IsView)
                so GET /api/mastersAPI/GetMenuByRole returns 200 for Doctor.
+               Enquiries is Admin-only (see S2 19_DEV_Seed_Role_Menus.sql).
 Use          : Run on localhost HomeoCentrum_Dev after script 02 (Account/Pharmacy).
 Prerequisites: RoleMaster Doctor; ModuleMaster, MenuMaster, RoleDetails.
 Idempotent   : Yes. Inserts module/menu/role-detail rows only when missing.
@@ -67,8 +68,7 @@ IF OBJECT_ID('tempdb..#DoctorMenus') IS NOT NULL DROP TABLE #DoctorMenus;
 SELECT * INTO #DoctorMenus FROM (VALUES
     (N'Dashboard',     N'/doctordashboard',      100, N'ri-dashboard-2-line'),
     (N'Patient Board', N'/doctor/patientboard',  110, N'ri-user-heart-line'),
-    (N'Anatomy',       N'/doctor/anatomy',       120, N'ri-body-scan-line'),
-    (N'Enquiries',     N'/enquiries',            130, N'ri-mail-line')
+    (N'Anatomy',       N'/doctor/anatomy',       120, N'ri-body-scan-line')
 ) v(MenuName, MenuUrl, SeqNo, Icon);
 
 DECLARE @MenuName NVARCHAR(200), @MenuUrl NVARCHAR(200), @SeqNo INT, @Icon NVARCHAR(100);

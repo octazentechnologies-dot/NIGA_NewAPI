@@ -4,7 +4,11 @@ Author       : Tufan Powar
 Created      : 17-09-2026
 Script       : 05_DEV_Seed_Patient_Portal_TufanPowar.sql
 Purpose      : Local/dev Patient portal login (Tufan Powar) + clinical Patient + map + doctor case.
-Use          : Optional data seed. Run after 01 and 03. Login: tufanpowar001@gmail.com / 123456
+Use          : Optional data seed. Run after 01 and 03.
+               Login: Tufan_Patient / 123456
+               Email tufanpowar001@gmail.com  mobile 7768046064
+               Attaches the case to Tufan_Doctor when that doctor exists,
+               otherwise to NIGA HOMEOPATHY.
 Prerequisites: RoleMaster Patient; UserMaster, Patient, PatientUserMap, Doctor, CaseEntryDetails.
 Idempotent   : Yes. Skips if the login already exists. Checks table/column schema before insert.
 ================================================================================
@@ -43,9 +47,8 @@ IF COL_LENGTH(N'dbo.Patient', N'WhatsAppOptInDate') IS NULL
 IF COL_LENGTH(N'dbo.Patient', N'Age') IS NULL
     ALTER TABLE dbo.Patient ADD Age INT NULL;
 
-DECLARE @UserName NVARCHAR(200) = N'tufanpowar001@gmail.com';
+DECLARE @UserName NVARCHAR(200) = N'Tufan_Patient';
 DECLARE @Email NVARCHAR(200) = N'tufanpowar001@gmail.com';
-DECLARE @DoctorUserName NVARCHAR(200) = N'NIGA HOMEOPATHY';
 DECLARE @Pwd NVARCHAR(500) = N'PBKDF2$v1$100000$uszumO1aPL3it0x1tm/FcA==$hvFLmFwfXrC7i3Id07HFiH9ah4WiIAdjzYPyQnArLxQ=';
 
 DECLARE @PatientRoleId INT = (
@@ -66,13 +69,14 @@ SELECT TOP 1
     @DoctorUserId = d.UserId
 FROM dbo.Doctor d
 INNER JOIN dbo.UserMaster um ON um.UserId = d.UserId
-WHERE um.UserName = @DoctorUserName
+WHERE um.UserName IN (N'Tufan_Doctor', N'NIGA HOMEOPATHY')
   AND ISNULL(d.DeleteStatus, 0) = 0
-  AND ISNULL(um.DeleteStatus, 0) = 0;
+  AND ISNULL(um.DeleteStatus, 0) = 0
+ORDER BY CASE WHEN um.UserName = N'Tufan_Doctor' THEN 0 ELSE 1 END;
 
 IF @DoctorId IS NULL OR @DoctorUserId IS NULL
 BEGIN
-    RAISERROR('Doctor login NIGA HOMEOPATHY not found. Seed cannot attach the case.', 16, 1);
+    RAISERROR('Need doctor login Tufan_Doctor or NIGA HOMEOPATHY before this seed can attach a case.', 16, 1);
     RETURN;
 END
 

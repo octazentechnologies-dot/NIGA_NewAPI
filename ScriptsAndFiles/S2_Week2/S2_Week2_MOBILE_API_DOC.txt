@@ -10,6 +10,58 @@ Login web  : Clinic password login stays Old-API POST /api/Account/Login on :500
 Razorpay   : Stays Old-API. Public booking hold is PaymentStatus=PENDING until classic pay.
 
 Every endpoint has USE / HOST / TOKEN / SAMPLE / INPUTS / OUTPUT.
+Patient app calls the PATIENT APP FLOW. Doctor mobile calls the DOCTOR APP FLOW and must not call case-taking.
+Common for all apps: Old-API POST /api/Account/Login, public doctor list, and care-category chips.
+
+
+================================================================================
+DEV LOGINS (HomeoCentrum_Dev) — use these in every sample. Do not invent other emails/mobiles.
+================================================================================
+Date       : 23-Sep-2026
+Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
+Clinic login HOST = Old-API  POST http://127.0.0.1:5001/api/Account/Login
+New HTTP HOST     = New-API  http://127.0.0.1:5038/api
+Password for every Tufan_* row: 123456
+Email (all our users): tufanpowar001@gmail.com
+Mobile (all our users): 7768046064
+
+Username          Role              userId   Notes
+Tufan_Admin       Admin             10030    /dashboard
+Tufan_Doctor      Doctor            10032    DoctorID 1010  /doctordashboard
+Tufan_Reception   Reception         staff    DoctorID 1010  DoctorReceptionStaff (not UserMaster)
+Tufan_Account     Account           10029    /accountdashboard
+Tufan_Pharmacy    PharmacyPartner   10034    /pharmacydashboard
+Tufan_Patient     Patient           10033    PatientId 3046
+Tufan_Caregiver   Patient           10031    caregiver on Tufan_Patient
+Tufan_NoMenu      EmptyMenuProbe    10035    GetMenuByRole must be 200 []
+
+REQUEST  (clinic web / doctor / account / pharmacy / patient password login)
+POST http://127.0.0.1:5001/api/Account/Login
+Content-Type: application/json
+
+{
+  "userName": "Tufan_Doctor",
+  "password": "123456"
+}
+
+RESPONSE 200
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "userId": 10032,
+    "userName": "TUFAN DOCTOR",
+    "role": "Doctor",
+    "roleId": 2,
+    "token": "<JWT>",
+    "doctorId": 1010,
+    "isPlanActive": false
+  }
+}
+
+Patient login uses userName "Tufan_Patient". Reception uses "Tufan_Reception".
+Admin uses "Tufan_Admin". Account uses "Tufan_Account". Pharmacy uses "Tufan_Pharmacy".
+Header on TOKEN=yes calls: Authorization: Bearer <data.token>
 
 --------------------------------------------------------------------------------
 PATIENT APP FLOW (PAT-01 … PAT-15)
@@ -44,6 +96,10 @@ DOCTOR APP FLOW (DMO-01 … DMO-06)  — no case-taking
   4. GET  /Availability/Me
      PUT  /Availability/Me                         online + hours
   5. GET  /Profile/Me  PUT /Profile/Me             optional profile
+  6. GET  /AppointmentHistoryNote/GetAllAppointmentHistoryNotes?AppointmentId=
+     POST /AppointmentHistoryNote/SaveUpdateAppointmentHistoryNote
+     HOST=Old-API. Same as doctor web dashboard Add / View Case Notes.
+     Do not use Patient Board Global Search, clipboard, COG, or audio from doctor mobile.
 Doctor mobile MUST NOT call clipboard / COG / audio / diagnosis mutate.
 
 ================================================================================
@@ -206,7 +262,7 @@ SAMPLE PAYLOAD:
   "relationId": 1,
   "relation": "Spouse",
   "patientName": "Anita",
-  "mobileNo": "9100000001"
+  "mobileNo": "7768046064"
 }
 OUTPUT     : { success, data: FamilyMemberDto }
 
@@ -262,7 +318,7 @@ URL        : GET /api/Caregiver/Lookup?contact=
 USE        : Find caregiver by registered mobile or email (not UserId).
 HOST       : New-API
 TOKEN      : patient JWT
-SAMPLE     : GET /api/Caregiver/Lookup?contact=s1.caregiver.tested@homeocentrum.dev
+SAMPLE     : GET /api/Caregiver/Lookup?contact=Tufan_Caregiver
 OUTPUT     : { success, data: { caregiverUserId, displayName, contact } }
 
 URL        : POST /api/Otp/RequestOtp
@@ -283,7 +339,7 @@ HOST       : New-API
 TOKEN      : patient JWT
 SAMPLE PAYLOAD:
 {
-  "caregiverContact": "s1.caregiver.tested@homeocentrum.dev",
+  "caregiverContact": "Tufan_Caregiver",
   "scope": "booking",
   "otpChallengeId": 1,
   "otpCode": "123456"
@@ -405,7 +461,7 @@ URL        : POST /api/Account/Login
 USE        : Clinic / doctor app password login (DMO-01). Existing URL.
 HOST       : Old-API  http://localhost:5001/api
 TOKEN      : no
-SAMPLE PAYLOAD: { "userName": "niga homeopathy", "password": "nik123" }
+SAMPLE PAYLOAD: { "userName": "Tufan_Doctor", "password": "123456" }
 OUTPUT     : { success, data: { token, userId, role, doctorId, ... } }
 NOTE       : Do not switch this host. Reception token includes RoleName + DoctorUserID.
 
@@ -510,14 +566,14 @@ URL        : POST /api/PatientAuth/RequestOtp
 USE        : Anonymous OTP before public booking (not Login OTP).
 HOST       : New-API
 TOKEN      : no
-SAMPLE PAYLOAD: { "mobile": "9000000018" }
+SAMPLE PAYLOAD: { "mobile": "7768046064" }
 OUTPUT     : { success, otpChallengeId, expiresAt, destinationMasked, devCode? }
 
 URL        : POST /api/PatientAuth/VerifyOtp
 USE        : Returns bookingSessionId for Create booking.
 HOST       : New-API
 TOKEN      : no
-SAMPLE PAYLOAD: { "mobile": "9000000018", "code": "123456" }
+SAMPLE PAYLOAD: { "mobile": "7768046064", "code": "123456" }
 OUTPUT     : { success, bookingSessionId, mobile }
 
 URL        : GET /api/Public/Policies/Booking
@@ -531,9 +587,9 @@ HOST       : New-API
 TOKEN      : no (requires verified bookingSessionId)
 SAMPLE PAYLOAD:
 {
-  "mobile": "9000000018",
+  "mobile": "7768046064",
   "patientName": "S2 Test Patient",
-  "email": "s2.book@homeocentrum.dev",
+  "email": "tufanpowar001@gmail.com",
   "appointmentDate": "2026-09-20T00:00:00",
   "appointmentTime": "10:30",
   "visitType": "InClinic",
@@ -562,9 +618,9 @@ TOKEN      : yes
 DEV LOGINS / SAMPLE (HomeoCentrum_Dev only)
 ================================================================================
 Patient web     tufanpowar001@gmail.com / 123456     (also PAT OTP on that mobile)
-Doctor web      niga homeopathy / nik123
-Reception ACL   s2.reception / S2Test@123            (must 403 on clipboard/COG)
-Public OTP demo mobile 9000000018  (PatientAuth seed in 07 SQL)
+Doctor web      Tufan_Doctor / 123456
+Reception ACL   Tufan_Reception / 123456            (must 403 on clipboard/COG)
+Public OTP demo mobile 7768046064  (PatientAuth seed in 07 SQL)
 Care categories 12 HumanSystemMaster rows
 Articles        GET /api/Public/Articles/{id} has body
 Do not run 07/08/09 on production.

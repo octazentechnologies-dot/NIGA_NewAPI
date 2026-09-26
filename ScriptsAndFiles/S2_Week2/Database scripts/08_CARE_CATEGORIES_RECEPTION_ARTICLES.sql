@@ -9,7 +9,7 @@ Purpose      : Fill CareCategories (HumanSystemMaster), seed one Dev reception
 Use          : Dev/test only. Run after 01–07 on HomeoCentrum_Dev.
 Marker       : S2-TESTED
 Idempotent   : Yes. Skips names / UserID / BlogHead that already exist.
-Reception    : DoctorReceptionStaff.UserID = s2.reception  (Dev ACL proof)
+Reception    : DoctorReceptionStaff.UserID = Tufan_Reception  (Dev ACL proof)
 ================================================================================
 */
 
@@ -81,7 +81,7 @@ END
 IF OBJECT_ID(N'dbo.DoctorReceptionStaff', N'U') IS NOT NULL
    AND NOT EXISTS (
         SELECT 1 FROM dbo.DoctorReceptionStaff r
-        WHERE r.UserID = N's2.reception' AND ISNULL(r.DeleteStatus, 0) = 0
+        WHERE r.UserID = N'Tufan_Reception' AND ISNULL(r.DeleteStatus, 0) = 0
    )
 BEGIN
     INSERT INTO dbo.DoctorReceptionStaff (
@@ -90,19 +90,19 @@ BEGIN
     )
     VALUES (
         @DoctorId,
-        N's2.reception',
-        N'S2Test@123',
-        N'S2 Reception',
+        N'Tufan_Reception',
+        N'123456',
+        N'Tufan Reception',
         N'S2-TESTED',
-        N'9000000099',
-        N's2.reception@homeocentrum.dev',
+        N'7768046064',
+        N'tufanpowar001@gmail.com',
         N'India', N'Maharashtra', N'Pune',
         NULL, @SeedDate, 0
     );
-    PRINT 'INSERTED DoctorReceptionStaff UserID=s2.reception';
+    PRINT 'INSERTED DoctorReceptionStaff UserID=Tufan_Reception';
 END
 ELSE
-    PRINT 'SKIP DoctorReceptionStaff s2.reception already present';
+    PRINT 'SKIP DoctorReceptionStaff Tufan_Reception already present';
 
 -- ---------------------------------------------------------------------------
 -- Article body for GET /api/Public/Articles/{id}
@@ -136,12 +136,12 @@ DECLARE @CatCount2 INT = (SELECT COUNT(*) FROM dbo.HumanSystemMaster);
 DECLARE @RecCount INT = 0;
 DECLARE @BlogCount INT = 0;
 IF OBJECT_ID(N'dbo.DoctorReceptionStaff', N'U') IS NOT NULL
-    SET @RecCount = (SELECT COUNT(*) FROM dbo.DoctorReceptionStaff WHERE UserID = N's2.reception' AND ISNULL(DeleteStatus,0)=0);
+    SET @RecCount = (SELECT COUNT(*) FROM dbo.DoctorReceptionStaff WHERE UserID = N'Tufan_Reception' AND ISNULL(DeleteStatus,0)=0);
 IF OBJECT_ID(N'dbo.BlogDetails', N'U') IS NOT NULL
     SET @BlogCount = (SELECT COUNT(*) FROM dbo.BlogDetails WHERE ISNULL(IsActive,0)=1);
 
 PRINT '----------------------------------------';
 PRINT CONCAT('CareCategories rows = ', @CatCount2);
-PRINT CONCAT('Reception s2.reception rows = ', @RecCount);
+PRINT CONCAT('Reception Tufan_Reception rows = ', @RecCount);
 PRINT CONCAT('Active BlogDetails = ', @BlogCount);
 PRINT '08_CARE_CATEGORIES_RECEPTION_ARTICLES OK';
