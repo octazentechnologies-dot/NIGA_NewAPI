@@ -31,6 +31,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> CreateSettlementAsync(SettlementCreateRequest request, S4Caller caller);
     Task<S4ActionResult> ListSettlementsAsync(S4Caller caller);
     Task<S4ActionResult> SettlementDetailAsync(long id, S4Caller caller);
+    Task<S4ActionResult> ListPayoutsAsync(S4Caller caller);
     Task<S4ActionResult> RequestPayoutOtpAsync(long payoutId, S4Caller caller);
     Task<S4ActionResult> ApprovePayoutAsync(long payoutId, PayoutDecisionRequest request, S4Caller caller);
     Task<S4ActionResult> RejectPayoutAsync(long payoutId, PayoutDecisionRequest request, S4Caller caller);
@@ -39,11 +40,14 @@ public interface IS4Week4Service
     Task<S4ActionResult> RetryExceptionAsync(long id, S4Caller caller);
     Task<S4ActionResult> ResolveExceptionAsync(long id, ExceptionResolveRequest request, S4Caller caller);
     Task<S4ActionResult> TaxReportAsync(DateTime? from, DateTime? to, S4Caller caller);
+    Task<S4ActionResult> TaxExportAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> ListPayeesAsync(S4Caller caller);
     Task<S4ActionResult> UpdatePayeeAsync(int payeeId, PayeeUpdateRequest request, S4Caller caller);
     Task<S4ActionResult> RequestPayeeBankOtpAsync(int payeeId, S4Caller caller);
     Task<S4ActionResult> ClinicCollectionsAsync(DateTime? from, DateTime? to, int? doctorId, S4Caller caller);
     Task<S4ActionResult> TrailAsync(int? patientAppId, long? paymentOrderId, int? doctorId, S4Caller caller);
+    /// <summary>DMO-10.02 — doctor mobile earnings summary for the signed-in clinic.</summary>
+    Task<S4ActionResult> EarningsSummaryAsync(DateTime? from, DateTime? to, S4Caller caller);
 
     Task<S4ActionResult> MyVerificationAsync(S4Caller caller);
     Task<S4ActionResult> VerificationQueueAsync(string? status, S4Caller caller);
@@ -71,6 +75,8 @@ public interface IS4Week4Service
     Task<S4ActionResult> ActivatePharmacyAsync(int pharmacyId, S4Caller caller);
     Task<S4ActionResult> SweepLicencesAsync(S4Caller caller);
     Task<S4ActionResult> ListSellersAsync(string? area);
+    Task<S4ActionResult> ListPharmacyPartnersAsync(S4Caller caller);
+    Task<S4ActionResult> PharmacyQueueAsync(S4Caller caller);
     Task<S4ActionResult> CreateMedicineOrderAsync(MedicineOrderCreateRequest request, S4Caller caller);
     Task<S4ActionResult> GrantMedicineConsentAsync(int orderId, S4Caller caller);
     Task<S4ActionResult> RequestMedicineAcceptOtpAsync(int orderId, S4Caller caller);
@@ -117,7 +123,7 @@ public class S4Caller
     public bool IsDoctor => Eq("Doctor");
     public bool IsReception => Eq("Reception");
     public bool IsPatient => Eq("Patient");
-    public bool IsPharmacy => Eq("PharmacyPartner");
+    public bool IsPharmacy => Eq("PharmacyPartner") || Eq("Pharmacy");
 
     public bool Eq(string role) => Role.Equals(role, StringComparison.OrdinalIgnoreCase);
 

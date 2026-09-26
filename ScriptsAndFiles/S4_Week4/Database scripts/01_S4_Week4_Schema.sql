@@ -558,3 +558,17 @@ GO
 IF COL_LENGTH(N'dbo.PatientAppointment', N'CorrelationId') IS NULL
     ALTER TABLE dbo.PatientAppointment ADD CorrelationId NVARCHAR(40) NULL;
 GO
+
+/* ERX-03.01 — visit notes typed and excludable from eRx / patient prescription */
+IF OBJECT_ID(N'dbo.AppointmentHistoryNote', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.AppointmentHistoryNote', N'NoteType') IS NULL
+        ALTER TABLE dbo.AppointmentHistoryNote ADD NoteType NVARCHAR(40) NULL;
+    IF COL_LENGTH(N'dbo.AppointmentHistoryNote', N'IsErxExcluded') IS NULL
+        ALTER TABLE dbo.AppointmentHistoryNote ADD IsErxExcluded BIT NOT NULL
+            CONSTRAINT DF_AppointmentHistoryNote_IsErxExcluded DEFAULT (1);
+END
+GO
+
+PRINT '01_S4_Week4_Schema.sql completed.';
+GO

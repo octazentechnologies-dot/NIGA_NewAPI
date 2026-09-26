@@ -1,12 +1,27 @@
 S4 Week 4 API
-Host: New-API http://127.0.0.1:5038
+Host: New-API http://127.0.0.1:5002
 Login stays Old-API. Razorpay keys stay in appsettings Razorpay:KeyId, KeySecret, WebhookSecret.
+Week 4 is port + consult payment stream on the existing gateway — not a new Razorpay account.
 Do not commit those secrets. Empty webhook secret returns 503 GATEWAY_NOT_CONFIGURED.
 A visit is marked PAID only by a signature-checked webhook or CollectAtReception.
 Client POST /api/Payments/Verify only reads status.
+RateLimit:Enabled=false disables global IP rate limiting (New API and Old API).
+QA / live request-response dumps: Documents/Testing only (not in this repo).
 
 SQL (already applied on HomeoCentrum_Dev):
   ScriptsAndFiles/S4_Week4/Database scripts/01_S4_Week4_Schema.sql
+  ScriptsAndFiles/S4_Week4/Database scripts/03_S4_Notification_Outbox.sql
+
+SMS: Sms:Provider=Msg91 (or Twilio). Empty keys enqueue dbo.NotificationOutbox PENDING_KEYS.
+WhatsApp: WhatsAppMeta AccessToken + PhoneNumberId. Empty keys enqueue the same table.
+Reschedule / cancel / waitlist / pay-link / medicine status use that path. Failures do not roll back the business write.
+ErrorAlert:AlertOnWarn=true emails 4xx axios (WARN), 5xx, window errors, and slow API (>= SlowRequestMs) on New API and Old API.
+Razorpay refund POST /v1/payments/{id}/refund when KeyId/KeySecret and GatewayPaymentId exist.
+ApprovePayout writes a NEFT bank file under App_Data/payouts and calls RazorpayX POST /v1/payouts when KeyId, KeySecret, and Razorpay:PayoutAccountNumber are set.
+ConsultOrders returns checkoutMethods card, upi, netbanking, wallet for Razorpay Checkout.
+Trust Decide emails the doctor via smtp (queued to NotificationOutbox if send fails).
+Medicine status also queues Channel=Push PENDING_KEYS until FCM is configured.
+refund.processed writes a DEBIT ledger line (FIN-06.02).
 
 Errors use { success:false, code, message }.
 Codes: VALIDATION 400, FORBIDDEN 403, NOT_FOUND 404, CONFLICT 409, WEBHOOK_SIGNATURE 401,
@@ -18,7 +33,7 @@ Fees
   GET  /api/Fees/History?doctorId=
 
 Payments
-  POST /api/Payments/ConsultOrders     amount comes from fee config
+  POST /api/Payments/ConsultOrders     amount from fee config; checkoutMethods + keyId when gateway ready
   POST /api/Payments/Verify            does not mark paid
   GET  /api/Payments/Appointments/{patientAppId}
   POST /api/Payments/Webhook           X-Razorpay-Signature required
@@ -30,6 +45,7 @@ Refunds and invoices
   GET  /api/Refunds/Policy/{paymentOrderId}
   POST /api/Refunds                    account role
   GET  /api/Refunds
+  GET  /api/Account/Refunds            alias of GET /api/Refunds
   GET  /api/Invoices/ByPayment/{paymentOrderId}
   POST /api/Invoices/ByPayment/{paymentOrderId}
 
@@ -41,6 +57,7 @@ Account
   POST /api/Account/Settlements        dryRun defaults true; confirm=true to commit
   GET  /api/Account/Settlements
   GET  /api/Account/Settlements/{id}
+  GET  /api/Account/Payouts
   POST /api/Account/Payouts/{id}/Otp
   POST /api/Account/Payouts/{id}/Approve
   POST /api/Account/Payouts/{id}/Reject
@@ -49,11 +66,13 @@ Account
   POST /api/Account/Exceptions/{id}/Retry
   POST /api/Account/Exceptions/{id}/Resolve
   GET  /api/Account/Tax
+  GET  /api/Account/Tax/Export         same payload including csv + fileName tax.csv
   GET  /api/Account/Payees
   PUT  /api/Account/Payees/{id}        bank change needs OTP
   POST /api/Account/Payees/{id}/BankOtp
   GET  /api/Account/ClinicCollections
   GET  /api/Account/Trail
+  GET  /api/Earnings/Summary           doctor mobile (DMO-10.02)
 
 Trust and reviews
   GET  /api/Trust/MyStatus
@@ -86,6 +105,8 @@ Medicine
   POST /api/Pharmacy/{id}/Activate
   POST /api/Pharmacy/Licences/Sweep
   GET  /api/Pharmacy/Sellers
+  GET  /api/Pharmacy/Partners            admin
+  GET  /api/Pharmacy/Orders              pharmacy queue
   PUT  /api/Pharmacy/Routing
   POST /api/MedicineOrders
   POST /api/MedicineOrders/{id}/Consent

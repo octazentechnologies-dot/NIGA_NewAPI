@@ -68,7 +68,7 @@ Header on TOKEN=yes calls: Authorization: Bearer <data.token>
 Other environment: replace http://127.0.0.1:5001 and http://127.0.0.1:5038 with that Old-API and New-API host.
 Numeric ids in samples (userId 10032, doctorId 1010, patientId 3046) are HomeoCentrum_Dev.
 Use data.userId and data.doctorId from the login response on any other database.
-Live copy-paste REQUEST/RESPONSE for Week 1–3 APIs: S1_S2_S3_LIVE_REQUEST_RESPONSE.txt (same ScriptsAndFiles week folder, Documents, Desktop).
+Live copy-paste REQUEST/RESPONSE for Week 1–3 APIs: Documents/Testing/S1_S2_S3_LIVE_REQUEST_RESPONSE.txt (testing files live only in Documents/Testing).
 
 --------------------------------------------------------------------------------
 SUGGESTED FLOWS

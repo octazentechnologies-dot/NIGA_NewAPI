@@ -15,15 +15,18 @@ public sealed class ConfigurableSmsSender : ISmsSender
 {
     private readonly SmsOptions _options;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly INotificationOutbox _outbox;
     private readonly ILogger<ConfigurableSmsSender> _logger;
 
     public ConfigurableSmsSender(
         IOptions<SmsOptions> options,
         IHttpClientFactory httpClientFactory,
+        INotificationOutbox outbox,
         ILogger<ConfigurableSmsSender> logger)
     {
         _options = options.Value ?? new SmsOptions();
         _httpClientFactory = httpClientFactory;
+        _outbox = outbox;
         _logger = logger;
     }
 
@@ -51,8 +54,10 @@ public sealed class ConfigurableSmsSender : ISmsSender
             if (provider.Equals("Twilio", StringComparison.OrdinalIgnoreCase) && _options.Twilio.IsConfigured())
                 return await SendTwilioAsync(to, message, cancellationToken);
 
+            await _outbox.EnqueueAsync("SMS", provider, to, message ?? "", "PENDING_KEYS",
+                "Fill Sms:Msg91 or Sms:Twilio in New-API appsettings. Row will send after keys are set.");
             _logger.LogInformation(
-                "SMS stub ({Provider}). DestinationMasked={Masked} Length={Length}. Fill Sms:Msg91 or Sms:Twilio keys to go live.",
+                "SMS queued PENDING_KEYS ({Provider}). DestinationMasked={Masked} Length={Length}",
                 provider,
                 PhoneNormalizer.Mask(to),
                 (message ?? string.Empty).Length);

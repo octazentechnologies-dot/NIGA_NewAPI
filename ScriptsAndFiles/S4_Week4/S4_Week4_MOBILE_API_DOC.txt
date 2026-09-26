@@ -1,0 +1,74 @@
+S4 Week 4 — Mobile API notes
+Host: New-API http://127.0.0.1:5002/api
+Login: Old-API http://127.0.0.1:5001/api (unchanged)
+Razorpay: existing appsettings KeyId / KeySecret / WebhookSecret.
+Week 4 is consult + medicine payment streams on that gateway — not a new merchant account.
+Paid status: webhook signature or CollectAtReception only. Client Verify is read-only.
+Reschedule / cancel / waitlist / pay-link / medicine status: SMS+WhatsApp via New-API (queued in NotificationOutbox until keys).
+DMO-11.02: POST /api/Account/Logout on 401. SPA axios 4xx WARN and 5xx ERROR email via POST /api/Diagnostics/ClientError.
+QA / live dumps: Documents/Testing only.
+
+PAT (patient mobile — same New-API routes as web)
+  GET  /api/Patient/Payments
+  GET  /api/Patient/MedicineOrders
+  GET  /api/Patient/Timeline
+  GET  /api/Patient/Consultations/{patientAppId}/Note
+  POST /api/Patient/Documents              max 10 MB pdf/jpg/jpeg/png
+  GET  /api/Patient/FollowUps
+  POST /api/Patient/FollowUps
+  POST /api/Patient/FollowUps/{taskId}/Complete
+  GET  /api/Patient/Diary
+  POST /api/Patient/Diary
+  PUT  /api/Patient/Diary/{id}
+  DELETE /api/Patient/Diary/{id}
+  GET  /api/Patient/Progress
+  GET  /api/Patient/Consents
+  POST /api/Patient/Consents/{id}/Withdraw
+  POST /api/Patient/DataRequests
+  GET  /api/Patient/Profile
+  PUT  /api/Patient/Profile
+  GET  /api/Fees/Public/{doctorId}          anonymous
+  POST /api/Payments/ConsultOrders          amount from fee config; returns keyId + checkoutMethods when gateway ready
+  POST /api/Payments/Verify                 does not mark paid
+  GET  /api/Payments/Appointments/{id}
+  POST /api/Reviews
+  GET  /api/Reviews/Doctor/{doctorId}       anonymous approved
+  GET  /api/Reviews/Mine
+  POST /api/Reviews/{id}/Appeal
+  GET  /api/Trust/MyStatus
+  GET  /api/Erx/Patient/{appointmentId}
+  GET  /api/Erx/{id}/Pdf
+  POST /api/Erx/Refills
+  GET  /api/Pharmacy/Sellers?area=
+  POST /api/MedicineOrders
+  POST /api/MedicineOrders/{id}/Consent
+  POST /api/MedicineOrders/{id}/AcceptQuote
+  GET  /api/MedicineOrders/{id}/Tracking
+  POST /api/MedicineOrders/Refill/{refillId}
+  POST /api/Payments/MedicineOrders        ONLINE | COD after quote accept
+  GET  /api/Erx/History                    signed snapshots for the logged-in patient
+
+Tele (case chat / rejoin — S3 Week 3 on same New-API host; not re-implemented in S4)
+  POST /api/Tele/Chat
+  GET  /api/Tele/Chat/{sessionId}
+  GET  /api/Tele/Summary/{patientAppId}
+  POST /api/Tele/Sessions/{sessionId}/Rejoin
+
+DMO (doctor mobile — same New-API routes)
+  POST /api/Account/Logout                 DMO-11.02 session end
+  GET  /api/Earnings/Summary?from=&to=     DMO-10.02 own-clinic consult captures/collections
+  PUT  /api/Fees
+  GET  /api/Fees/History?doctorId=
+  GET  /api/Erx/ByAppointment/{id}
+  POST /api/Erx/Sign
+  PUT  /api/Erx/RemedyLines/{id}
+  GET  /api/Erx/Refills
+  POST /api/Erx/Refills/{id}/Approve
+  POST /api/Erx/Refills/{id}/Reject
+  POST /api/Payments/CollectAtReception     CASH | UPI_OFFLINE | CARD_POS | PAY_LINK
+  GET  /api/Trust/{doctorId}
+  GET  /api/Doctors/RankingExplain/{doctorId}
+
+Auth: Bearer from Old-API login. Role claims gate Account / Pharmacy / Admin routes.
+DMO-11.02: SPA axios clients clear session and redirect to /login on 401 (except login/OTP URLs).
+Errors: { success:false, code, message }.

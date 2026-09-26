@@ -1,5 +1,8 @@
 using System.Globalization;
+using System.IO;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
@@ -160,6 +163,17 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = new { run, lines } });
     }
 
+    public async Task<S4ActionResult> ListPayoutsAsync(S4Caller caller)
+    {
+        var deny = AccountOnly(caller);
+        if (deny != null) return deny;
+        var rows = await _context.Database.SqlQuery<PayoutRow>($@"
+            SELECT PayoutId, PayeeType, PayeeId, Amount, Status, SettlementRunId
+            FROM dbo.Payout
+            ORDER BY PayoutId DESC").ToListAsync();
+        return Ok(new { success = true, data = rows });
+    }
+
     public async Task<S4ActionResult> RequestPayoutOtpAsync(long payoutId, S4Caller caller)
     {
         var deny = AccountOnly(caller);
@@ -188,7 +202,13 @@ public partial class S4Week4Service
             UPDATE dbo.Payout
             SET Status = N'APPROVED', DecidedBy = {caller.UserId}, DecidedAt = {DateTime.Now}
             WHERE PayoutId = {payoutId}");
-        return Ok(new { success = true, message = "Payout approved. Bank file dispatch is not sent by this API.", data = new { payoutId, status = "APPROVED" } });
+        var adapter = await DispatchPayoutAsync(payout);
+        return Ok(new
+        {
+            success = true,
+            message = "Payout approved.",
+            data = new { payoutId, status = "APPROVED", adapter }
+        });
     }
 
     public async Task<S4ActionResult> RejectPayoutAsync(long payoutId, PayoutDecisionRequest request, S4Caller caller)
@@ -269,6 +289,9 @@ public partial class S4Week4Service
             SELECT LedgerEntryId, Stream, Direction, Amount, Gst, EntityType, EntityId, PaymentOrderId, CorrelationId, At
             FROM dbo.LedgerEntry
             WHERE At >= {start} AND At < {end}").ToListAsync();
+        var tax = await _context.Database.SqlQuery<TaxConfigRow>($@"
+            SELECT TOP 1 TaxConfigId, GstRate, TreatmentExempt
+            FROM dbo.TaxConfig ORDER BY TaxConfigId").FirstOrDefaultAsync();
         var csv = new StringBuilder();
         csv.AppendLine("Stream,Direction,Amount,Gst,At");
         foreach (var row in rows)
@@ -276,8 +299,20 @@ public partial class S4Week4Service
                 .Append(row.Amount.ToString(CultureInfo.InvariantCulture)).Append(',')
                 .Append(row.Gst.ToString(CultureInfo.InvariantCulture)).Append(',')
                 .AppendLine(row.At.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-        return Ok(new { success = true, gstTotal = rows.Sum(r => r.Gst), csv = csv.ToString(), data = rows });
+        return Ok(new
+        {
+            success = true,
+            fileName = "tax.csv",
+            gstRate = tax?.GstRate ?? 0,
+            treatmentExempt = tax?.TreatmentExempt ?? true,
+            gstTotal = rows.Sum(r => r.Gst),
+            csv = csv.ToString(),
+            data = rows
+        });
     }
+
+    public Task<S4ActionResult> TaxExportAsync(DateTime? from, DateTime? to, S4Caller caller)
+        => TaxReportAsync(from, to, caller);
 
     public async Task<S4ActionResult> ListPayeesAsync(S4Caller caller)
     {
@@ -351,6 +386,58 @@ public partial class S4Week4Service
         return Ok(new { success = true, total = rows.Sum(r => r.Amount), data = rows });
     }
 
+    /// <summary>DMO-10.02 — doctor (or admin) earnings summary for own clinic.</summary>
+    public async Task<S4ActionResult> EarningsSummaryAsync(DateTime? from, DateTime? to, S4Caller caller)
+    {
+        if (!caller.IsDoctor && !caller.IsAdmin && !caller.IsReception && !caller.IsAccount)
+            return Fail(403, "FORBIDDEN", "Only clinic or account staff can view earnings summary.");
+        if (!caller.IsAdmin && (!caller.DoctorId.HasValue || caller.DoctorId.Value <= 0))
+            return Fail(403, "FORBIDDEN", "Doctor context is required.");
+
+        var range = DateRange(from, to, out var start, out var end);
+        if (range != null) return range;
+        var doctorId = caller.IsAdmin && caller.DoctorId is null or <= 0 ? 0 : (caller.DoctorId ?? 0);
+
+        var rows = await _context.Database.SqlQuery<OrderRow>($@"
+            SELECT PaymentOrderId, Stream, PatientAppId, MedicineOrderId, DoctorId, PatientId, Amount, Currency,
+                   Status, Method, GatewayOrderId, GatewayPaymentId, IdempotencyKey, CorrelationId, CreatedAt
+            FROM dbo.PaymentOrder
+            WHERE Stream = N'CONSULT'
+              AND Status IN (N'CAPTURED', N'COLLECTED')
+              AND CreatedAt >= {start} AND CreatedAt < {end}
+              AND ({doctorId} = 0 OR DoctorId = {doctorId})
+            ORDER BY CreatedAt DESC").ToListAsync();
+
+        var online = rows.Where(r => string.Equals(r.Method, "ONLINE", StringComparison.OrdinalIgnoreCase)).Sum(r => r.Amount);
+        var clinic = rows.Where(r =>
+            r.Status == "COLLECTED" ||
+            r.Method is "CASH" or "UPI_OFFLINE" or "CARD_POS").Sum(r => r.Amount);
+        var pendingPayouts = await _context.Database.SqlQuery<MoneyRow>($@"
+            SELECT CAST(ISNULL(SUM(Amount), 0) AS decimal(18,2)) AS Value
+            FROM dbo.Payout
+            WHERE Status = N'PENDING'
+              AND PayeeType = N'Doctor'
+              AND ({doctorId} = 0 OR PayeeId = {doctorId})").FirstAsync();
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                doctorId = doctorId == 0 ? (int?)null : doctorId,
+                from = start,
+                to = end,
+                visitCount = rows.Count,
+                totalCaptured = rows.Sum(r => r.Amount),
+                onlineCaptured = online,
+                clinicCollected = clinic,
+                pendingPayoutAmount = pendingPayouts.Value,
+                currency = rows.FirstOrDefault()?.Currency ?? "INR",
+                recent = rows.Take(20)
+            }
+        });
+    }
+
     public async Task<S4ActionResult> TrailAsync(int? patientAppId, long? paymentOrderId, int? doctorId, S4Caller caller)
     {
         var deny = AccountOnly(caller);
@@ -374,6 +461,103 @@ public partial class S4Week4Service
                   AND ({paymentOrderId ?? 0} = 0 OR PaymentOrderId = {paymentOrderId ?? 0})
                   AND ({doctorId ?? 0} = 0 OR DoctorId = {doctorId ?? 0}))").ToListAsync();
         return Ok(new { success = true, data = new { orders, exceptions = events } });
+    }
+
+    private async Task<object> DispatchPayoutAsync(PayoutRow payout)
+    {
+        var payee = await _context.Database.SqlQuery<PayeeRow>($@"
+            SELECT TOP 1 PayeeId, PayeeType, DoctorId, PharmacyId, AccountName, BankAccount, Ifsc, Pan, KycStatus
+            FROM dbo.Payee
+            WHERE PayeeType = {payout.PayeeType}
+              AND (PayeeId = {payout.PayeeId} OR DoctorId = {payout.PayeeId} OR PharmacyId = {payout.PayeeId})").FirstOrDefaultAsync();
+
+        var folder = Path.Combine(_env.ContentRootPath, "App_Data", "payouts");
+        Directory.CreateDirectory(folder);
+        var fileName = "payout-" + payout.PayoutId + "-" + DateTime.Now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture) + ".csv";
+        var path = Path.Combine(folder, fileName);
+        var csv = new StringBuilder();
+        csv.AppendLine("PayoutId,PayeeType,PayeeId,AccountName,BankAccount,Ifsc,Amount,Currency,Mode");
+        csv.Append(payout.PayoutId).Append(',')
+            .Append(Csv(payout.PayeeType)).Append(',')
+            .Append(payout.PayeeId).Append(',')
+            .Append(Csv(payee?.AccountName)).Append(',')
+            .Append(Csv(payee?.BankAccount)).Append(',')
+            .Append(Csv(payee?.Ifsc)).Append(',')
+            .Append(payout.Amount.ToString(CultureInfo.InvariantCulture)).AppendLine(",INR,NEFT");
+        await File.WriteAllTextAsync(path, csv.ToString());
+
+        var keyId = _config["Razorpay:KeyId"];
+        var keySecret = _config["Razorpay:KeySecret"];
+        var accountNumber = _config["Razorpay:PayoutAccountNumber"];
+        string? gatewayId = null;
+        if (!string.IsNullOrWhiteSpace(keyId)
+            && !string.IsNullOrWhiteSpace(keySecret)
+            && !string.IsNullOrWhiteSpace(accountNumber)
+            && !string.IsNullOrWhiteSpace(payee?.BankAccount)
+            && !string.IsNullOrWhiteSpace(payee?.Ifsc))
+            gatewayId = await TryRazorpayPayoutAsync(keyId!, keySecret!, accountNumber!, payout, payee!);
+
+        var keysMissing = string.IsNullOrWhiteSpace(keyId)
+            || string.IsNullOrWhiteSpace(keySecret)
+            || string.IsNullOrWhiteSpace(accountNumber);
+        return new
+        {
+            mode = gatewayId != null ? "RazorpayX" : "BankFile",
+            bankFile = path,
+            razorpayPayoutId = gatewayId,
+            queuedUntilKeys = keysMissing,
+            message = keysMissing
+                ? "Payout approved. NEFT bank file written. RazorpayX waits on KeyId, KeySecret, and PayoutAccountNumber."
+                : gatewayId != null
+                    ? "Payout approved and sent to RazorpayX."
+                    : "Payout approved. Bank file written. RazorpayX did not accept the payout."
+        };
+    }
+
+    private async Task<string?> TryRazorpayPayoutAsync(string keyId, string keySecret, string accountNumber, PayoutRow payout, PayeeRow payee)
+    {
+        try
+        {
+            var paise = (long)Math.Round(payout.Amount * 100m, 0);
+            var payload = JsonSerializer.Serialize(new
+            {
+                account_number = accountNumber,
+                amount = paise,
+                currency = "INR",
+                mode = "NEFT",
+                purpose = "payout",
+                queue_if_low_balance = true,
+                reference_id = "payout-" + payout.PayoutId,
+                fund_account = new
+                {
+                    account_type = "bank_account",
+                    bank_account = new
+                    {
+                        name = payee.AccountName ?? "Payee",
+                        ifsc = payee.Ifsc,
+                        account_number = payee.BankAccount
+                    }
+                }
+            });
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(keyId + ":" + keySecret));
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
+            using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync("https://api.razorpay.com/v1/payouts", content);
+            var body = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("RazorpayX payout failed with status {Status}", (int)response.StatusCode);
+                return null;
+            }
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "RazorpayX payout call failed for {PayoutId}", payout.PayoutId);
+            return null;
+        }
     }
 
     private async Task<PayoutRow?> LoadPayoutAsync(long id)

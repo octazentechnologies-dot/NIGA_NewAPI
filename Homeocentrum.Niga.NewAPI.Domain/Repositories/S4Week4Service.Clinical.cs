@@ -1,10 +1,14 @@
+using System.Linq;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
+using Homeocentrum.Niga.NewAPI.Domain.Services;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.Repositories;
 
@@ -67,6 +71,7 @@ public partial class S4Week4Service
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.DoctorVerificationEvent (DoctorId, Status, Note, ByUserId, At)
             VALUES ({doctorId}, {status}, {request!.Note}, {caller.UserId}, {DateTime.Now})");
+        await NotifyTrustDecisionAsync(doctor, status, request.Note);
         return Ok(new { success = true, data = new { doctorId, verificationStatus = status, isVerified = IsVerified(status) } });
     }
 
@@ -107,7 +112,7 @@ public partial class S4Week4Service
             FROM dbo.Review
             WHERE DoctorId = {doctorId} AND Status = N'APPROVED'
             ORDER BY At DESC").ToListAsync();
-        return Ok(new { success = true, data = rows.Select(r => new { r.ReviewId, r.Rating, r.Text, r.At }) });
+        return Ok(new { success = true, data = rows.Select(r => new { r.ReviewId, r.Rating, r.Text, r.At }), averageRating = rows.Count == 0 ? 0 : Math.Round(rows.Average(r => r.Rating), 1), reviewCount = rows.Count });
     }
 
     public async Task<S4ActionResult> ListMyReviewsAsync(S4Caller caller)
@@ -488,6 +493,36 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = rows });
     }
 
+    public async Task<S4ActionResult> ListPharmacyPartnersAsync(S4Caller caller)
+    {
+        if (!caller.IsAdmin)
+            return Fail(403, "FORBIDDEN", "Pharmacy partner list is for admin.");
+        var rows = await _context.Database.SqlQuery<SellerRow>($@"
+            SELECT p.PharmacyPartnerId, p.Name, p.Area, p.Status
+            FROM dbo.PharmacyPartner p
+            ORDER BY p.PharmacyPartnerId DESC").ToListAsync();
+        return Ok(new { success = true, data = rows });
+    }
+
+    public async Task<S4ActionResult> PharmacyQueueAsync(S4Caller caller)
+    {
+        if (caller.IsAdmin)
+        {
+            var all = await _context.Database.SqlQuery<MedicineRow>($@"
+                SELECT MedicineOrderId, ErxSnapshotId, PatientId, PharmacyPartnerId, Status, ConsentGranted, QuoteAmount, PayMode
+                FROM dbo.MedicineOrder ORDER BY MedicineOrderId DESC").ToListAsync();
+            return Ok(new { success = true, data = all });
+        }
+        var pharmacyId = await CallerPharmacyIdAsync(caller);
+        if (!pharmacyId.HasValue)
+            return Fail(403, "FORBIDDEN", "This login is not an active pharmacy partner.");
+        var rows = await _context.Database.SqlQuery<MedicineRow>($@"
+            SELECT MedicineOrderId, ErxSnapshotId, PatientId, PharmacyPartnerId, Status, ConsentGranted, QuoteAmount, PayMode
+            FROM dbo.MedicineOrder WHERE PharmacyPartnerId = {pharmacyId.Value}
+            ORDER BY MedicineOrderId DESC").ToListAsync();
+        return Ok(new { success = true, data = rows });
+    }
+
     public async Task<S4ActionResult> CreateMedicineOrderAsync(MedicineOrderCreateRequest request, S4Caller caller)
     {
         if (!caller.IsPatient || caller.PatientId is null)
@@ -641,6 +676,8 @@ public partial class S4Week4Service
 
     public async Task<S4ActionResult> PatientMedicineOrdersAsync(S4Caller caller)
     {
+        if (caller.IsPharmacy)
+            return await PharmacyQueueAsync(caller);
         if (caller.PatientId is null) return Fail(403, "FORBIDDEN", "A patient profile is required.");
         var patientId = caller.PatientId.Value;
         var rows = await _context.Database.SqlQuery<MedicineRow>($@"
@@ -1018,6 +1055,7 @@ public partial class S4Week4Service
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.MedicineOrder SET Status = {status} WHERE MedicineOrderId = {id}");
         await AddMedicineEventAsync(id, status, detail);
+        await NotifyMedicineStatusAsync(id, status);
     }
 
     private async Task AddMedicineEventAsync(int id, string status, string? detail)
@@ -1044,6 +1082,33 @@ public partial class S4Week4Service
         => await _context.Database.SqlQuery<SnapshotRow>($@"
             SELECT ErxSnapshotId, PatientAppId, PatientId, DoctorId, Status, SignedAt
             FROM dbo.ErxSnapshot WHERE ErxSnapshotId = {id}").FirstOrDefaultAsync();
+
+    private async Task NotifyTrustDecisionAsync(Doctor doctor, string status, string? note)
+    {
+        var to = (doctor.EmailId ?? "").Trim();
+        var body =
+            "<p>Your HomeoCentrum verification is now <strong>" + System.Net.WebUtility.HtmlEncode(status) + "</strong>.</p>"
+            + (string.IsNullOrWhiteSpace(note) ? "" : "<p>" + System.Net.WebUtility.HtmlEncode(note) + "</p>");
+        if (string.IsNullOrWhiteSpace(to))
+        {
+            await _outbox.EnqueueAsync("Email", "TrustDecide", "doctor:" + doctor.DoctorId, body, "PENDING_KEYS", "Doctor email is empty.");
+            return;
+        }
+
+        var smtp = _config.GetSection("smtp").Get<SmtpSettingsModel>();
+        var mail = new EmailSenderModel
+        {
+            ToAddress = to,
+            Subject = "HomeoCentrum verification: " + status,
+            Body = body,
+            isHtml = true
+        };
+        var sender = new EmailSenderService();
+        if (sender.SendMail(mail, smtp))
+            return;
+
+        await _outbox.EnqueueAsync("Email", "TrustDecide", to, body, "PENDING_KEYS", sender.LastError);
+    }
 
     private async Task<SnapshotRow?> LoadSnapshotByAppointmentAsync(int patientAppId)
         => await _context.Database.SqlQuery<SnapshotRow>($@"

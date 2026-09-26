@@ -549,6 +549,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
 
             entity.Property(e => e.CreatedDate).HasColumnType("datetime");
             entity.Property(e => e.ModifyDate).HasColumnType("datetime");
+            entity.Property(e => e.NoteType).HasMaxLength(40);
+            entity.Property(e => e.IsErxExcluded).HasDefaultValue(true);
 
             entity.HasOne(d => d.Appointment).WithMany(p => p.AppointmentHistoryNotes)
                 .HasForeignKey(d => d.AppointmentId)
@@ -2511,6 +2513,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
 
             entity.Property(e => e.CreatedDate).HasColumnType("datetime");
             entity.Property(e => e.Dose).HasMaxLength(250);
+            entity.Property(e => e.Frequency).HasMaxLength(80);
+            entity.Property(e => e.Duration).HasMaxLength(80);
+            entity.Property(e => e.Instructions).HasMaxLength(500);
 
             entity.HasOne(d => d.Appointment).WithMany(p => p.PrescriptionRemedyDetails)
                 .HasForeignKey(d => d.AppointmentId)

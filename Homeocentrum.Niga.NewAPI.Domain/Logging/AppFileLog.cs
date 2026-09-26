@@ -25,6 +25,12 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
 
         public string[] Recipients { get; set; } = Array.Empty<string>();
         public int CooldownMinutes { get; set; } = 10;
+
+        /// <summary>When true, 4xx / WARN / slow requests also email (UI axios, API, performance).</summary>
+        public bool AlertOnWarn { get; set; } = true;
+
+        /// <summary>Successful API calls slower than this (ms) email a performance WARN. 0 disables.</summary>
+        public int SlowRequestMs { get; set; } = 3000;
     }
 
     public class FileLogOptions
@@ -58,6 +64,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
 
         /// <summary>ErrorAlert:DailyMatrixEnabled. Default on when the section is missing.</summary>
         public static bool IsDailyMatrixEnabled => _alert?.DailyMatrixEnabled == true;
+        public static bool IsWarnAlertEnabled => _alert?.AlertOnWarn != false;
+        public static int SlowRequestMilliseconds => _alert?.SlowRequestMs > 0 ? _alert.SlowRequestMs : 3000;
 
         public static void SetRequestSnapshot(Dictionary<string, string>? details)
             => RequestSnapshot.Value = details;
@@ -174,9 +182,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
 
         private static bool IsFailureLevel(string level)
         {
-            return string.Equals(level, "ERROR", StringComparison.OrdinalIgnoreCase)
+            if (string.Equals(level, "ERROR", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(level, "CRITICAL", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(level, "FAIL", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(level, "FAIL", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (IsWarnAlertEnabled && string.Equals(level, "WARN", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
         }
 
         private static bool ShouldSkipAlert(string category, string message, Exception? ex,
@@ -195,19 +207,28 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
                 return true;
             if (details != null)
             {
-                if (details.TryGetValue("Path", out var path)
-                    && path.IndexOf("/Diagnostics/", StringComparison.OrdinalIgnoreCase) >= 0)
+                if (details.TryGetValue("Path", out var skipPath))
+                {
+                    if (skipPath.IndexOf("/json/version", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                    if (skipPath.IndexOf("/Diagnostics/", StringComparison.OrdinalIgnoreCase) >= 0
+                        && skipPath.IndexOf("ClientError", StringComparison.OrdinalIgnoreCase) < 0)
+                        return true;
+                }
+                details.TryGetValue("Status", out var status);
+                details.TryGetValue("HasBearer", out var hasBearer);
+                details.TryGetValue("Authenticated", out var authenticated);
+                if (status == "401"
+                    && !string.Equals(hasBearer, "yes", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(authenticated, "yes", StringComparison.OrdinalIgnoreCase))
                     return true;
-                if (details.TryGetValue("Status", out var status) && status == "503")
+                if (status == "503")
                 {
                     var pth = details.TryGetValue("Path", out var pathVal) ? pathVal : "";
                     if (pth.IndexOf("/Payments/Webhook", StringComparison.OrdinalIgnoreCase) >= 0
                         || text.IndexOf("GATEWAY_NOT_CONFIGURED", StringComparison.OrdinalIgnoreCase) >= 0)
                         return true;
                 }
-                if (details.TryGetValue("ClientSource", out var src)
-                    && string.Equals(src, "axios", StringComparison.OrdinalIgnoreCase))
-                    return true;
             }
             if (string.Equals(category, "Microsoft.Extensions.Hosting.Internal.Host", StringComparison.OrdinalIgnoreCase)
                 && text.IndexOf("canceled", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -232,10 +253,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
             var key = !string.IsNullOrWhiteSpace(traceId)
                 ? ("trace|" + traceId.Trim())
                 : (level + "|" + category + "|" + (message ?? ""));
-            var cooldown = TimeSpan.FromMinutes(_alert.CooldownMinutes <= 0 ? 10 : _alert.CooldownMinutes);
             var now = DateTime.UtcNow;
-            if (LastAlert.TryGetValue(key, out var prev) && now - prev < cooldown)
-                return;
+            if (_alert.CooldownMinutes > 0)
+            {
+                var cooldown = TimeSpan.FromMinutes(_alert.CooldownMinutes);
+                if (LastAlert.TryGetValue(key, out var prev) && now - prev < cooldown)
+                    return;
+            }
             LastAlert[key] = now;
 
             var merged = BaseDetails();

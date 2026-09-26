@@ -25,17 +25,23 @@ public partial class S4Week4Service : IS4Week4Service
     private readonly IConfiguration _config;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<S4Week4Service> _logger;
+    private readonly IAppointmentRescheduleNotifier _notify;
+    private readonly INotificationOutbox _outbox;
 
     public S4Week4Service(
         NIGACentrumContext context,
         IConfiguration config,
         IWebHostEnvironment env,
-        ILogger<S4Week4Service> logger)
+        ILogger<S4Week4Service> logger,
+        IAppointmentRescheduleNotifier notify,
+        INotificationOutbox outbox)
     {
         _context = context;
         _config = config;
         _env = env;
         _logger = logger;
+        _notify = notify;
+        _outbox = outbox;
     }
 
     public async Task<bool> PayAtClinicEnabledAsync(int doctorId)
@@ -169,7 +175,7 @@ public partial class S4Week4Service : IS4Week4Service
         var appointment = await LoadAppointmentAsync(request.PatientAppId);
         if (appointment == null)
             return Fail(404, "NOT_FOUND", "Appointment not found.");
-        var access = await EnsureAppointmentAccessAsync(appointment, caller);
+        var access = await EnsureAppointmentAccessAsync(appointment, caller, request.BookingToken);
         if (access != null)
             return access;
         if (S3AppointmentRules.IsCancelled(appointment.Status))
@@ -267,6 +273,7 @@ public partial class S4Week4Service : IS4Week4Service
                 : "Consult order stored. Gateway keys are not configured, so checkout cannot start and the visit is not marked paid.",
             gatewayReady,
             keyId = gatewayReady ? keyId : null,
+            checkoutMethods = new[] { "card", "upi", "netbanking", "wallet" },
             data = created
         });
     }
@@ -372,7 +379,11 @@ public partial class S4Week4Service : IS4Week4Service
                 P("@At", DateTime.Now));
 
             if (eventType == "payment.captured")
+            {
                 await ApplyCapturedAsync(order, payment, gatewayPaymentId);
+                if (order == null)
+                    await ApplyS1SubscriptionCaptureAsync(gatewayOrderId, gatewayPaymentId);
+            }
             else if (eventType == "payment.failed")
                 await ApplyFailedAsync(order, gatewayPaymentId);
             else if (eventType == "refund.processed")
@@ -433,11 +444,47 @@ public partial class S4Week4Service : IS4Week4Service
             appointment.PaymentMethod = "PAY_LINK";
             appointment.PaymentStatus = string.IsNullOrWhiteSpace(appointment.PaymentStatus) ? "UNPAID" : appointment.PaymentStatus;
             await _context.SaveChangesAsync();
+            var payLinkUrl = "/book/pay/" + correlation;
+            try
+            {
+                var mobile = await _context.Patients.AsNoTracking()
+                    .Where(p => p.PatientId == appointment.PatientId)
+                    .Select(p => p.MobileNo)
+                    .FirstOrDefaultAsync();
+                var site = (_config["ConfigurationModel:SiteUrl"] ?? "http://localhost:3000").TrimEnd('/');
+                await _notify.NotifyChannelsAsync(
+                    mobile,
+                    true,
+                    "Pay for your Homeocentrum visit: " + site + payLinkUrl,
+                    default);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Pay-link SMS/WhatsApp failed; ledger is kept.");
+            }
             return Ok(new
             {
                 success = true,
-                message = "Pay link reserved. SMS is not sent. The visit stays unpaid until collection or webhook capture.",
-                data = new { paymentOrderId = orderId, linkToken = correlation, amount = quote.Amount, currency = quote.Currency }
+                message = "Pay link reserved. SMS/WhatsApp queued or sent. The visit stays unpaid until collection or webhook capture.",
+                data = new
+                {
+                    paymentOrderId = orderId,
+                    linkToken = correlation,
+                    payLinkUrl,
+                    amount = quote.Amount,
+                    currency = quote.Currency
+                },
+                receipt = new
+                {
+                    paymentOrderId = orderId,
+                    patientAppId = appointment.PatientAppId,
+                    amount = quote.Amount,
+                    method,
+                    gstAmount = 0m,
+                    gstNote = "GST placeholder — pay-link unpaid until capture.",
+                    currency = quote.Currency,
+                    payLinkUrl = "/book/pay/" + correlation
+                }
             });
         }
 
@@ -601,6 +648,13 @@ public partial class S4Week4Service : IS4Week4Service
             P("@By", caller.UserId),
             P("@At", DateTime.Now));
 
+        var gatewayRefundId = await TryRazorpayRefundAsync(order, amount);
+        if (!string.IsNullOrWhiteSpace(gatewayRefundId))
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.Refund SET GatewayRefundId = {gatewayRefundId} WHERE RefundId = {refundId}");
+        }
+
         if (order.PatientAppId.HasValue)
         {
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
@@ -612,7 +666,9 @@ public partial class S4Week4Service : IS4Week4Service
         return Ok(new
         {
             success = true,
-            message = "Refund requested. Gateway refund.processed marks it complete. No bank call is made here.",
+            message = gatewayRefundId == null
+                ? "Refund requested. Fill Razorpay keys to call the gateway; refund.processed webhook still completes it."
+                : "Refund sent to Razorpay. refund.processed webhook marks it complete.",
             data = new { refundId, amount, policy = policy.Policy }
         });
     }
@@ -731,6 +787,26 @@ public partial class S4Week4Service : IS4Week4Service
             await SetMedicineStatusAsync(order.MedicineOrderId.Value, "PAID", "Webhook captured");
             await WriteMedicineSplitsAsync(order);
         }
+        else if (order.Stream == "SUBSCRIPTION")
+        {
+            await ApplyS1SubscriptionCaptureAsync(order.GatewayOrderId, gatewayPaymentId);
+        }
+    }
+
+    /// <summary>PAY-06.01 — S1 SaaS PackageEntryDetail stays on this webhook; consult/medicine never write that table.</summary>
+    private async Task ApplyS1SubscriptionCaptureAsync(string? gatewayOrderId, string? gatewayPaymentId)
+    {
+        if (string.IsNullOrWhiteSpace(gatewayOrderId))
+            return;
+        var row = await _context.PackageEntryDetails.FirstOrDefaultAsync(p => p.OrderId == gatewayOrderId);
+        if (row == null)
+            return;
+        row.PaymentId = gatewayPaymentId ?? row.PaymentId;
+        row.TransactionId = gatewayPaymentId ?? row.TransactionId;
+        row.IsActive = true;
+        if (row.ActivationDate == null)
+            row.ActivationDate = DateTime.Now;
+        await _context.SaveChangesAsync();
     }
 
     private async Task ApplyFailedAsync(OrderRow? order, string? gatewayPaymentId)
@@ -869,6 +945,67 @@ public partial class S4Week4Service : IS4Week4Service
             WHERE DoctorId = {doctorId} AND EffectiveFrom <= CONVERT(date, GETDATE())
             ORDER BY EffectiveFrom DESC, ConsultFeeConfigId DESC").FirstOrDefaultAsync();
 
+    private async Task<string?> TryRazorpayRefundAsync(OrderRow order, decimal amount)
+    {
+        var keyId = _config["Razorpay:KeyId"];
+        var keySecret = _config["Razorpay:KeySecret"];
+        if (string.IsNullOrWhiteSpace(keyId) || string.IsNullOrWhiteSpace(keySecret)
+            || string.IsNullOrWhiteSpace(order.GatewayPaymentId))
+            return null;
+        try
+        {
+            var paise = (long)Math.Round(amount * 100m, 0);
+            var payload = JsonSerializer.Serialize(new { amount = paise });
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(keyId + ":" + keySecret));
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
+            using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync(
+                "https://api.razorpay.com/v1/payments/" + order.GatewayPaymentId + "/refund",
+                content);
+            var body = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Razorpay refund failed {Status} {Body}", (int)response.StatusCode, body);
+                return null;
+            }
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("id", out var id))
+                return id.GetString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Razorpay refund call failed.");
+        }
+        return null;
+    }
+
+    private async Task NotifyMedicineStatusAsync(int orderId, string status)
+    {
+        try
+        {
+            var order = await LoadMedicineAsync(orderId);
+            if (order == null) return;
+            var mobile = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == order.PatientId)
+                .Select(p => p.MobileNo)
+                .FirstOrDefaultAsync();
+            var message = "Your medicine order #" + orderId + " is now " + status + ".";
+            await _notify.NotifyChannelsAsync(mobile, true, message, default);
+            await _outbox.EnqueueAsync(
+                "Push",
+                "MedicineStatus",
+                "patient:" + order.PatientId,
+                message,
+                "PENDING_KEYS",
+                "FCM is not configured. Push is queued until a device token sender is added.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Medicine status notice failed for {OrderId}", orderId);
+        }
+    }
+
     private async Task<string?> CreateGatewayOrderAsync(string keyId, string keySecret, decimal amount, string currency, string receipt)
     {
         var paise = (long)Math.Round(amount * 100m, 0);
@@ -918,7 +1055,7 @@ public partial class S4Week4Service : IS4Week4Service
     private async Task<PatientAppointment?> LoadAppointmentAsync(int patientAppId)
         => await _context.PatientAppointments.FirstOrDefaultAsync(a => a.PatientAppId == patientAppId && a.DeleteStatus != true);
 
-    private async Task<S4ActionResult?> EnsureAppointmentAccessAsync(PatientAppointment appointment, S4Caller caller)
+    private async Task<S4ActionResult?> EnsureAppointmentAccessAsync(PatientAppointment appointment, S4Caller caller, string? bookingToken = null)
     {
         if (caller.IsAdmin || caller.IsAccount)
             return null;
@@ -926,6 +1063,12 @@ public partial class S4Week4Service : IS4Week4Service
             return caller.PatientId == appointment.PatientId ? null : Fail(403, "FORBIDDEN", "This appointment belongs to another patient.");
         if ((caller.IsDoctor || caller.IsReception) && caller.OwnsDoctor(appointment.DoctorId))
             return null;
+        if (!string.IsNullOrWhiteSpace(bookingToken)
+            && !string.IsNullOrWhiteSpace(appointment.BookingToken)
+            && string.Equals(appointment.BookingToken.Trim(), bookingToken.Trim(), StringComparison.Ordinal))
+            return null;
+        if (caller.UserId <= 0)
+            return Fail(401, "UNAUTHORIZED", "Sign in, or send the booking token from the hold.");
         return Fail(403, "FORBIDDEN", "You cannot access this appointment.");
     }
 

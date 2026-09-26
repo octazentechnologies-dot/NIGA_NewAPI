@@ -70,6 +70,15 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 })
                 .ToListAsync();
 
+            var now = DateTime.UtcNow;
+            foreach (var row in rows)
+            {
+                row.SlaDueAt = row.EnquiryDate?.ToUniversalTime().AddHours(24);
+                row.SlaBreached = row.SlaDueAt != null
+                    && row.SlaDueAt < now
+                    && !string.Equals(row.TicketStatus, "Closed", StringComparison.OrdinalIgnoreCase);
+            }
+
             return Ok(new { success = true, data = rows });
         }
     }
