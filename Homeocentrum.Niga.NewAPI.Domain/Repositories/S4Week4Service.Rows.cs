@@ -166,5 +166,7 @@ public partial class S4Week4Service
         public decimal Amount { get; set; }
         public string EntityType { get; set; } = "";
         public string EntityId { get; set; } = "";
+        public long? PaymentOrderId { get; set; }
+        public int? DoctorId { get; set; }
     }
 }

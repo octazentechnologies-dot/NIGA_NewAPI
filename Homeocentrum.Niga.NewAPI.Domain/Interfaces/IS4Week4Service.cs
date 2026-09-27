@@ -121,7 +121,7 @@ public class S4Caller
 
     public bool IsAccount => IsAdmin || Eq("Account");
     public bool IsDoctor => Eq("Doctor");
-    public bool IsReception => Eq("Reception");
+    public bool IsReception => Eq("Reception") || Eq("Receptionist");
     public bool IsPatient => Eq("Patient");
     public bool IsPharmacy => Eq("PharmacyPartner") || Eq("Pharmacy");
 

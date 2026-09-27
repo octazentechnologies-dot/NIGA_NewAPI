@@ -26,14 +26,30 @@ public partial class S4Week4Service
     public async Task<S4ActionResult> VerificationQueueAsync(string? status, S4Caller caller)
     {
         if (!caller.IsAdmin) return Fail(403, "FORBIDDEN", "The credential queue is for admin.");
-        var filter = string.IsNullOrWhiteSpace(status) ? "Pending" : status.Trim();
-        var rows = await _context.Doctors.AsNoTracking()
-            .Where(d => !d.DeleteStatus && d.VerificationStatus == filter)
-            .OrderBy(d => d.DoctorId)
-            .Select(d => new { d.DoctorId, d.FirstName, d.LastName, d.VerificationStatus })
+        var filter = string.IsNullOrWhiteSpace(status) ? "All" : status.Trim();
+        var query = _context.Doctors.AsNoTracking().Where(d => !d.DeleteStatus);
+        if (string.Equals(filter, "Verified", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(d => d.VerificationStatus == "Verified");
+        else if (string.Equals(filter, "Rejected", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(d => d.VerificationStatus == "Rejected");
+        else if (string.Equals(filter, "NeedsInfo", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(d => d.VerificationStatus == "NeedsInfo");
+        else if (string.Equals(filter, "Pending", StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(filter, "Open", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(d =>
+                d.VerificationStatus == null
+                || d.VerificationStatus == ""
+                || d.VerificationStatus == "Pending"
+                || d.VerificationStatus == "PENDING"
+                || d.VerificationStatus == "NeedsInfo"
+                || d.VerificationStatus == "Unverified");
+        var rows = await query
+            .OrderBy(d => d.VerificationStatus == "Verified" ? 1 : 0)
+            .ThenBy(d => d.DoctorId)
+            .Select(d => new { d.DoctorId, d.FirstName, d.LastName, d.VerificationStatus, d.EmailId })
             .Take(200)
             .ToListAsync();
-        return Ok(new { success = true, data = rows });
+        return Ok(new { success = true, filter, count = rows.Count, data = rows });
     }
 
     public async Task<S4ActionResult> VerificationDetailAsync(int doctorId, S4Caller caller)

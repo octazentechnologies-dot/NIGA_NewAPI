@@ -110,12 +110,16 @@ public partial class S4Week4Service
             return Fail(400, "VALIDATION", "Set confirm=true to commit a settlement run.");
 
         var open = await _context.Database.SqlQuery<OpenLedgerRow>($@"
-            SELECT LedgerEntryId, Amount, EntityType, EntityId
-            FROM dbo.LedgerEntry
-            WHERE Direction = N'CREDIT' AND SettlementRunId IS NULL AND EntityType IN (N'Appointment', N'Pharmacy')").ToListAsync();
+            SELECT l.LedgerEntryId, l.Amount, l.EntityType, l.EntityId, l.PaymentOrderId, p.DoctorId
+            FROM dbo.LedgerEntry l
+            LEFT JOIN dbo.PaymentOrder p ON p.PaymentOrderId = l.PaymentOrderId
+            WHERE l.Direction = N'CREDIT' AND l.SettlementRunId IS NULL AND l.EntityType IN (N'Appointment', N'Pharmacy')").ToListAsync();
 
         if (request.DryRun)
             return Ok(new { success = true, dryRun = true, lineCount = open.Count, amount = open.Sum(x => x.Amount), data = open });
+
+        if (open.Count == 0)
+            return Fail(409, "NO_LINES", "No unsettled credit lines. Collect at reception or capture a consult first, then Dry-run.");
 
         var runId = await InsertAsync(
             @"INSERT INTO dbo.SettlementRun (Status, CreatedBy, CreatedAt) VALUES (N'COMMITTED', @By, @At);
@@ -126,7 +130,10 @@ public partial class S4Week4Service
         foreach (var line in open)
         {
             var payeeType = line.EntityType == "Pharmacy" ? "Pharmacy" : "Doctor";
-            var payeeId = int.TryParse(line.EntityId, out var parsed) ? parsed : 0;
+            var parsed = int.TryParse(line.EntityId, out var entityId) ? entityId : 0;
+            var payeeId = payeeType == "Doctor" && line.DoctorId.HasValue && line.DoctorId.Value > 0
+                ? line.DoctorId.Value
+                : parsed;
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
                 INSERT INTO dbo.SettlementLine (SettlementRunId, PayeeType, PayeeId, Amount, LedgerEntryId)
                 VALUES ({runId}, {payeeType}, {payeeId}, {line.Amount}, {line.LedgerEntryId})");
@@ -379,11 +386,21 @@ public partial class S4Week4Service
                    Status, Method, GatewayOrderId, GatewayPaymentId, IdempotencyKey, CorrelationId, CreatedAt
             FROM dbo.PaymentOrder
             WHERE Status = N'COLLECTED'
-              AND Method IN (N'CASH', N'UPI_OFFLINE', N'CARD_POS')
+              AND Method IN (N'CASH', N'UPI_OFFLINE', N'CARD_POS', N'PAY_LINK', N'PAY_AT_CLINIC')
               AND CreatedAt >= {start} AND CreatedAt < {end}
               AND ({doctorId ?? 0} = 0 OR DoctorId = {doctorId ?? 0})
             ORDER BY CreatedAt DESC").ToListAsync();
-        return Ok(new { success = true, total = rows.Sum(r => r.Amount), data = rows });
+        return Ok(new
+        {
+            success = true,
+            total = rows.Sum(r => r.Amount),
+            cash = rows.Where(r => r.Method == "CASH").Sum(r => r.Amount),
+            upi = rows.Where(r => r.Method == "UPI_OFFLINE").Sum(r => r.Amount),
+            card = rows.Where(r => r.Method == "CARD_POS").Sum(r => r.Amount),
+            payLink = rows.Where(r => r.Method is "PAY_LINK" or "PAY_AT_CLINIC").Sum(r => r.Amount),
+            count = rows.Count,
+            data = rows
+        });
     }
 
     /// <summary>DMO-10.02 — doctor (or admin) earnings summary for own clinic.</summary>
