@@ -1286,19 +1286,27 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             return result;
         }
 
-        public async Task<List<PatientAppointmentModel>> GetQueueAsync(int doctorId)
+        public async Task<List<PatientAppointmentModel>> GetQueueAsync(int doctorId, DateTime? onDate = null, bool waitingOnly = true)
         {
-            var today = DateTime.Today;
-            var rows = await _context.PatientAppointments
+            var day = (onDate ?? DateTime.Today).Date;
+            var query = _context.PatientAppointments
                 .AsNoTracking()
                 .Include(x => x.Patient)
+                .Include(x => x.Doctor)
                 .Where(x =>
                     x.DoctorId == doctorId &&
                     x.DeleteStatus != true &&
                     x.Status != S3AppointmentRules.Cancelled &&
                     x.AppointmentDate.HasValue &&
-                    x.AppointmentDate.Value.Date == today &&
-                    (x.Status == "WAITING" || x.Status == "WALK-IN" || x.Status == "E-CONSULT"))
+                    x.AppointmentDate.Value.Date == day);
+
+            if (waitingOnly)
+            {
+                query = query.Where(x =>
+                    x.Status == "WAITING" || x.Status == "WALK-IN" || x.Status == "E-CONSULT");
+            }
+
+            var rows = await query
                 // REC-08.03 — order: optional QueuePosition, then appointment time.
                 .OrderBy(x => x.QueuePosition ?? int.MaxValue)
                 .ThenBy(x => x.AppointmentTime)
@@ -1360,13 +1368,25 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
 
         private PatientAppointmentModel MapCore(PatientAppointment appointment)
         {
+            var doctor = appointment.Doctor;
+            var doctorName = doctor == null
+                ? null
+                : ("Dr. " + string.Join(" ", new[] { doctor.FirstName, doctor.LastName }
+                    .Where(part => !string.IsNullOrWhiteSpace(part)))).Trim();
+
             var model = new PatientAppointmentModel
             {
                 PatientAppId = appointment.PatientAppId,
                 PatientId = appointment.PatientId,
                 PatientName = appointment.Patient?.PatientName,
                 MobileNo = appointment.Patient?.MobileNo,
+                Email = appointment.Patient?.Email,
+                Address = appointment.Patient?.Address,
+                Age = appointment.Patient?.Age,
+                Gender = appointment.Patient?.Gender,
+                DateOfBirth = appointment.Patient?.DateOfBirth,
                 DoctorId = appointment.DoctorId,
+                DoctorName = string.IsNullOrWhiteSpace(doctorName) ? null : doctorName,
                 AppointmentDate = appointment.AppointmentDate,
                 AppointmentTime = appointment.AppointmentTime,
                 Status = appointment.Status,

@@ -10,7 +10,9 @@ QA / live request-response dumps: Documents/Testing only (not in this repo).
 
 SQL (already applied on HomeoCentrum_Dev):
   ScriptsAndFiles/S4_Week4/Database scripts/01_S4_Week4_Schema.sql
+  ScriptsAndFiles/S4_Week4/Database scripts/02_S4_Week4_Menus.sql
   ScriptsAndFiles/S4_Week4/Database scripts/03_S4_Notification_Outbox.sql
+  ScriptsAndFiles/S4_Week4/Database scripts/04_S4_Week4_Demo_Data.sql
 
 SMS: Sms:Provider=Msg91 (or Twilio). Empty keys enqueue dbo.NotificationOutbox PENDING_KEYS.
 WhatsApp: WhatsAppMeta AccessToken + PhoneNumberId. Empty keys enqueue the same table.
@@ -75,6 +77,8 @@ Account
   GET  /api/Earnings/Summary           doctor mobile (DMO-10.02)
 
 Trust and reviews
+  GET  /api/Profile/Me/Credentials              doctor JWT
+  POST /api/Profile/Me/CredentialDocuments      multipart file + documentType Qualification|Registration|Other
   GET  /api/Trust/MyStatus
   GET  /api/Trust/Queue
   GET  /api/Trust/{doctorId}

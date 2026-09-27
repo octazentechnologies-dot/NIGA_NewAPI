@@ -33,7 +33,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
                     var kind = level == "ERROR" ? "errors" : "api";
                     AppFileLog.Write(kind, level, "Http",
                         $"{status} {context.Request.Method} {path}{context.Request.QueryString} user={context.User?.Identity?.Name} {sw.ElapsedMilliseconds}ms trace={context.TraceIdentifier}",
-                        details: RequestDetails(context, status, sw.ElapsedMilliseconds));
+                        details: RequestDetails(context, status, sw.ElapsedMilliseconds),
+                        sendAlert: level == "ERROR");
                 }
                 else if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase))
                 {

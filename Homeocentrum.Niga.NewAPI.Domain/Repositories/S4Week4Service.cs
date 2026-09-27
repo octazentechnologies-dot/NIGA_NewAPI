@@ -111,7 +111,9 @@ public partial class S4Week4Service : IS4Week4Service
             return Fail(403, "FORBIDDEN", "Only a doctor or admin can set consult fees.");
         if (!caller.OwnsDoctor(request.DoctorId))
             return Fail(403, "FORBIDDEN", "You can update fees only for your own clinic.");
-        if (request.InClinicFee < 0 || request.TeleFee < 0 || request.InstantSurcharge < 0
+        if (request.InClinicFee <= 0 || request.TeleFee <= 0)
+            return Fail(400, "VALIDATION", "In-clinic and tele consult fees must be greater than 0.");
+        if (request.InstantSurcharge < 0
             || request.InClinicFee > 100000 || request.TeleFee > 100000 || request.InstantSurcharge > 100000)
             return Fail(400, "VALIDATION", "Fees must be between 0 and 100000.");
         var currency = (request.Currency ?? "").Trim().ToUpperInvariant();

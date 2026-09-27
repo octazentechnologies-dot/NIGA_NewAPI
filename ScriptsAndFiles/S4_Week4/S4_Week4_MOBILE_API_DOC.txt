@@ -68,6 +68,8 @@ DMO (doctor mobile — same New-API routes)
   POST /api/Payments/CollectAtReception     CASH | UPI_OFFLINE | CARD_POS | PAY_LINK
   GET  /api/Trust/{doctorId}
   GET  /api/Doctors/RankingExplain/{doctorId}
+  GET  /api/Profile/Me/Credentials
+  POST /api/Profile/Me/CredentialDocuments
 
 Auth: Bearer from Old-API login. Role claims gate Account / Pharmacy / Admin routes.
 DMO-11.02: SPA axios clients clear session and redirect to /login on 401 (except login/OTP URLs).

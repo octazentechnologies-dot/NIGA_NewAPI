@@ -205,6 +205,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
                 return true;
             if (!string.IsNullOrEmpty(category) && category.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.OrdinalIgnoreCase))
                 return true;
+            if (string.Equals(category, "Performance", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (IsNoisyInstantAcceptPath(text))
+                return true;
             if (details != null)
             {
                 if (details.TryGetValue("Path", out var skipPath))
@@ -213,6 +217,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
                         return true;
                     if (skipPath.IndexOf("/Diagnostics/", StringComparison.OrdinalIgnoreCase) >= 0
                         && skipPath.IndexOf("ClientError", StringComparison.OrdinalIgnoreCase) < 0)
+                        return true;
+                    if (IsNoisyInstantAcceptPath(skipPath) || IsNoisyInstantAcceptPath(text))
                         return true;
                 }
                 details.TryGetValue("Status", out var status);
@@ -234,6 +240,17 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
                 && text.IndexOf("canceled", StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
             return false;
+        }
+
+        private static bool IsNoisyInstantAcceptPath(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return false;
+            if (value.IndexOf("/Tele/Instant/", StringComparison.OrdinalIgnoreCase) < 0)
+                return false;
+            return value.IndexOf("/undefined/", StringComparison.OrdinalIgnoreCase) >= 0
+                || value.IndexOf("/NaN/", StringComparison.OrdinalIgnoreCase) >= 0
+                || value.IndexOf("/null/", StringComparison.OrdinalIgnoreCase) >= 0
+                || value.IndexOf("/Instant/0/", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static string Sanitize(string text)

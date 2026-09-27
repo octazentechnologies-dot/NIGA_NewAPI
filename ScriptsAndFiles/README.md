@@ -7,6 +7,7 @@
 | 1 | `S1_Week1/Database scripts/` |
 | 2 | `S2_Week2/Database scripts/` |
 | 3 | `S3_Week3/Database scripts/` |
+| 4 | `S4_Week4/Database scripts/` (`01` schema, `02` menus, `03` notification outbox, `04` demo data) |
 
 Run on `HomeoCentrum_Dev` in numbered order.
 

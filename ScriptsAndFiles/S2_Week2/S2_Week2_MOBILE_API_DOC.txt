@@ -2,7 +2,7 @@ S2 WEEK 2 — MOBILE APP API DOCUMENT
 Date       : 20-Sep-2026
 Catalog    : NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
 Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
-Host       : New-API  http://localhost:5038/api   (nigahomeoAPI)
+Host       : New-API  http://127.0.0.1:5002/api   (nigahomeoAPI)
 Auth       : Authorization: Bearer <JWT> unless TOKEN = no
 Dev OTP    : Development responses include data.devCode (never in production)
 Do NOT    : Doctor mobile must NOT call case-taking (clipboard, CenterOfGravity, audio, lab mutate, Rx)
@@ -20,7 +20,7 @@ DEV LOGINS (HomeoCentrum_Dev) — use these in every sample. Do not invent other
 Date       : 23-Sep-2026
 Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
 Clinic login HOST = Old-API  POST http://127.0.0.1:5001/api/Account/Login
-New HTTP HOST     = New-API  http://127.0.0.1:5038/api
+New HTTP HOST     = New-API  http://127.0.0.1:5002/api
 Password for every Tufan_* row: 123456
 Email (all our users): tufanpowar001@gmail.com
 Mobile (all our users): 7768046064
@@ -109,7 +109,7 @@ URL        : GET /api/mastersAPI/GetLanguages
 USE        : Language list for first-run picker (PAT-01.02).
 HOST       : New-API
 TOKEN      : no (also works with JWT)
-SAMPLE     : GET http://localhost:5038/api/mastersAPI/GetLanguages
+SAMPLE     : GET http://127.0.0.1:5002/api/mastersAPI/GetLanguages
 INPUTS     : none
 OUTPUT     : language rows (languageId, languageName)
 

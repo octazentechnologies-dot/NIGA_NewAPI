@@ -101,7 +101,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             AppFileLog.Write(kind, level, "UI",
                 $"{request.Method} {request.Url} status={status} src={request.Source} user={request.UserName} browser={request.Browser} device={request.DeviceName} {request.Message}",
                 details: details,
-                sendAlert: true);
+                sendAlert: level == "ERROR");
             return Ok(new { success = true });
         }
     }

@@ -566,12 +566,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         [HttpGet("/api/PatientAppointment/Queue")]
-        public async Task<IActionResult> Queue()
+        public async Task<IActionResult> Queue([FromQuery] DateTime? date, [FromQuery] string? scope)
         {
             var doctorId = DoctorOwnership.GetDoctorId(User);
             if (!doctorId.HasValue)
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Doctor context is required." });
-            var rows = await _PatientAppointmentService.GetQueueAsync(doctorId.Value);
+            var waitingOnly = !string.Equals(scope, "day", StringComparison.OrdinalIgnoreCase);
+            var rows = await _PatientAppointmentService.GetQueueAsync(doctorId.Value, date, waitingOnly);
             return Ok(new { success = true, data = rows });
         }
 

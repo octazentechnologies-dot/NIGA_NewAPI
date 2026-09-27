@@ -56,6 +56,6 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Interfaces
 
         Task<AppointmentMutationResult> CallNextAsync(int doctorId);
 
-        Task<List<PatientAppointmentModel>> GetQueueAsync(int doctorId);
+        Task<List<PatientAppointmentModel>> GetQueueAsync(int doctorId, DateTime? onDate = null, bool waitingOnly = true);
     }
 }

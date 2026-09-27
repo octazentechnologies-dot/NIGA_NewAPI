@@ -4,9 +4,9 @@ Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
 Auth       : Bearer JWT unless TOKEN = no.
              Doctor and that doctor's reception own the clinic rows.
              A patient JWT may reschedule, cancel, and read the change log only for a mapped patient.
-Host rule  : New HTTP -> New-API http://127.0.0.1:5038  (nigahomeoAPI).
+Host rule  : New HTTP -> New-API http://127.0.0.1:5002  (nigahomeoAPI).
              Login stays Old-API POST /api/Account/Login on http://127.0.0.1:5001.
-             Razorpay stays Old-API. This week does not call it.
+             Week 3 does not call Razorpay. Week 4 consult/medicine pay is on New-API (S4_Week4_API_DOC.txt).
 Do NOT     : Real SMS, WhatsApp, waitlist auto-offer, Razorpay refund, visit-type backfill.
 JSON       : camelCase.
 Live proof : S3_Week3_Live.py 63 passed, S3_Week3_SecondPass.py 149 passed (22-Sep-2026).
@@ -29,7 +29,7 @@ DEV LOGINS (HomeoCentrum_Dev) — use these in every sample. Do not invent other
 Date       : 23-Sep-2026
 Database   : HomeoCentrum_Dev  (localhost\MSSQLSERVER25)
 Clinic login HOST = Old-API  POST http://127.0.0.1:5001/api/Account/Login
-New HTTP HOST     = New-API  http://127.0.0.1:5038/api
+New HTTP HOST     = New-API  http://127.0.0.1:5002/api
 Password for every Tufan_* row: 123456
 Email (all our users): tufanpowar001@gmail.com
 Mobile (all our users): 7768046064
@@ -71,7 +71,7 @@ RESPONSE 200
 Patient login uses userName "Tufan_Patient". Reception uses "Tufan_Reception".
 Admin uses "Tufan_Admin". Account uses "Tufan_Account". Pharmacy uses "Tufan_Pharmacy".
 Header on TOKEN=yes calls: Authorization: Bearer <data.token>
-Other environment: replace http://127.0.0.1:5001 and http://127.0.0.1:5038 with that Old-API and New-API host.
+Other environment: replace http://127.0.0.1:5001 and http://127.0.0.1:5002 with that Old-API and New-API host.
 Numeric ids in samples (userId 10032, doctorId 1010, patientId 3046) are HomeoCentrum_Dev.
 Use data.userId and data.doctorId from the login response on any other database.
 Live copy-paste REQUEST/RESPONSE for Week 1–3 APIs: Documents/Testing/S1_S2_S3_LIVE_REQUEST_RESPONSE.txt (testing files live only in Documents/Testing).
