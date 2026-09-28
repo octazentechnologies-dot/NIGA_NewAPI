@@ -31,6 +31,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public bool IsVerified { get => Verified; set => Verified = value; }
         public string? PhotoPath { get; set; }
         public string RankingSummary { get; set; } = string.Empty;
+        public List<string> RankingReasons { get; set; } = new();
+        public decimal? AverageRating { get; set; }
+        public int ReviewCount { get; set; }
     }
 
     public class PublicDoctorProfileDto : PublicDoctorCardDto
@@ -243,6 +246,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public bool? EnquiryStatus { get; set; }
         public string? TicketStatus { get; set; }
         public long? AssignedTo { get; set; }
+        /// <summary>SUP-05.01 — first-response SLA is 24 hours after EnquiryDate.</summary>
+        public DateTime? SlaDueAt { get; set; }
+        public bool SlaBreached { get; set; }
     }
 
     public class PatientHomeDashboardDto

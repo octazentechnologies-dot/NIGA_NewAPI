@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
 using System.Threading.RateLimiting;
+using System.Security.Claims;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using API.Entities;
 using Homeocentrum.Niga.NewAPI.Domain.Configuration.CorsPolicyConfig;
@@ -67,36 +68,46 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
     options.InvalidModelStateResponseFactory = ApiProblem.Validation;
 });
 builder.Services.AddHealthChecks();
-builder.Services.AddRateLimiter(options =>
+var rateLimitEnabled = builder.Configuration.GetValue("RateLimit:Enabled", true);
+if (rateLimitEnabled)
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.OnRejected = async (ctx, _) =>
+    builder.Services.AddRateLimiter(options =>
     {
-        await ApiProblem.WriteAsync(ctx.HttpContext, 429, "Too many requests. Please wait a moment and try again.");
-    };
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
-    {
-        var path = httpContext.Request.Path.Value ?? "";
-        if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.OnRejected = async (ctx, _) =>
         {
-            return RateLimitPartition.GetNoLimiter("open");
-        }
-        var limit = 300;
-        var window = 60;
-        if (int.TryParse(builder.Configuration["RateLimit:PermitLimit"], out var parsed) && parsed > 0)
-            limit = parsed;
-        if (int.TryParse(builder.Configuration["RateLimit:WindowSeconds"], out parsed) && parsed > 0)
-            window = parsed;
-        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+            await ApiProblem.WriteAsync(ctx.HttpContext, 429, "Too many requests. Please wait a moment and try again.");
+        };
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
         {
-            PermitLimit = limit,
-            Window = TimeSpan.FromSeconds(window),
-            QueueLimit = 0
+            var path = httpContext.Request.Path.Value ?? "";
+            if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
+            {
+                return RateLimitPartition.GetNoLimiter("open");
+            }
+            var limit = 300;
+            var window = 60;
+            if (int.TryParse(builder.Configuration["RateLimit:PermitLimit"], out var parsed) && parsed > 0)
+                limit = parsed;
+            if (int.TryParse(builder.Configuration["RateLimit:WindowSeconds"], out parsed) && parsed > 0)
+                window = parsed;
+            var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var userId = httpContext.User?.FindFirst("UserId")?.Value
+                ?? httpContext.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? httpContext.User?.FindFirst("sub")?.Value;
+            var partitionKey = !string.IsNullOrWhiteSpace(userId) && userId != "0"
+                ? "u:" + userId
+                : "ip:" + ip;
+            return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = limit,
+                Window = TimeSpan.FromSeconds(window),
+                QueueLimit = 0
+            });
         });
     });
-});
+}
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opt =>
@@ -183,7 +194,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
-AppFileLog.Initialize(app.Environment.ContentRootPath, app.Configuration, "NIGA New-API (Niga-Web :5038)");
+AppFileLog.Initialize(app.Environment.ContentRootPath, app.Configuration, "NIGA New-API (Niga-Web :5002)");
 
 app.Use(async (context, next) =>
 {
@@ -229,7 +240,8 @@ if (listenUrls.Contains("https://", StringComparison.OrdinalIgnoreCase) || !stri
 
 app.UseAuthentication();
 app.UseMiddleware<AppDiagnosticsMiddleware>();
-app.UseRateLimiter();
+if (rateLimitEnabled)
+    app.UseRateLimiter();
 app.UseAuthorization();
 app.UseMiddleware<Homeocentrum.Niga.NewAPI.Domain.Services.MutatingAuditMiddleware>();
 app.UseCorsPolicy()

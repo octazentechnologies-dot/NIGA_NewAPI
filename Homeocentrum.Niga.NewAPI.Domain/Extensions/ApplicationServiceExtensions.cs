@@ -62,7 +62,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Extensions
             // PRE-03 — Sms:Provider = Stub | Msg91 | Twilio (keys empty → stub log). OTP + appointment notices use ISmsSender.
             services.Configure<SmsOptions>(config.GetSection(SmsOptions.SectionName));
             services.Configure<TeleVideoOptions>(config.GetSection(TeleVideoOptions.SectionName));
-            services.AddHttpClient("SmsVendor", client => client.Timeout = TimeSpan.FromSeconds(30));
+            services.AddHttpClient("SmsVendor", client => client.Timeout = TimeSpan.FromSeconds(3));
+            services.AddSingleton<INotificationOutbox, NotificationOutbox>();
             services.AddSingleton<ISmsSender, ConfigurableSmsSender>();
             services.AddSingleton<Homeocentrum.Niga.NewAPI.Domain.Services.Tele.StubTeleVideoVendor>();
             services.AddSingleton<Homeocentrum.Niga.NewAPI.Domain.Services.Tele.AgoraTeleVideoVendor>();

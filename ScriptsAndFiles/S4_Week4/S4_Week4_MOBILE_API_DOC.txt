@@ -2,7 +2,7 @@ API documentation is only in:
 
   NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
 
-This .txt file is not an API catalog. Open the Excel workbook and filter Week = S2_Week2
+This .txt file is not an API catalog. Open the Excel workbook and filter Week = S4_Week4
 and Patient app / Doctor mobile app columns.
 
 Rebuild: python NIGA_NewAPI/ScriptsAndFiles/_rebuild_api_catalog_xlsx.py

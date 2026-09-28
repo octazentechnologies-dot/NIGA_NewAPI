@@ -39,6 +39,11 @@ public partial class S4Week4Service
         public int Value { get; set; }
     }
 
+    private sealed class MoneyRow
+    {
+        public decimal Value { get; set; }
+    }
+
     private sealed class RefundRow
     {
         public long RefundId { get; set; }
@@ -123,6 +128,13 @@ public partial class S4Week4Service
         public DateTime CreatedAt { get; set; }
     }
 
+    private sealed class TaxConfigRow
+    {
+        public int TaxConfigId { get; set; }
+        public decimal GstRate { get; set; }
+        public bool TreatmentExempt { get; set; }
+    }
+
     private sealed class PayeeRow
     {
         public int PayeeId { get; set; }
@@ -154,5 +166,7 @@ public partial class S4Week4Service
         public decimal Amount { get; set; }
         public string EntityType { get; set; } = "";
         public string EntityId { get; set; } = "";
+        public long? PaymentOrderId { get; set; }
+        public int? DoctorId { get; set; }
     }
 }

@@ -85,7 +85,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 .Take(size)
                 .ToListAsync();
 
-            var data = rows.Select(x => MapCard(x.d, x.Qualification)).ToList();
+            var stats = await LoadReviewStatsAsync(rows.Select(x => x.d.DoctorId).ToList());
+            var data = rows.Select(x => MapCard(x.d, x.Qualification, stats.GetValueOrDefault(x.d.DoctorId))).ToList();
             return Ok(new { success = true, pageNumber = page, pageSize = size, totalRecords = total, data });
         }
 
@@ -104,7 +105,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             if (row == null)
                 return NotFound(new { success = false, message = "Doctor not found or not verified for directory." });
 
-            var card = MapCard(row.d, row.Qualification);
+            var stats = await LoadReviewStatsAsync(new List<int> { row.d.DoctorId });
+            var card = MapCard(row.d, row.Qualification, stats.GetValueOrDefault(row.d.DoctorId));
             var profile = new PublicDoctorProfileDto
             {
                 DoctorId = card.DoctorId,
@@ -118,9 +120,11 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 Verified = card.Verified,
                 PhotoPath = card.PhotoPath,
                 RankingSummary = card.RankingSummary,
+                AverageRating = card.AverageRating,
+                ReviewCount = card.ReviewCount,
                 WorkingHoursNote = row.d.WorkingHoursNote,
                 VerificationStatus = row.d.VerificationStatus,
-                RankingReasons = RankingReasons(row.d, row.Qualification)
+                RankingReasons = card.RankingReasons
             };
             return Ok(new { success = true, data = profile });
         }
@@ -318,6 +322,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             var isTele = appt.IsTele == true
                 || S3AppointmentRules.NormalizeMode(appt.ConsultMode) == S3AppointmentRules.Tele;
             var fees = await _fees.ResolveConsultFeesAsync(appt.DoctorId);
+            var payAtClinicEnabled = await _fees.PayAtClinicEnabledAsync(appt.DoctorId);
 
             return Ok(new
             {
@@ -337,7 +342,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     appt.BookingToken,
                     appt.HoldExpiresAt,
                     appt.ConsentPolicyVersion,
-                    consultFee = isTele ? fees.TeleFee : fees.InClinicFee
+                    consultFee = isTele ? fees.TeleFee : fees.InClinicFee,
+                    payAtClinicEnabled
                 }
             });
         }
@@ -426,7 +432,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             });
         }
 
-        private PublicDoctorCardDto MapCard(Doctor d, string? qualification)
+        private PublicDoctorCardDto MapCard(Doctor d, string? qualification, ReviewStat? stats = null)
         {
             var name = string.Join(" ", new[] { d.FirstName, d.MiddleName, d.LastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
             return new PublicDoctorCardDto
@@ -441,8 +447,37 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 IsOnline = d.IsOnline,
                 Verified = string.Equals(d.VerificationStatus, "Verified", StringComparison.OrdinalIgnoreCase),
                 PhotoPath = d.PhotoPath,
-                RankingSummary = RankingSummary(d, qualification)
+                RankingSummary = RankingSummary(d, qualification),
+                RankingReasons = RankingReasons(d, qualification),
+                AverageRating = stats is { ReviewCount: > 0 } ? stats.AverageRating : null,
+                ReviewCount = stats?.ReviewCount ?? 0
             };
+        }
+
+        private async Task<Dictionary<int, ReviewStat>> LoadReviewStatsAsync(List<int> doctorIds)
+        {
+            var map = new Dictionary<int, ReviewStat>();
+            if (doctorIds == null || doctorIds.Count == 0)
+                return map;
+            var wanted = doctorIds.ToHashSet();
+            var rows = await _context.Database.SqlQuery<ReviewStat>($@"
+                SELECT DoctorId, CAST(AVG(CAST(Rating AS float)) AS decimal(9,1)) AS AverageRating, COUNT(1) AS ReviewCount
+                FROM dbo.Review
+                WHERE Status = N'APPROVED'
+                GROUP BY DoctorId").ToListAsync();
+            foreach (var row in rows)
+            {
+                if (wanted.Contains(row.DoctorId))
+                    map[row.DoctorId] = row;
+            }
+            return map;
+        }
+
+        private sealed class ReviewStat
+        {
+            public int DoctorId { get; set; }
+            public decimal AverageRating { get; set; }
+            public int ReviewCount { get; set; }
         }
 
         private static string RankingSummary(Doctor d, string? qualification)

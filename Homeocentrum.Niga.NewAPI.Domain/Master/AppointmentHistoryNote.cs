@@ -11,6 +11,12 @@ public partial class AppointmentHistoryNote
 
     public string? HistoryNote { get; set; }
 
+    /// <summary>ERX-03.01 — ChiefComplaint | FollowUp | General (clinical notes stay off eRx).</summary>
+    public string? NoteType { get; set; }
+
+    /// <summary>ERX-03.01 — when true, note must not appear on signed eRx / patient prescription.</summary>
+    public bool IsErxExcluded { get; set; } = true;
+
     public bool? DeletedStatus { get; set; }
 
     public int? CreatedBy { get; set; }

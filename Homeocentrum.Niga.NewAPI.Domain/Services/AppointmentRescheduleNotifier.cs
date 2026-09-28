@@ -18,17 +18,20 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
         private readonly ISmsSender _sms;
         private readonly IWhatsAppMetaApiClient _whatsApp;
         private readonly WhatsAppMetaOptions _whatsAppOptions;
+        private readonly INotificationOutbox _outbox;
         private readonly ILogger<AppointmentRescheduleNotifier> _logger;
 
         public AppointmentRescheduleNotifier(
             ISmsSender sms,
             IWhatsAppMetaApiClient whatsApp,
             IOptions<WhatsAppMetaOptions> whatsAppOptions,
+            INotificationOutbox outbox,
             ILogger<AppointmentRescheduleNotifier> logger)
         {
             _sms = sms;
             _whatsApp = whatsApp;
             _whatsAppOptions = whatsAppOptions.Value ?? new WhatsAppMetaOptions();
+            _outbox = outbox;
             _logger = logger;
         }
 
@@ -120,11 +123,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
             }
             else if (!_whatsAppOptions.IsConfigured())
             {
-                _logger.LogInformation(
-                    "WhatsApp stub (Meta keys empty). DestinationMasked={Masked} Length={Length}",
-                    PhoneNormalizer.Mask(mobile),
-                    message.Length);
-                notice.WhatsApp = "sent";
+                await _outbox.EnqueueAsync("WhatsApp", "NOTICE", mobile, message, "PENDING_KEYS",
+                    "Fill WhatsAppMeta AccessToken and PhoneNumberId in New-API appsettings.");
+                notice.WhatsApp = "queued";
             }
             else
             {

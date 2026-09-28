@@ -42,6 +42,9 @@ public class CreateConsultOrderRequest
 
     public bool PayAtClinic { get; set; }
 
+    [StringLength(64)]
+    public string? BookingToken { get; set; }
+
     /// <summary>Ignored as the charge source. Rejected when it does not match the configured fee.</summary>
     public decimal? Amount { get; set; }
 }

@@ -15,6 +15,14 @@ public partial class PrescriptionRemedyDetail
 
     public string? Dose { get; set; }
 
+    public int? PotencyId { get; set; }
+
+    public string? Frequency { get; set; }
+
+    public string? Duration { get; set; }
+
+    public string? Instructions { get; set; }
+
     public bool? DeletedStatus { get; set; }
 
     public DateTime? CreatedDate { get; set; }

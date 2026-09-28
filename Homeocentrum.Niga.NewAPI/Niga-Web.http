@@ -1,4 +1,4 @@
-@Niga-Web_HostAddress = http://localhost:5038
+@Niga-Web_HostAddress = http://localhost:5002
 
 GET {{Niga-Web_HostAddress}}/weatherforecast/
 Accept: application/json

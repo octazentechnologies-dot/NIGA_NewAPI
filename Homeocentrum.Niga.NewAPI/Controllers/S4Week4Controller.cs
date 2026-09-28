@@ -44,6 +44,7 @@ public class S4Week4Controller : ControllerBase
     /// PAT-18.02 — patient/reception consult checkout order (pay at clinic or gateway).
     /// Does not accept client PaymentStatus=PAID; gateway/webhook/reception collection sets paid.
     /// </summary>
+    [AllowAnonymous]
     [HttpPost("/api/Payments/ConsultOrders")]
     public Task<IActionResult> ConsultOrder([FromBody] CreateConsultOrderRequest request) => Done(_s4.CreateConsultOrderAsync(request, Caller()));
 
@@ -82,6 +83,7 @@ public class S4Week4Controller : ControllerBase
     public Task<IActionResult> Refund([FromBody] CreateRefundRequest request) => Done(_s4.CreateRefundAsync(request, Caller()));
 
     [HttpGet("/api/Refunds")]
+    [HttpGet("/api/Account/Refunds")]
     public Task<IActionResult> Refunds() => Done(_s4.ListRefundsAsync(Caller()));
 
     [HttpGet("/api/Invoices/ByPayment/{paymentOrderId:long}")]
@@ -115,6 +117,9 @@ public class S4Week4Controller : ControllerBase
     [HttpGet("/api/Account/Settlements/{id:long}")]
     public Task<IActionResult> Settlement(long id) => Done(_s4.SettlementDetailAsync(id, Caller()));
 
+    [HttpGet("/api/Account/Payouts")]
+    public Task<IActionResult> Payouts() => Done(_s4.ListPayoutsAsync(Caller()));
+
     [HttpPost("/api/Account/Payouts/{id:long}/Otp")]
     public Task<IActionResult> PayoutOtp(long id) => Done(_s4.RequestPayoutOtpAsync(id, Caller()));
 
@@ -139,6 +144,9 @@ public class S4Week4Controller : ControllerBase
     [HttpGet("/api/Account/Tax")]
     public Task<IActionResult> Tax([FromQuery] DateTime? from, [FromQuery] DateTime? to) => Done(_s4.TaxReportAsync(from, to, Caller()));
 
+    [HttpGet("/api/Account/Tax/Export")]
+    public Task<IActionResult> TaxExport([FromQuery] DateTime? from, [FromQuery] DateTime? to) => Done(_s4.TaxExportAsync(from, to, Caller()));
+
     [HttpGet("/api/Account/Payees")]
     public Task<IActionResult> Payees() => Done(_s4.ListPayeesAsync(Caller()));
 
@@ -151,6 +159,11 @@ public class S4Week4Controller : ControllerBase
     [HttpGet("/api/Account/ClinicCollections")]
     public Task<IActionResult> Collections([FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? doctorId)
         => Done(_s4.ClinicCollectionsAsync(from, to, doctorId, Caller()));
+
+    /// <summary>DMO-10.02 — doctor mobile earnings rollup (own clinic).</summary>
+    [HttpGet("/api/Earnings/Summary")]
+    public Task<IActionResult> EarningsSummary([FromQuery] DateTime? from, [FromQuery] DateTime? to)
+        => Done(_s4.EarningsSummaryAsync(from, to, Caller()));
 
     [HttpGet("/api/Account/Trail")]
     public Task<IActionResult> Trail([FromQuery] int? patientAppId, [FromQuery] long? paymentOrderId, [FromQuery] int? doctorId)
@@ -240,6 +253,12 @@ public class S4Week4Controller : ControllerBase
     [AllowAnonymous]
     [HttpGet("/api/Pharmacy/Sellers")]
     public Task<IActionResult> Sellers([FromQuery] string? area) => Done(_s4.ListSellersAsync(area));
+
+    [HttpGet("/api/Pharmacy/Partners")]
+    public Task<IActionResult> Partners() => Done(_s4.ListPharmacyPartnersAsync(Caller()));
+
+    [HttpGet("/api/Pharmacy/Orders")]
+    public Task<IActionResult> PharmacyOrders() => Done(_s4.PharmacyQueueAsync(Caller()));
 
     [HttpPost("/api/MedicineOrders")]
     public Task<IActionResult> CreateOrder([FromBody] MedicineOrderCreateRequest request) => Done(_s4.CreateMedicineOrderAsync(request, Caller()));
