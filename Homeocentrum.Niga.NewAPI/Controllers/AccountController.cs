@@ -253,6 +253,19 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
         }
 
+        /// <summary>Lists every non-deleted login that shares this email or username, so the user can pick a role.</summary>
+        [HttpPost("ForgotPasswordAccounts")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ForgotPasswordAccounts([FromBody] ForgotPasswordRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.Email))
+                return BadRequest(new { success = false, message = "Email is required." });
+
+            var matches = await FindPasswordResetUsersAsync(request.Email.Trim());
+            var accounts = await MapPasswordResetAccountsAsync(matches);
+            return Ok(new { success = true, accounts });
+        }
+
         /// <summary>SEC-02.02 — Creates PasswordResetToken; emails reset LINK (never plaintext password).</summary>
         [HttpPost("ForgotPassword")]
         [AllowAnonymous]
@@ -266,10 +279,28 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     return BadRequest(new { success = false, message = "Email is required." });
 
                 var email = request.Email.Trim();
-                var user = await _context.UserMasters.FirstOrDefaultAsync(x =>
-                    !x.DeleteStatus
-                    && ((x.EmailId != null && x.EmailId.ToLower() == email.ToLower())
-                        || x.UserName.ToLower() == email.ToLower()));
+                var matches = await FindPasswordResetUsersAsync(email);
+                UserMaster? user;
+                if (request.UserId is > 0)
+                {
+                    user = matches.FirstOrDefault(x => x.UserId == request.UserId.Value);
+                    if (user == null)
+                        return BadRequest(new { success = false, message = "Choose one of the roles for this email." });
+                }
+                else if (matches.Count > 1)
+                {
+                    return Ok(new
+                    {
+                        success = false,
+                        needsRole = true,
+                        message = "This email has more than one role. Choose which account to reset.",
+                        accounts = await MapPasswordResetAccountsAsync(matches)
+                    });
+                }
+                else
+                {
+                    user = matches.FirstOrDefault();
+                }
 
                 string? resetLink = null;
                 var mailSent = false;
@@ -299,8 +330,16 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     var fullName = string.Join(" ", new[] { user.FirstName, user.LastName }
                         .Where(s => !string.IsNullOrWhiteSpace(s))
                         .Select(s => s!.Trim()));
-                    var greeting = WebUtility.HtmlEncode(
-                        !string.IsNullOrWhiteSpace(fullName) ? fullName : (user.UserName ?? "there"));
+                    var roleName = "User";
+                    if (user.RoleId is int roleId)
+                    {
+                        roleName = await _context.RoleMasters.AsNoTracking()
+                            .Where(r => r.RoleId == roleId)
+                            .Select(r => r.RoleName)
+                            .FirstOrDefaultAsync() ?? "User";
+                    }
+                    var who = !string.IsNullOrWhiteSpace(fullName) ? fullName : (user.UserName ?? "there");
+                    var greeting = WebUtility.HtmlEncode(who) + " (" + WebUtility.HtmlEncode(roleName) + ")";
                     var body = new StringBuilder();
                     body.Append("<body style='font-family:Arial,sans-serif;color:#1f2937;'>");
                     body.Append("<p>Hello " + greeting + ",</p>");
@@ -799,6 +838,38 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 .Select(x => (int?)x.LoginId)
                 .MaxAsync();
             return (max ?? 0) + 1;
+        }
+
+        private async Task<List<UserMaster>> FindPasswordResetUsersAsync(string emailOrUserName)
+        {
+            var key = emailOrUserName.Trim().ToLower();
+            return await _context.UserMasters
+                .Where(x => !x.DeleteStatus
+                    && ((x.EmailId != null && x.EmailId.ToLower() == key)
+                        || x.UserName.ToLower() == key))
+                .OrderBy(x => x.UserName)
+                .ToListAsync();
+        }
+
+        private async Task<List<object>> MapPasswordResetAccountsAsync(List<UserMaster> users)
+        {
+            var roleIds = users
+                .Where(u => u.RoleId.HasValue)
+                .Select(u => u.RoleId!.Value)
+                .Distinct()
+                .ToList();
+            var roles = roleIds.Count == 0
+                ? new List<RoleMaster>()
+                : await _context.RoleMasters.AsNoTracking()
+                    .Where(r => roleIds.Contains(r.RoleId))
+                    .ToListAsync();
+
+            return users.Select(u => (object)new
+            {
+                userId = u.UserId,
+                userName = u.UserName,
+                roleName = roles.FirstOrDefault(r => r.RoleId == u.RoleId)?.RoleName ?? "User"
+            }).ToList();
         }
 
         private string GetUiSiteUrl()

@@ -6,6 +6,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
     {
         [Required]
         public string Email { get; set; } = null!;
+
+        /// <summary>Required when the email or username matches more than one user.</summary>
+        public long? UserId { get; set; }
     }
 
     public class ResetPasswordRequest

@@ -205,6 +205,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
                 return true;
             if (!string.IsNullOrEmpty(category) && category.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.OrdinalIgnoreCase))
                 return true;
+            // IIS app-pool startup has no user profile for data-protection keys. That warning is not a request failure.
+            if (!string.IsNullOrEmpty(category) && category.StartsWith("Microsoft.AspNetCore.DataProtection", StringComparison.OrdinalIgnoreCase))
+                return true;
             if (string.Equals(category, "Performance", StringComparison.OrdinalIgnoreCase))
                 return true;
             if (IsNoisyInstantAcceptPath(text))
