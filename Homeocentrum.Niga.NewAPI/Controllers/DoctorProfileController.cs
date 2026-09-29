@@ -53,7 +53,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [HttpPut("Me")]
         public async Task<IActionResult> Update([FromBody] DoctorProfileUpdateRequest request)
         {
-            // REC-02.02 — reception may PUT own staff fields; clinic fee / bank / qualifications are ignored.
+            // REC-02.02 — reception may PUT own staff fields. Clinic fee, bank, and qualifications are refused.
             if (string.Equals(DoctorOwnership.GetRoleName(User), "Reception", StringComparison.OrdinalIgnoreCase))
                 return await ReceptionUpdateAsync(request);
 
@@ -306,12 +306,24 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
         /// <summary>
         /// REC-02.02 — update DoctorReceptionStaff contact fields only.
-        /// ConsultFee*, Kyc, Qualification*, ClinicName, WorkingHoursNote are not applied.
+        /// Clinic name, fees, qualifications, and bank details are refused.
         /// </summary>
         private async Task<IActionResult> ReceptionUpdateAsync(DoctorProfileUpdateRequest? request)
         {
             if (request == null)
                 return BadRequest(new { success = false, message = "Body required." });
+
+            if (ReceptionSentDoctorOwnedFields(request))
+            {
+                return new ObjectResult(new
+                {
+                    success = false,
+                    message = "Reception cannot change the doctor's clinic name, fees, qualifications, or bank details."
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
 
             var staffId = User.GetUserId();
             var staff = await _context.DoctorReceptionStaffs
@@ -344,6 +356,23 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { success = true, data = MapReception(staff) });
+        }
+
+        /// <summary>Doctor-owned fields on Profile/Me. Reception may send only their own staff contact fields.</summary>
+        private static bool ReceptionSentDoctorOwnedFields(DoctorProfileUpdateRequest request)
+        {
+            return request.ClinicName != null
+                || request.MiddleName != null
+                || request.AddressLine2 != null
+                || request.StateId.HasValue
+                || request.Pincode != null
+                || request.QualificationId.HasValue
+                || request.PassingUniversity != null
+                || request.PassingCertNo != null
+                || request.ConsultFeeInClinic.HasValue
+                || request.ConsultFeeTele.HasValue
+                || request.WorkingHoursNote != null
+                || request.Kyc != null;
         }
 
         private static ReceptionProfileMeDto MapReception(DoctorReceptionStaff staff) => new()
