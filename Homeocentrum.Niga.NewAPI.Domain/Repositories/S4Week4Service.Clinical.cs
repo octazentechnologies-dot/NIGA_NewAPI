@@ -263,10 +263,31 @@ public partial class S4Week4Service
         return Ok(new { success = true, message = "Remedy line updated.", data = new { prescriptionRemedyId, potency.Code } });
     }
 
+    private async Task<string> UnsignedErxReasonAsync(int patientAppId)
+    {
+        var lines = await _context.Database.SqlQuery<RemedyLineRow>($@"
+            SELECT r.PrescriptionRemedyId, r.RemedyId, m.RemedyName, r.Dose, p.Code AS PotencyCode, r.Frequency, r.Duration, r.Instructions
+            FROM dbo.PrescriptionRemedyDetail r
+            INNER JOIN dbo.RemedyMaster m ON m.RemedyId = r.RemedyId
+            LEFT JOIN dbo.PotencyMaster p ON p.PotencyId = r.PotencyId
+            WHERE r.AppointmentId = {patientAppId} AND ISNULL(r.DeletedStatus, 0) = 0").ToListAsync();
+        if (lines.Count == 0)
+            return "This visit is not signed. Add at least one remedy before signing.";
+        var missing = lines
+            .Where(l => string.IsNullOrWhiteSpace(l.PotencyCode))
+            .Select(l => l.RemedyName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct()
+            .ToList();
+        if (missing.Count > 0)
+            return "This visit is not signed. Missing potency on: " + string.Join(", ", missing) + ".";
+        return "This visit is not signed yet. Use Sign & lock to lock the prescription.";
+    }
+
     public async Task<S4ActionResult> GetErxByAppointmentAsync(int patientAppId, S4Caller caller, bool patientView)
     {
         var snapshot = await LoadSnapshotByAppointmentAsync(patientAppId);
-        if (snapshot == null) return Fail(404, "NOT_FOUND", "No signed prescription for this appointment.");
+        if (snapshot == null) return Fail(404, "NOT_FOUND", await UnsignedErxReasonAsync(patientAppId));
         var access = await EnsureSnapshotAccessAsync(snapshot, caller, patientView);
         if (access != null) return access;
         var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, revealNames: !patientView);
@@ -295,8 +316,14 @@ public partial class S4Week4Service
             WHERE r.AppointmentId = {appointment.PatientAppId} AND ISNULL(r.DeletedStatus, 0) = 0").ToListAsync();
         if (lines.Count == 0)
             return Fail(400, "VALIDATION", "Add at least one remedy before signing.");
-        if (lines.Any(l => string.IsNullOrWhiteSpace(l.PotencyCode)))
-            return Fail(400, "VALIDATION", "Every remedy line needs a potency before signing.");
+        var missingPotency = lines
+            .Where(l => string.IsNullOrWhiteSpace(l.PotencyCode))
+            .Select(l => l.RemedyName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct()
+            .ToList();
+        if (missingPotency.Count > 0)
+            return Fail(400, "VALIDATION", "Cannot sign yet. Missing potency on: " + string.Join(", ", missingPotency) + ".");
 
         var labs = await _context.PatientLabOrders.AsNoTracking()
             .Where(l => l.PatientId == appointment.PatientId && !l.DeleteStatus)
@@ -511,12 +538,18 @@ public partial class S4Week4Service
 
     public async Task<S4ActionResult> ListPharmacyPartnersAsync(S4Caller caller)
     {
-        if (!caller.IsAdmin)
-            return Fail(403, "FORBIDDEN", "Pharmacy partner list is for admin.");
-        var rows = await _context.Database.SqlQuery<SellerRow>($@"
-            SELECT p.PharmacyPartnerId, p.Name, p.Area, p.Status
-            FROM dbo.PharmacyPartner p
-            ORDER BY p.PharmacyPartnerId DESC").ToListAsync();
+        if (!caller.IsAdmin && !caller.IsPharmacy)
+            return Fail(403, "FORBIDDEN", "Pharmacy partner list is for admin or the pharmacy login.");
+        var rows = caller.IsAdmin
+            ? await _context.Database.SqlQuery<SellerRow>($@"
+                SELECT p.PharmacyPartnerId, p.Name, p.Area, p.Status
+                FROM dbo.PharmacyPartner p
+                ORDER BY p.PharmacyPartnerId DESC").ToListAsync()
+            : await _context.Database.SqlQuery<SellerRow>($@"
+                SELECT p.PharmacyPartnerId, p.Name, p.Area, p.Status
+                FROM dbo.PharmacyPartner p
+                WHERE p.UserId = {caller.UserId}
+                ORDER BY p.PharmacyPartnerId DESC").ToListAsync();
         return Ok(new { success = true, data = rows });
     }
 
