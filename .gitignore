@@ -437,3 +437,7 @@ publish-*/
 # Stale solution name after rename to Homeocentrum.Niga.NewAPI.sln
 Niga.sln
 
+# Doctor credential uploads stay on the API host. Do not commit the files.
+Homeocentrum.Niga.NewAPI/Data/DoctorCredentials/*
+!Homeocentrum.Niga.NewAPI/Data/DoctorCredentials/.gitkeep
+

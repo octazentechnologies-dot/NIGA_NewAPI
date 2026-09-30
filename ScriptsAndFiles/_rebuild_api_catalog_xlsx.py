@@ -85,16 +85,28 @@ def join_route(base: str, extra: str) -> str:
     return f"/{base}/{extra}".replace("//", "/")
 
 
+def strip_source_comments(text: str) -> str:
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return "\n".join(re.sub(r"//.*", "", line) for line in text.splitlines())
+
+
 def extract_controllers(ctrl_dir: Path) -> list[dict]:
     rows: list[dict] = []
     for path in sorted(ctrl_dir.glob("*Controller.cs")):
         if path.name == "BaseAPIController.cs":
             continue
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        ctrl_m = CLASS_CTRL.search(text)
-        ctrl_name = ctrl_m.group(1) if ctrl_m else path.stem.replace("Controller", "")
-        head = text[: text.find("{")]
-        class_routes = ROUTE_ATTR.findall(head)
+        text = strip_source_comments(path.read_text(encoding="utf-8", errors="ignore"))
+        class_m = re.search(r"public\s+(?:partial\s+)?class\s+(\w+)Controller\b", text)
+        ctrl_name = class_m.group(1) if class_m else path.stem.replace("Controller", "")
+        # Attributes sit after the namespace brace, so do not stop at the first "{".
+        prefix = ""
+        if class_m:
+            window = text[max(0, class_m.start() - 800) : class_m.start()]
+            brace = window.rfind("}")
+            if brace >= 0:
+                window = window[brace + 1 :]
+            prefix = window
+        class_routes = ROUTE_ATTR.findall(prefix)
         base = f"api/{ctrl_name}"
         for r in class_routes:
             if "[controller]" in r.lower():
@@ -345,6 +357,17 @@ def sample_response(path: str, preserved: str) -> str:
 def build_rows() -> list[dict]:
     existing = load_existing_payloads(EXISTING)
     code = extract_controllers(NEW_CTRL)
+    code.append(
+        {
+            "method": "GET",
+            "endpoint": "/health",
+            "md_endpoint": "GET /health",
+            "file": "Program.cs",
+            "controller": "Health",
+            "token": "no",
+            "host": "New-API",
+        }
+    )
     rows: list[dict] = []
     seen = set()
 
@@ -611,7 +634,10 @@ def main() -> None:
         ("Tufan_Doctor", "Doctor", "Clinic doctor", "Tufan_Doctor", "123456", "HomeoCentrum_Dev", "Active", "Old-API :5001", f"POST {OLD_HOST}/api/Account/Login", "Seed login"),
         ("Tufan_Reception", "Reception", "Front desk", "Tufan_Reception", "123456", "HomeoCentrum_Dev", "Active", "Old-API :5001", f"POST {OLD_HOST}/api/Account/Login", "Seed login"),
         ("Tufan_Patient", "Patient", "Patient portal/app", "Tufan_Patient", "123456", "HomeoCentrum_Dev", "Active", "Old-API :5001", f"POST {OLD_HOST}/api/Account/Login", "Seed login"),
-        ("Swagger", "Docs", "Swagger gate", "Homeocentrum_Developer", "HomeocentrumDeveloper@12345", "Local", "Active", "New :5002 / Old :5001", "/swagger-login", "appsettings SwaggerAuth"),
+        ("Tufan_Caregiver", "Patient", "Caregiver grant on Tufan Patient", "Tufan_Caregiver", "123456", "HomeoCentrum_Dev", "Active", "Old-API :5001", f"POST {OLD_HOST}/api/Account/Login", "Same email as the other Tufan logins; pick this username"),
+        ("Tufan_Account", "Account", "Account department", "Tufan_Account", "123456", "HomeoCentrum_Dev", "Active", "Old-API :5001", f"POST {OLD_HOST}/api/Account/Login", "Seed login"),
+        ("Tufan_Pharmacy", "PharmacyPartner", "Pharmacy partner", "Tufan_Pharmacy", "123456", "HomeoCentrum_Dev", "Active", "Old-API :5001", f"POST {OLD_HOST}/api/Account/Login", "Seed login"),
+        ("Swagger", "Docs", "Swagger gate", "Homeocentrum_Developer", "HomeocentrumDeveloper@12345", "Local", "Active", "New :5002 / Old :5001", "/swagger-login", "SwaggerAuth in appsettings.json"),
     ]
     for u in users:
         wu.append(list(u))

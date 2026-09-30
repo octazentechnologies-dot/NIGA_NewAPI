@@ -61,7 +61,18 @@ public partial class S4Week4Service
         var events = await _context.Database.SqlQuery<VerificationEventRow>($@"
             SELECT DoctorVerificationEventId, DoctorId, Status, Note, ByUserId, At
             FROM dbo.DoctorVerificationEvent WHERE DoctorId = {doctorId} ORDER BY At DESC").ToListAsync();
-        return Ok(new { success = true, data = new { doctor.DoctorId, doctor.VerificationStatus, events } });
+        var documents = await _context.DoctorCredentialDocuments.AsNoTracking()
+            .Where(d => d.DoctorId == doctorId && !d.DeleteStatus)
+            .OrderByDescending(d => d.EnteredDate)
+            .Select(d => new
+            {
+                d.DoctorCredentialDocumentId,
+                d.DocumentType,
+                d.FileName,
+                d.EnteredDate
+            })
+            .ToListAsync();
+        return Ok(new { success = true, data = new { doctor.DoctorId, doctor.VerificationStatus, events, documents } });
     }
 
     public async Task<S4ActionResult> DecideVerificationAsync(int doctorId, VerificationDecisionRequest request, S4Caller caller)
