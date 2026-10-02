@@ -19,7 +19,8 @@ public static class Startup
                 // Do not combine AllowAnyOrigin() with AllowCredentials().
                 builder.SetIsOriginAllowed(_ => true)
                     .AllowAnyMethod()
-                    .AllowAnyHeader();
+                    .AllowAnyHeader()
+                    .WithExposedHeaders("X-Trace-Id");
             });
         });
     }
