@@ -97,6 +97,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Extensions
             services.AddScoped<IPatientAppointmentService, PatientAppointmentService>();
             services.AddScoped<IS3Week3Service, S3Week3Service>();
             services.AddScoped<IS4Week4Service, S4Week4Service>();
+            services.AddScoped<IS5Week5Service, S5Week5Service>();
             services.AddScoped<IPrescriptionService, PrescriptionService>();
             services.AddScoped<IDropdownListService, DropdownListService>();
             services.AddScoped<IAllopathicDrugService, AllopathicDrugService>();

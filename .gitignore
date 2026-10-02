@@ -441,3 +441,4 @@ Niga.sln
 Homeocentrum.Niga.NewAPI/Data/DoctorCredentials/*
 !Homeocentrum.Niga.NewAPI/Data/DoctorCredentials/.gitkeep
 
+/Homeocentrum.Niga.NewAPI/App_Data/payouts/payout-2-20260930002354.csv

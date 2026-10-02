@@ -276,7 +276,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 .Select(x => new
                 {
                     AppointmentDate = x.AppointmentDate!.Value.Date,
-                    x.Status
+                    x.Status,
+                    x.VisitType,
+                    x.ConsultMode
                 })
                 .AsNoTracking()
                 .ToListAsync();
@@ -318,13 +320,24 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 }
             };
 
+            var visitMix = appointments
+                .GroupBy(a =>
+                {
+                    var mode = !string.IsNullOrWhiteSpace(a.ConsultMode) ? a.ConsultMode : a.VisitType;
+                    return string.IsNullOrWhiteSpace(mode) ? "Unknown" : mode.Trim();
+                })
+                .Select(g => new PatientStatsVisitMixModel { Mode = g.Key, Count = g.Count() })
+                .OrderByDescending(x => x.Count)
+                .ToList();
+
             return new PatientStatsChartsResponseModel
             {
                 Period = normalizedPeriod,
                 FromDate = rangeFromDate,
                 ToDate = rangeToDate,
                 PieChart = pieChart,
-                BarChart = BuildBarChartModel(monthlyCounts)
+                BarChart = BuildBarChartModel(monthlyCounts),
+                VisitMix = visitMix
             };
         }
 

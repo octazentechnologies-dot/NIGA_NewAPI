@@ -1,0 +1,18 @@
+API documentation is only in:
+
+  NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
+
+This .txt file is not an API catalog. Open the Excel workbook and filter column Week = S5_Week5.
+
+Rebuild: python NIGA_NewAPI/ScriptsAndFiles/_rebuild_api_catalog_xlsx.py
+
+Week 5 database scripts (run in order on HomeoCentrum_Dev):
+
+  Database scripts/01_S5_Week5_Schema.sql
+  Database scripts/02_S5_Week5_Menus.sql
+  Database scripts/03_S5_Week5_Demo_Data.sql
+
+SMS, FCM, and APNs stay off until Sms:AuthKey or Fcm:ServerKey is set in appsettings.json.
+A captured or collected payment writes EmailMessageLog with status LOGGED. It does not send SMTP.
+POST /api/Email/Receipts/{paymentOrderId} is the send step, and it sends only when smtp host is set.
+This slice does not rotate live Razorpay keys. Directory browsing is not enabled.

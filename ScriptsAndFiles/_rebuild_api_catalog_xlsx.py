@@ -201,6 +201,8 @@ def method_from(endpoint: str, fallback: str = "") -> str:
 def classify_week(controller: str, path: str) -> str:
     p = path.lower()
     c = controller.lower()
+    if c.startswith("s5") or "/s5" in p:
+        return "S5_Week5"
     if c.startswith("s4") or "/s4" in p:
         return "S4_Week4"
     if any(
@@ -499,6 +501,7 @@ def build_rows() -> list[dict]:
             "S2_Week2": "S2",
             "S3_Week3": "S3",
             "S4_Week4": "S4",
+            "S5_Week5": "S5",
             "Platform": "PLT",
         }.get(r["week"], "API")
         r["api_number"] = f"{prefix}-{n:03d}"
@@ -601,7 +604,7 @@ def main() -> None:
     ws_sum.append(["Old-API host", OLD_HOST])
 
     write_sheet(wb, "All_APIs", rows)
-    for week in ("S1_Week1", "S2_Week2", "S3_Week3", "S4_Week4", "Platform"):
+    for week in ("S1_Week1", "S2_Week2", "S3_Week3", "S4_Week4", "S5_Week5", "Platform"):
         subset = [r for r in rows if r["week"] == week]
         if subset:
             write_sheet(wb, week, subset)
