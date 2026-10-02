@@ -36,6 +36,7 @@ public class HostSecurityTests
         Assert.False(HostSecurity.NeedsCsrfCheck("POST", hasBearer: true, hasCookie: true));
         Assert.False(HostSecurity.NeedsCsrfCheck("GET", hasBearer: false, hasCookie: true));
         Assert.False(HostSecurity.NeedsCsrfCheck("POST", hasBearer: false, hasCookie: false));
+        Assert.False(HostSecurity.NeedsCsrfCheck("POST", hasBearer: false, hasCookie: true, enabled: false));
     }
 
     [Fact]

@@ -25,10 +25,11 @@ public static class HostSecurity
 
     /// <summary>
     /// CSRF applies to a cookie-carried session. A Bearer token is not sent by a foreign page, so it is exempt.
+    /// CookieCsrf:Enabled in appsettings turns the whole check off when false.
     /// </summary>
-    public static bool NeedsCsrfCheck(string? method, bool hasBearer, bool hasCookie)
+    public static bool NeedsCsrfCheck(string? method, bool hasBearer, bool hasCookie, bool enabled = true)
     {
-        if (hasBearer || !hasCookie)
+        if (!enabled || hasBearer || !hasCookie)
             return false;
         return method is "POST" or "PUT" or "PATCH" or "DELETE";
     }

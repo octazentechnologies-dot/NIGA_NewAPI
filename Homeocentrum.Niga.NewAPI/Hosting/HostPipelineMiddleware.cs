@@ -15,7 +15,7 @@ public sealed class HostPipelineMiddleware
         _next = next;
     }
 
-    public async Task Invoke(HttpContext context)
+    public async Task Invoke(HttpContext context, IConfiguration configuration)
     {
         var path = context.Request.Path.Value ?? "";
         var swagger = path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase);
@@ -35,7 +35,8 @@ public sealed class HostPipelineMiddleware
 
         var bearer = context.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
         var hasCookie = context.Request.Headers.ContainsKey("Cookie");
-        if (HostSecurity.NeedsCsrfCheck(context.Request.Method, bearer, hasCookie))
+        var cookieCsrfEnabled = configuration.GetValue("CookieCsrf:Enabled", true);
+        if (HostSecurity.NeedsCsrfCheck(context.Request.Method, bearer, hasCookie, cookieCsrfEnabled))
         {
             await ApiProblem.WriteAsync(context, StatusCodes.Status403Forbidden,
                 "This browser call needs a Bearer token. Cookie-only changes are refused.");
