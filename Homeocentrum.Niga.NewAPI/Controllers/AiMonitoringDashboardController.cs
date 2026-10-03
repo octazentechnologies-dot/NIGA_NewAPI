@@ -48,7 +48,14 @@ public class AiMonitoringDashboardController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var userId = User.GetUserId();
-        return Ok(await _dashboardService.GetChartAsync(metricKey, days, userId, cancellationToken));
+        try
+        {
+            return Ok(await _dashboardService.GetChartAsync(metricKey, days, userId, cancellationToken));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
     }
 
     /// <summary>Embedding freshness and coverage health panel.</summary>

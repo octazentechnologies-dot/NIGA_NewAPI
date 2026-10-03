@@ -91,6 +91,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Extensions
             services.AddSingleton<IRubricRemedyImportQueue>(sp => sp.GetRequiredService<RubricRemedyImportQueue>());
             services.AddHostedService<RubricRemedyImportBackgroundService>();
             services.AddScoped<IDoctorDashBoardService, DoctorDashBoardService>();
+            services.AddScoped<IPatientLabOrderServices, PatientLabOrderServices>();
+            services.AddScoped<IPatientLabEntryServices, PatientLabEntryServices>();
+            services.AddScoped<ILabTestMasterServices, LabTestMasterServices>();
             services.AddScoped<IPatientService, PatientService>();
             services.AddScoped<IBlogDetailService, BlogService>();
             services.AddScoped<INewsDetailService, NewsDetailService>();
@@ -288,6 +291,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Extensions
             services.AddSingleton<WhatsAppBulkSendQueue>();
             services.AddSingleton<IWhatsAppBulkSendQueue>(sp => sp.GetRequiredService<WhatsAppBulkSendQueue>());
             services.AddHostedService<WhatsAppBulkSendBackgroundService>();
+            services.AddHostedService<SmsOutboxWorker>();
             services.AddHostedService<DailyIssueMatrixEmailService>();
             services.AddMvc()
         .AddRazorRuntimeCompilation();

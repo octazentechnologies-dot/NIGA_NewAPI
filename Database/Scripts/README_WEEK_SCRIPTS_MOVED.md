@@ -1,6 +1,6 @@
 # Database/Scripts — not the Week 1–3 source of truth
 
-Week 1 / 2 / 3 SQL, API docs, and ticket scripts for deploy live under:
+Week 1 / 2 / 3 / 4 / 5 SQL lives under ScriptsAndFiles. Address location scripts are `S4_Week4/Database scripts/05` through `11`.
 
 **`NIGA_NewAPI/ScriptsAndFiles/S1_Week1`**  
 **`NIGA_NewAPI/ScriptsAndFiles/S2_Week2`**  

@@ -1,13 +1,13 @@
 /*
     Schema only. Safe to run more than once. Does not insert master rows.
-    Run on the other server in this order:
-      1. M00_UserAddressLocation_Schema.sql
-      2. M00_CountryMaster_FromExcel.sql
-      3. M00_StateMaster_FromExcel.sql
-      4. M00_IndiaLocation_FromExcel.sql
-      5. M00_UserAddressLocation_Other.sql          -- inserts Other only when that row is missing
-      6. M00_UserAddressLocation_EnteredBy.sql
-      7. M00_UserAddressLocation_UserData.sql
+    Week 4 folder, after 01 through 04:
+      05. 05_S4_UserAddressLocation_Schema.sql
+      06. 06_S4_CountryMaster_Data.sql
+      07. 07_S4_StateMaster_Data.sql
+      08. 08_S4_IndiaLocation_Data.sql
+      09. 09_S4_AddressLocation_Other.sql
+      10. 10_S4_AddressLocation_EnteredBy.sql
+      11. 11_S4_AddressLocation_UserData.sql
     Country -> State -> District -> City -> PinCode
 */
 SET NOCOUNT ON;
@@ -124,4 +124,44 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_UserMaster_CityM
     ALTER TABLE dbo.UserMaster ADD CONSTRAINT FK_UserMaster_CityMaster FOREIGN KEY (CityId) REFERENCES dbo.CityMaster (CityId);
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_UserMaster_PinCodeMaster')
     ALTER TABLE dbo.UserMaster ADD CONSTRAINT FK_UserMaster_PinCodeMaster FOREIGN KEY (PinCodeId) REFERENCES dbo.PinCodeMaster (PinCodeId);
+GO
+
+IF OBJECT_ID(N'dbo.CityMaster', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.CityMaster', N'StateId') IS NOT NULL
+   AND EXISTS (SELECT 1 FROM dbo.CityMaster WHERE DistrictId IS NULL)
+BEGIN
+    RAISERROR('CityMaster has rows with no DistrictId. Load district links before dropping StateId.', 16, 1);
+    RETURN;
+END
+GO
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CityMaster_StateMaster')
+    ALTER TABLE dbo.CityMaster DROP CONSTRAINT FK_CityMaster_StateMaster;
+GO
+
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_CityMaster_State_Name' AND object_id = OBJECT_ID(N'dbo.CityMaster'))
+    DROP INDEX UX_CityMaster_State_Name ON dbo.CityMaster;
+GO
+
+IF COL_LENGTH(N'dbo.CityMaster', N'StateId') IS NOT NULL
+    ALTER TABLE dbo.CityMaster DROP COLUMN StateId;
+GO
+
+IF OBJECT_ID(N'dbo.CityMaster', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.CityMaster', N'DistrictId') IS NOT NULL
+   AND EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(N'dbo.CityMaster') AND name = N'DistrictId' AND is_nullable = 1
+   )
+   AND NOT EXISTS (SELECT 1 FROM dbo.CityMaster WHERE DistrictId IS NULL)
+    ALTER TABLE dbo.CityMaster ALTER COLUMN DistrictId int NOT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CityMaster_DistrictMaster')
+    ALTER TABLE dbo.CityMaster ADD CONSTRAINT FK_CityMaster_DistrictMaster
+        FOREIGN KEY (DistrictId) REFERENCES dbo.DistrictMaster (DistrictId);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_CityMaster_District_Name' AND object_id = OBJECT_ID(N'dbo.CityMaster'))
+    CREATE UNIQUE INDEX UX_CityMaster_District_Name ON dbo.CityMaster (DistrictId, CityName);
 GO

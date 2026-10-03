@@ -82,6 +82,15 @@ public class S5Week5Service : IS5Week5Service
         }
         if (body.Length == 0)
             return S4ActionResult.Fail(400, "VALIDATION", "Body or an active template code is required.");
+        if (caller.DoctorId.HasValue && code.Length > 0)
+        {
+            var pref = await _context.Database.SqlQuery<CountRow>($@"
+                SELECT TOP 1 CAST(CASE WHEN Enabled = 1 THEN 1 ELSE 0 END AS int) AS Value
+                FROM dbo.DoctorSmsPreference
+                WHERE DoctorId = {caller.DoctorId.Value} AND TemplateCode = {code}").FirstOrDefaultAsync();
+            if (pref != null && pref.Value == 0)
+                return S4ActionResult.Fail(409, "EVENT_OFF", "This doctor has turned off SMS for that event.");
+        }
 
         var status = "LOGGED";
         var providerId = "";
@@ -107,6 +116,77 @@ public class S5Week5Service : IS5Week5Service
             SELECT TOP 200 SmsMessageLogId, TemplateCode, Mobile, Body, Status, At
             FROM dbo.SmsMessageLog ORDER BY SmsMessageLogId DESC").ToListAsync();
         return S4ActionResult.Ok(new { success = true, data = rows });
+    });
+
+    public Task<S4ActionResult> ListSmsEventsAsync(S4Caller caller) => Guard(async () =>
+    {
+        if (!caller.IsAdmin && !caller.IsDoctor)
+            return S4ActionResult.Fail(403, "FORBIDDEN", "A doctor or admin can read SMS events.");
+        var doctorId = caller.DoctorId ?? 0;
+        var rows = await _context.Database.SqlQuery<SmsEventRow>($@"
+            SELECT t.Code, t.Body, t.IsActive,
+                   CAST(ISNULL(p.Enabled, 1) AS bit) AS Enabled
+            FROM dbo.SmsTemplate t
+            LEFT JOIN dbo.DoctorSmsPreference p
+              ON p.TemplateCode = t.Code AND p.DoctorId = {doctorId}
+            ORDER BY t.Code").ToListAsync();
+        return S4ActionResult.Ok(new { success = true, data = rows });
+    });
+
+    public Task<S4ActionResult> SaveSmsPreferenceAsync(DoctorSmsPreferenceWrite request, S4Caller caller) => Guard(async () =>
+    {
+        if (!caller.IsDoctor || !caller.DoctorId.HasValue)
+            return S4ActionResult.Fail(403, "FORBIDDEN", "A doctor can change SMS events.");
+        var code = (request?.TemplateCode ?? "").Trim().ToUpperInvariant();
+        if (code.Length == 0)
+            return S4ActionResult.Fail(400, "VALIDATION", "TemplateCode is required.");
+        var enabled = request!.Enabled;
+        var doctorId = caller.DoctorId.Value;
+        var existing = await _context.Database.SqlQuery<CountRow>($@"
+            SELECT COUNT(1) AS Value FROM dbo.DoctorSmsPreference
+            WHERE DoctorId = {doctorId} AND TemplateCode = {code}").FirstAsync();
+        if (existing.Value > 0)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.DoctorSmsPreference SET Enabled = {enabled}
+                WHERE DoctorId = {doctorId} AND TemplateCode = {code}");
+        }
+        else
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.DoctorSmsPreference (DoctorId, TemplateCode, Enabled)
+                VALUES ({doctorId}, {code}, {enabled})");
+        }
+        return await ListSmsEventsAsync(caller);
+    });
+
+    public Task<S4ActionResult> RegisterDeviceAsync(DeviceRegisterRequest request, S4Caller caller) => Guard(async () =>
+    {
+        if (caller.UserId <= 0)
+            return S4ActionResult.Fail(401, "UNAUTHORIZED", "Sign in before registering a device.");
+        var token = (request?.Token ?? "").Trim();
+        if (token.Length < 8)
+            return S4ActionResult.Fail(400, "VALIDATION", "A device token is required.");
+        if (token.Length > 512) token = token.Substring(0, 512);
+        var platform = (request?.Platform ?? "web").Trim().ToLowerInvariant();
+        if (platform != "android" && platform != "ios" && platform != "web")
+            platform = "web";
+        var existing = await _context.Database.SqlQuery<CountRow>($@"
+            SELECT COUNT(1) AS Value FROM dbo.DeviceToken
+            WHERE UserId = {caller.UserId} AND Token = {token}").FirstAsync();
+        if (existing.Value > 0)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.DeviceToken SET Platform = {platform}, UpdatedAt = {DateTime.Now}
+                WHERE UserId = {caller.UserId} AND Token = {token}");
+        }
+        else
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.DeviceToken (UserId, Token, Platform)
+                VALUES ({caller.UserId}, {token}, {platform})");
+        }
+        return S4ActionResult.Ok(new { success = true, platform });
     });
 
     public Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request) => Guard(async () =>
@@ -143,7 +223,7 @@ public class S5Week5Service : IS5Week5Service
         var body = (request?.Body ?? "").Trim();
         if (request == null || request.UserId <= 0 || title.Length == 0)
             return S4ActionResult.Fail(400, "VALIDATION", "UserId and title are required.");
-        var push = string.IsNullOrWhiteSpace(_config["Fcm:ServerKey"]) ? "LOGGED" : "QUEUED";
+        var push = await DeliverPushAsync(request.UserId, title, body);
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.AppNotification (UserId, Title, Body, PushStatus)
             VALUES ({request.UserId}, {title}, {body}, {push})");
@@ -179,12 +259,14 @@ public class S5Week5Service : IS5Week5Service
             FROM dbo.PaymentOrder WHERE PaymentOrderId = {paymentOrderId}").FirstOrDefaultAsync();
         if (order == null)
             return S4ActionResult.Fail(404, "NOT_FOUND", "Payment not found.");
-        var to = (_config["smtp:from"] ?? "").Trim();
+        if (order.Status is not ("CAPTURED" or "COLLECTED" or "PAID"))
+            return S4ActionResult.Fail(409, "NOT_PAID", "A receipt email is sent after the payment is paid.");
+        var to = await PatientEmailAsync(paymentOrderId);
         var subject = "Homeocentrum receipt " + order.PaymentOrderId;
-        var body = $"<p>Payment {order.PaymentOrderId} is {order.Status} for {order.Amount} {order.Currency}.</p>";
+        var body = $"Payment {order.PaymentOrderId} is {order.Status} for {order.Amount} {order.Currency}.";
         var status = "LOGGED";
         var smtp = _config.GetSection("smtp").Get<SmtpSettingsModel>();
-        if (!string.IsNullOrWhiteSpace(to) && smtp != null && !string.IsNullOrWhiteSpace(smtp.host))
+        if (to.Contains('@') && smtp != null && !string.IsNullOrWhiteSpace(smtp.host))
         {
             var sender = new EmailSenderService();
             var sent = sender.SendMail(new EmailSenderModel
@@ -192,7 +274,7 @@ public class S5Week5Service : IS5Week5Service
                 ToAddress = to,
                 Subject = subject,
                 Body = body,
-                isHtml = true
+                isHtml = false
             }, smtp);
             status = sent ? "SENT" : "FAILED";
         }
@@ -456,6 +538,59 @@ public class S5Week5Service : IS5Week5Service
         return text.Length > 10 ? text.Substring(text.Length - 10) : text;
     }
 
+    private async Task<string> PatientEmailAsync(long paymentOrderId)
+    {
+        var row = await _context.Database.SqlQuery<TextRow>($@"
+            SELECT TOP 1 ISNULL(pt.Email, N'') AS Value
+            FROM dbo.PaymentOrder po
+            LEFT JOIN dbo.Patient pt ON pt.PatientID = po.PatientId
+            WHERE po.PaymentOrderId = {paymentOrderId}").FirstOrDefaultAsync();
+        return (row?.Value ?? "").Trim();
+    }
+
+    /// <summary>COM-03.04 — FCM for android/web tokens when a server key is set. iOS stays logged until an APNs key exists.</summary>
+    private async Task<string> DeliverPushAsync(long userId, string title, string body)
+    {
+        var serverKey = _config["Fcm:ServerKey"];
+        var tokens = await _context.Database.SqlQuery<DeviceRow>($@"
+            SELECT Token, Platform FROM dbo.DeviceToken WHERE UserId = {userId}").ToListAsync();
+        if (tokens.Count == 0 || string.IsNullOrWhiteSpace(serverKey))
+            return "LOGGED";
+        var attempted = 0;
+        var sent = 0;
+        foreach (var token in tokens)
+        {
+            var platform = (token.Platform ?? "").ToLowerInvariant();
+            if (platform == "ios")
+                continue;
+            attempted++;
+            if (await PostFcmAsync(serverKey, token.Token, title, body))
+                sent++;
+        }
+        if (attempted == 0)
+            return "LOGGED";
+        return sent > 0 ? "SENT" : "FAILED";
+    }
+
+    private static async Task<bool> PostFcmAsync(string serverKey, string token, string title, string body)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "key=" + serverKey);
+            var payload = "{\"to\":\"" + token.Replace("\"", "") + "\",\"notification\":{\"title\":\""
+                + title.Replace("\"", "") + "\",\"body\":\"" + body.Replace("\"", "") + "\"}}";
+            var response = await client.PostAsync(
+                "https://fcm.googleapis.com/fcm/send",
+                new StringContent(payload, Encoding.UTF8, "application/json"));
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static async Task<bool> PostProviderAsync(string endpoint, string authKey, string mobile, string body)
     {
         try
@@ -486,6 +621,19 @@ public class S5Week5Service : IS5Week5Service
     }
 
     private sealed class CountRow { public int Value { get; set; } }
+    private sealed class TextRow { public string Value { get; set; } = ""; }
+    private sealed class DeviceRow
+    {
+        public string Token { get; set; } = "";
+        public string Platform { get; set; } = "";
+    }
+    private sealed class SmsEventRow
+    {
+        public string Code { get; set; } = "";
+        public string Body { get; set; } = "";
+        public bool IsActive { get; set; }
+        public bool Enabled { get; set; }
+    }
     private sealed class SmsTemplateRow
     {
         public int SmsTemplateId { get; set; }

@@ -106,3 +106,36 @@ BEGIN
     ALTER TABLE dbo.WhatsAppMessageLog ADD ReceiptPayload NVARCHAR(MAX) NULL;
 END
 GO
+
+IF OBJECT_ID(N'dbo.DeviceToken', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.DeviceToken
+    (
+        DeviceTokenId BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_DeviceToken PRIMARY KEY,
+        UserId BIGINT NOT NULL,
+        Token NVARCHAR(512) NOT NULL,
+        Platform NVARCHAR(20) NOT NULL,
+        UpdatedAt DATETIME NOT NULL CONSTRAINT DF_DeviceToken_UpdatedAt DEFAULT (GETDATE()),
+        CONSTRAINT UX_DeviceToken_User_Token UNIQUE (UserId, Token)
+    );
+END
+GO
+
+IF COL_LENGTH(N'dbo.DeviceToken', N'Token') IS NOT NULL
+BEGIN
+    ALTER TABLE dbo.DeviceToken ALTER COLUMN Token NVARCHAR(512) NOT NULL;
+END
+GO
+
+IF OBJECT_ID(N'dbo.DoctorSmsPreference', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.DoctorSmsPreference
+    (
+        DoctorSmsPreferenceId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_DoctorSmsPreference PRIMARY KEY,
+        DoctorId INT NOT NULL,
+        TemplateCode NVARCHAR(40) NOT NULL,
+        Enabled BIT NOT NULL CONSTRAINT DF_DoctorSmsPreference_Enabled DEFAULT (1),
+        CONSTRAINT UX_DoctorSmsPreference_Doctor_Code UNIQUE (DoctorId, TemplateCode)
+    );
+END
+GO

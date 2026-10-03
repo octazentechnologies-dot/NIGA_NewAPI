@@ -1,3 +1,5 @@
+using Homeocentrum.Niga.NewAPI.Domain.DTOs;
+
 namespace Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 
 public interface IS5Week5Service
@@ -6,6 +8,9 @@ public interface IS5Week5Service
     Task<S4ActionResult> SaveSmsTemplateAsync(SmsTemplateWrite request, S4Caller caller);
     Task<S4ActionResult> SendSmsAsync(SmsSendRequest request, S4Caller caller);
     Task<S4ActionResult> SmsHistoryAsync(S4Caller caller);
+    Task<S4ActionResult> ListSmsEventsAsync(S4Caller caller);
+    Task<S4ActionResult> SaveSmsPreferenceAsync(DoctorSmsPreferenceWrite request, S4Caller caller);
+    Task<S4ActionResult> RegisterDeviceAsync(DeviceRegisterRequest request, S4Caller caller);
     Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request);
     Task<S4ActionResult> WhatsAppBulkAsync(S4Caller caller);
     Task<S4ActionResult> SendNotificationAsync(NotificationSendRequest request, S4Caller caller);
@@ -40,6 +45,12 @@ public class SmsSendRequest
     public string? TemplateCode { get; set; }
     public string? Mobile { get; set; }
     public string? Body { get; set; }
+}
+
+public class DoctorSmsPreferenceWrite
+{
+    public string? TemplateCode { get; set; }
+    public bool Enabled { get; set; } = true;
 }
 
 public class NotificationSendRequest

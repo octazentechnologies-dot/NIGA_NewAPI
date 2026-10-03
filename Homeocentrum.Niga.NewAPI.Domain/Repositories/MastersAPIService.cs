@@ -886,7 +886,33 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
 
         public List<SubSectionModel> GetSubSectionByBodyPart(string subSectionName, ref ErrorResponseModel errorResponseModel)
         {
-            throw new NotImplementedException();
+            errorResponseModel = new ErrorResponseModel();
+            var name = (subSectionName ?? string.Empty).Trim();
+            var subsectionModelList = (
+                from ss in context.SubSectionMasters
+                where ss.SubSectionName != null && ss.SubSectionName.Contains(name)
+                select new SubSectionModel
+                {
+                    SubSectionId = ss.SubSectionId,
+                    ChangedBy = ss.ChangedBy,
+                    ChangedDate = ss.ChangedDate,
+                    DeleteStatus = ss.DeleteStatus,
+                    Description = ss.Description,
+                    EnteredBy = ss.EnteredBy,
+                    EnteredDate = ss.EnteredDate,
+                    SectionId = ss.SectionId,
+                    ParentSubSectionId = ss.ParentSubSectionId,
+                    SubSectionName = ss.SubSectionName,
+                    SubSectionNameAlias = ss.SubSectionNameAlias,
+                }
+            ).Take(50).ToList();
+
+            if (subsectionModelList.Count == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "Sub section not found";
+            }
+            return subsectionModelList;
         }
 
         /// <summary>

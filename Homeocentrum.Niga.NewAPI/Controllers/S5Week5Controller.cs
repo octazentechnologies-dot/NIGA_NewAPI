@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
+using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Extensions;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
@@ -37,6 +38,17 @@ public class S5Week5Controller : ControllerBase
 
     [HttpGet("/api/Sms/History")]
     public Task<IActionResult> SmsHistory() => Done(_s5.SmsHistoryAsync(Caller()));
+
+    [HttpGet("/api/Sms/Events")]
+    public Task<IActionResult> SmsEvents() => Done(_s5.ListSmsEventsAsync(Caller()));
+
+    [HttpPut("/api/Sms/Preferences")]
+    public Task<IActionResult> SmsPreference([FromBody] DoctorSmsPreferenceWrite request)
+        => Done(_s5.SaveSmsPreferenceAsync(request, Caller()));
+
+    [HttpPost("/api/Devices/Register")]
+    public Task<IActionResult> RegisterDevice([FromBody] DeviceRegisterRequest request)
+        => Done(_s5.RegisterDeviceAsync(request, Caller()));
 
     [AllowAnonymous]
     [HttpPost("/api/WhatsApp/Receipts")]

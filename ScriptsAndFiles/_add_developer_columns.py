@@ -25,8 +25,8 @@ SCAN_ROOTS = [
 NAME = "Tufan Powar"
 EMAIL = "tufanpowar001@gmail.com"
 MOBILE = "7768046064"
-NEW_HOST = "https://api1.homeocentrum.com"
-OLD_HOST = "https://api.homeocentrum.com"
+NEW_HOST = "https://devapi2.homeocentrum.com"
+OLD_HOST = "https://devapi1.homeocentrum.com"
 
 OTP_TEST = f"""OTP TEST WHILE THE SMS PROVIDER IS NOT LIVE
 

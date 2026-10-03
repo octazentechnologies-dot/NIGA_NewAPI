@@ -35,12 +35,15 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
         {
             var patientAppModelList = new List<PatientAppointmentModel>();
             var errorResponseModel = new ErrorResponseModel();
+            var day = (parameter.Date ?? DateTime.Today).Date;
             var patientAppEntityList = (
                 from p in context.PatientAppointments
                 join pa in context.Patients on p.PatientId equals pa.PatientId
                 join c in context.CaseEntryDetails on p.PatientId equals c.PatientId
                 join u in context.UserMasters on p.UserId equals u.UserId
-                where p.UserId == parameter.UserId && p.AppointmentDate.Value.Date == parameter.Date.Value.Date
+                where p.UserId == parameter.UserId
+                    && p.AppointmentDate != null
+                    && p.AppointmentDate.Value.Date == day
                 && p.DeleteStatus == false
                 select new PatientAppointmentModel
                 {
@@ -122,49 +125,50 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
         {
             
             DoctorDashBoardModel appointmentCount = new DoctorDashBoardModel();
+            var day = (appointmentDate ?? DateTime.Today).Date;
             appointmentCount.patientApp = context
                 .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == appointmentDate.Value.Date  && x.UserId == userId
+                    x.AppointmentDate.Value.Date  == day  && x.UserId == userId
                 )
                 .Count();
             appointmentCount.patientAppComplated = context
                 .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == appointmentDate.Value.Date 
+                    x.AppointmentDate.Value.Date  == day 
                     && x.UserId == userId
                     && x.Status == PatientsStatus.Completed.GetDisplayName()
                 )
                 .Count();
             appointmentCount.patientAppWaiting = context
                 .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == appointmentDate.Value.Date 
+                    x.AppointmentDate.Value.Date  == day 
                     && x.UserId == userId
                     && x.Status == PatientsStatus.Waiting.GetDisplayName()
                 )
                 .Count();
             appointmentCount.patientAppNotArrived = context
                 .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == appointmentDate.Value.Date 
+                    x.AppointmentDate.Value.Date  == day 
                     && x.UserId == userId
                     && x.Status == PatientsStatus.NotArrived.GetDisplayName()
                 )
                 .Count();
             appointmentCount.patientAppRemaining = context
                 .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == appointmentDate.Value.Date 
+                    x.AppointmentDate.Value.Date  == day 
                     && x.UserId == userId
                     && x.Status == PatientsStatus.Remaining.GetDisplayName()
                 )
                 .Count();
                 appointmentCount.patientAppEConsult = context
                 .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == appointmentDate.Value.Date 
+                    x.AppointmentDate.Value.Date  == day 
                     && x.UserId == userId
                     && x.Status == PatientsStatus.E_Consult.GetDisplayName()
                 )
                 .Count();
             appointmentCount.patientAppWalkIn = context
                .PatientAppointments.Where(x =>
-                   x.AppointmentDate.Value.Date == appointmentDate.Value.Date
+                   x.AppointmentDate.Value.Date == day
                    && x.UserId == userId
                    && x.Status == PatientsStatus.Walk_In.GetDisplayName()
                )
@@ -184,7 +188,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             }
 
             var dayAppts = context.PatientAppointments.AsNoTracking()
-                .Where(x => x.AppointmentDate.Value.Date == appointmentDate.Value.Date && x.UserId == userId && x.DeleteStatus != true);
+                .Where(x => x.AppointmentDate.Value.Date == day && x.UserId == userId && x.DeleteStatus != true);
             appointmentCount.teleQueueCount = dayAppts.Count(x =>
                 x.IsTele == true
                 || x.Status == PatientsStatus.E_Consult.GetDisplayName());

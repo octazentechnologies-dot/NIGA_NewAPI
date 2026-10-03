@@ -7,7 +7,7 @@
 | 1 | `S1_Week1/Database scripts/` |
 | 2 | `S2_Week2/Database scripts/` |
 | 3 | `S3_Week3/Database scripts/` |
-| 4 | `S4_Week4/Database scripts/` (`01` schema, `02` menus, `03` notification outbox, `04` demo data) |
+| 4 | `S4_Week4/Database scripts/` (`01` schema, `02` notification outbox, `03` menus, `04` demo data, then address `05` schema, `06`–`08` country/state/India data, `09` Other, `10` EnteredBy, `11` user location ids) |
 
 Run on `HomeoCentrum_Dev` in numbered order.
 
@@ -20,7 +20,7 @@ Run on `HomeoCentrum_Dev` in numbered order.
 - Regenerated from New-API controllers (+ Old-API rows kept where marked).
 - Includes Sample request / Sample Real request / Sample response columns.
 - Sample Real request: 3 copy-paste examples with real HomeoCentrum_Dev ids (no `:id`).
-- New-API: `http://127.0.0.1:5002` — Old-API: `http://127.0.0.1:5001`
+- Samples in the Excel use New API `https://devapi2.homeocentrum.com/api` and Old API `https://devapi1.homeocentrum.com/api`
 - Rebuild catalog: `python ScriptsAndFiles/_rebuild_api_catalog_xlsx.py`
 - Enrich real samples: `python ScriptsAndFiles/_enrich_sample_real_requests.py`
 
