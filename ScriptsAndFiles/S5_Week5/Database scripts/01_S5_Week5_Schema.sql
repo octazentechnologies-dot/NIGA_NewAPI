@@ -7,7 +7,11 @@ Purpose      : S5 Week 5 tables for SMS, in-app notifications, and email logs.
                WhatsApp delivery columns are added on the existing log.
                Report queries reuse Week 4 payment, follow-up, and medicine tables.
                Does not store SMS, FCM, or Razorpay secrets.
-Use          : HomeoCentrum_Dev. Idempotent. Run before the Week 5 HTTP routes.
+Use          : HomeoCentrum_Dev. Idempotent. Run after S4_Week4 (01 schema, 02 outbox, 03 menus, 04 demo).
+               Then this folder in filename order:
+               1. 01_S5_Week5_Schema.sql
+               2. 02_S5_Week5_Menus.sql
+               3. 03_S5_Week5_Demo_Data.sql
 ================================================================================
 */
 SET NOCOUNT ON;

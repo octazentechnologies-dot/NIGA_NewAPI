@@ -1,5 +1,6 @@
 /*
-S4 Week 4 — FIN-11 / Clinic menus for Account finance extras, doctor consult fees,
+S4 Week 4 — step 3 of 4. Run after 02_S4_Notification_Outbox.sql and before 04_S4_Week4_Demo_Data.sql.
+FIN-11 / Clinic menus for Account finance extras, doctor consult fees,
 admin trust queue, patient continuity (idempotent).
 */
 SET NOCOUNT ON;
@@ -118,5 +119,5 @@ IF @AcctHome IS NOT NULL AND @AccountRoleId IS NOT NULL
     INSERT INTO dbo.RoleDetails (RoleId, MenuId, IsView, IsAdd, IsModify, IsDelete)
     VALUES (@AccountRoleId, @AcctHome, 1, 0, 0, 0);
 
-PRINT '02_S4_Week4_Menus.sql completed.';
+PRINT '03_S4_Week4_Menus.sql completed.';
 GO

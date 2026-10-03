@@ -79,6 +79,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 {
                     CountryId = c.CountryId,
                     CountryName = c.CountryName,
+                    CountryCode = c.CountryCode,
+                    Iso2Code = c.Iso2Code,
+                    Iso3Code = c.Iso3Code,
                     EnteredDate = c.EnteredDate,
                     EnteredBy = c.EnteredBy,
                     ChangedBy = c.ChangedBy,

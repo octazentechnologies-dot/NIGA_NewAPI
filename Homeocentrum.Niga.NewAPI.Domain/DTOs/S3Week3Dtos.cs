@@ -62,7 +62,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
     }
 
     /// <summary>
-    /// APT-05.04 — channel outcomes. Push stays "later". Failed channels do not undo the move.
+    /// APT-05.04 — channel outcomes. Push stays "later".
+    /// "logged" means the notice is on NotificationOutbox and was not sent.
+    /// A logged or failed notice does not undo the cancel or reschedule.
     /// </summary>
     public class AppointmentNotificationResult
     {

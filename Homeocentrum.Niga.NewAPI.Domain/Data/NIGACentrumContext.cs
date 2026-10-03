@@ -388,6 +388,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
 
     public virtual DbSet<StateMaster> StateMasters { get; set; }
 
+    public virtual DbSet<DistrictMaster> DistrictMasters { get; set; }
+
     public virtual DbSet<PinCodeMaster> PinCodeMasters { get; set; }
 
     public virtual DbSet<SubSectionLanguageDetail> SubSectionLanguageDetails { get; set; }
@@ -830,6 +832,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
             entity.Property(e => e.ChangedDate).HasColumnType("datetime");
             entity.Property(e => e.CountryCode).HasMaxLength(50);
             entity.Property(e => e.CountryName).HasMaxLength(100);
+            entity.Property(e => e.Iso2Code).HasMaxLength(2);
+            entity.Property(e => e.Iso3Code).HasMaxLength(3);
             entity.Property(e => e.EnteredBy).HasMaxLength(50);
             entity.Property(e => e.EnteredDate).HasColumnType("datetime");
         });
@@ -2881,6 +2885,23 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
                 .HasConstraintName("FK_StateMaster_CountryMaster");
         });
 
+        modelBuilder.Entity<DistrictMaster>(entity =>
+        {
+            entity.HasKey(e => e.DistrictId);
+
+            entity.ToTable("DistrictMaster");
+
+            entity.Property(e => e.ChangedBy).HasMaxLength(50);
+            entity.Property(e => e.ChangedDate).HasColumnType("datetime");
+            entity.Property(e => e.DistrictName).HasMaxLength(100);
+            entity.Property(e => e.EnteredBy).HasMaxLength(50);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+
+            entity.HasOne(d => d.State).WithMany(p => p.DistrictMasters)
+                .HasForeignKey(d => d.StateId)
+                .HasConstraintName("FK_DistrictMaster_StateMaster");
+        });
+
         modelBuilder.Entity<CityMaster>(entity =>
         {
             entity.HasKey(e => e.CityId);
@@ -2893,9 +2914,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
             entity.Property(e => e.EnteredBy).HasMaxLength(50);
             entity.Property(e => e.EnteredDate).HasColumnType("datetime");
 
-            entity.HasOne(d => d.State).WithMany(p => p.CityMasters)
-                .HasForeignKey(d => d.StateId)
-                .HasConstraintName("FK_CityMaster_StateMaster");
+            entity.HasOne(d => d.District).WithMany(p => p.CityMasters)
+                .HasForeignKey(d => d.DistrictId)
+                .HasConstraintName("FK_CityMaster_DistrictMaster");
         });
 
         modelBuilder.Entity<PinCodeMaster>(entity =>

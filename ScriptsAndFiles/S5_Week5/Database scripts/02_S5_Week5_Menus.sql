@@ -1,5 +1,6 @@
 /*
-S5 Week 5 — admin clinic reports, follow-ups, and notification menus (idempotent).
+S5 Week 5 — step 2 of 3. Run after 01_S5_Week5_Schema.sql and before 03_S5_Week5_Demo_Data.sql.
+Admin clinic reports, follow-ups, and notification menus (idempotent).
 */
 SET NOCOUNT ON;
 GO

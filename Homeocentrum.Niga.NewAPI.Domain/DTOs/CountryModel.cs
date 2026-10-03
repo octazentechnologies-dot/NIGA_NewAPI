@@ -10,6 +10,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public int CountryId { get; set; }
         [Required(ErrorMessage ="Country Name is required")]
         public string CountryName { get; set; }
+        public string CountryCode { get; set; }
+        public string Iso2Code { get; set; }
+        public string Iso3Code { get; set; }
         public string EnteredBy { get; set; }
         public DateTime? EnteredDate { get; set; }
         public string ChangedBy { get; set; }

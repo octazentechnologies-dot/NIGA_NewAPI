@@ -16,6 +16,12 @@ public partial class Patient:AuditableEntities
 
     public int? CountryId { get; set; }
 
+    public int? DistrictId { get; set; }
+
+    public int? CityId { get; set; }
+
+    public int? PinCodeId { get; set; }
+
     public string? MobileNo { get; set; }
 
     public string? PhoneNo { get; set; }

@@ -1,5 +1,6 @@
 /*
-S5 Week 5 — seed SMS templates used by appointment and OTP events.
+S5 Week 5 — step 3 of 3. Run after 02_S5_Week5_Menus.sql.
+Seed SMS templates used by appointment and OTP events.
 Does not send a message and does not store a provider key.
 */
 SET NOCOUNT ON;

@@ -1,7 +1,8 @@
 /*
-S4 Week 4 — PAY-04.04 / APT notify outbox.
+S4 Week 4 — step 2 of 4. Run after 01_S4_Week4_Schema.sql and before 03_S4_Week4_Menus.sql.
+PAY-04.04 / APT notify outbox.
 SMS and WhatsApp rows wait here until Msg91 / WhatsAppMeta keys are filled in New-API appsettings.
-Idempotent.
+Idempotent. A missing provider does not roll back a cancel or reschedule.
 */
 SET NOCOUNT ON;
 IF OBJECT_ID(N'dbo.NotificationOutbox', N'U') IS NULL
@@ -19,5 +20,5 @@ BEGIN
     );
     CREATE INDEX IX_NotificationOutbox_Status ON dbo.NotificationOutbox (Status, CreatedAt);
 END
-PRINT '03_S4_Notification_Outbox.sql completed.';
+PRINT '02_S4_Notification_Outbox.sql completed.';
 GO

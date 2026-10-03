@@ -11,6 +11,10 @@ public partial class CountryMaster
 
     public string? CountryCode { get; set; }
 
+    public string? Iso2Code { get; set; }
+
+    public string? Iso3Code { get; set; }
+
     public string? EnteredBy { get; set; }
 
     public DateTime? EnteredDate { get; set; }
