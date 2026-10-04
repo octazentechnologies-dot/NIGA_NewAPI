@@ -157,7 +157,13 @@ ELSE
 BEGIN SET @Fail += 1; PRINT 'FAIL: UT-13 WelcomeSlide/UserAppPreference/DevicePushToken'; END
 
 IF COL_LENGTH(N'dbo.UserMaster', N'UserName') IS NOT NULL
-   AND EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserName = N'tufanpowar001@gmail.com' AND ISNULL(DeleteStatus,0)=0)
+   AND COL_LENGTH(N'dbo.UserMaster', N'EmailId') IS NOT NULL
+   AND EXISTS (
+        SELECT 1 FROM dbo.UserMaster
+        WHERE UserName = N'Tufan_Patient'
+          AND EmailId = N'tufanpowar001@gmail.com'
+          AND ISNULL(DeleteStatus,0)=0
+   )
 BEGIN SET @Pass += 1; PRINT 'PASS: UT-14 Patient seed login exists'; END
 ELSE
 BEGIN SET @Fail += 1; PRINT 'FAIL: UT-14 Patient seed login exists'; END
