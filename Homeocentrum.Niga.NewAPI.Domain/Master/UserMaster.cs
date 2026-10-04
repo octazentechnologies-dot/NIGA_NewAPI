@@ -47,6 +47,12 @@ public partial class UserMaster
 
     public int? StateId { get; set; }
 
+    public int? DistrictId { get; set; }
+
+    public int? CityId { get; set; }
+
+    public int? PinCodeId { get; set; }
+
     public bool? IsUserActivated { get; set; }
 
     public int? RoleId { get; set; }

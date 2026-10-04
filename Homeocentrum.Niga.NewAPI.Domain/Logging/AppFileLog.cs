@@ -64,6 +64,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
 
         /// <summary>ErrorAlert:DailyMatrixEnabled. Default on when the section is missing.</summary>
         public static bool IsDailyMatrixEnabled => _alert?.DailyMatrixEnabled == true;
+        public static bool IsDeployNoticeEnabled { get; private set; } = true;
         public static bool IsWarnAlertEnabled => _alert?.AlertOnWarn != false;
         public static int SlowRequestMilliseconds => _alert?.SlowRequestMs > 0 ? _alert.SlowRequestMs : 3000;
 
@@ -87,6 +88,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
                     .ToArray()!;
             }
             _smtp = config.GetSection("smtp").Get<SmtpSettingsModel>();
+            if (bool.TryParse(config["DeployNotice:Enabled"], out var deployNotice))
+                IsDeployNoticeEnabled = deployNotice;
             if (IsFileEnabled)
             {
                 Directory.CreateDirectory(_root);
@@ -322,6 +325,42 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
         /// Midnight matrix. Subject stays "Homeocentrum Runtime ERROR - {host} - {local time}".
         /// The type split (UI vs this API) and the counts are in the body.
         /// </summary>
+        /// <summary>
+        /// IIS app-pool start mail. phase is "started" when the process loads and "ready" when it is listening.
+        /// Local dotnet run does not send this. APP_POOL_ID is set only by IIS.
+        /// </summary>
+        public static void SendDeployNotice(string phase)
+        {
+            if (!IsDeployNoticeEnabled || _alert.Recipients == null || _alert.Recipients.Length == 0 || _smtp == null)
+                return;
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("APP_POOL_ID")))
+                return;
+            var ready = string.Equals(phase, "ready", StringComparison.OrdinalIgnoreCase);
+            var subject = ready
+                ? "Homeocentrum IIS API deployment done - " + _application
+                : "Homeocentrum IIS API deployment started - " + _application;
+            var body = "<p>" + WebUtility.HtmlEncode(subject) + "</p><p>Machine " + WebUtility.HtmlEncode(Environment.MachineName)
+                + " pool " + WebUtility.HtmlEncode(Environment.GetEnvironmentVariable("APP_POOL_ID"))
+                + " at " + DateTime.Now.ToString("dd-MMM-yyyy HH:mm:ss") + ".</p>";
+            var sender = new EmailSenderService();
+            foreach (var to in _alert.Recipients.Where(x => !string.IsNullOrWhiteSpace(x)))
+            {
+                var ok = sender.SendMail(new EmailSenderModel
+                {
+                    ToAddress = to.Trim(),
+                    Subject = Truncate(subject, 180),
+                    Body = body,
+                    isHtml = true
+                }, _smtp);
+                if (!ok)
+                {
+                    Write("errors", "WARN", "DeployNotice",
+                        "Deploy email failed to " + to + ": " + sender.LastError,
+                        sendAlert: false);
+                }
+            }
+        }
+
         public static void SendDailyMatrix(DateTime day, string hostSource)
         {
             if (!IsDailyMatrixEnabled || _alert.Recipients == null || _alert.Recipients.Length == 0 || _smtp == null)

@@ -10,6 +10,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public DateTime ToDate { get; set; }
         public PatientStatsPieChartModel PieChart { get; set; } = new PatientStatsPieChartModel();
         public PatientStatsBarChartModel BarChart { get; set; } = new PatientStatsBarChartModel();
+        public List<PatientStatsVisitMixModel> VisitMix { get; set; } = new List<PatientStatsVisitMixModel>();
+    }
+
+    public class PatientStatsVisitMixModel
+    {
+        public string Mode { get; set; } = "";
+        public int Count { get; set; }
     }
 
     public class PatientStatsPieChartModel

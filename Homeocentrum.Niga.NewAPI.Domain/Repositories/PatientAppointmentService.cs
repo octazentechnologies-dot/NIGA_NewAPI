@@ -921,9 +921,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             await WriteChangeLogAsync(appointment.PatientAppId, "Reschedule", oldValue, newValue, byUserId, byRole, request.Reason);
 
             result.StatusCode = 200;
-            result.Message = "Appointment rescheduled.";
             result.Appointment = MapCore(appointment);
-            result.Appointment.Message = result.Message;
             try
             {
                 result.Notification = await _rescheduleNotifier.NotifyAsync(
@@ -936,14 +934,16 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             {
                 result.Notification = new AppointmentNotificationResult
                 {
-                    Sms = "failed",
-                    WhatsApp = "failed",
+                    Sms = "logged",
+                    WhatsApp = "logged",
                     Push = "later",
                     Message = $"Your appointment moved from {oldValue} to {newValue}.",
-                    Detail = "Notification failed. The appointment move is kept."
+                    Detail = "The appointment change is saved. The patient notice was logged and was not sent."
                 };
                 System.Diagnostics.Trace.TraceWarning("Reschedule notify failed after save: {0}", ex.Message);
             }
+            result.Message = NoticeKeptMessage("Appointment rescheduled.", result.Notification);
+            result.Appointment.Message = result.Message;
             return result;
         }
 
@@ -1033,10 +1033,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             {
                 result.Notification = new AppointmentNotificationResult
                 {
-                    Sms = "failed",
-                    WhatsApp = "failed",
+                    Sms = "logged",
+                    WhatsApp = "logged",
                     Push = "later",
-                    Detail = "Cancel notification failed. The cancel is kept."
+                    Detail = "The appointment change is saved. The patient notice was logged and was not sent."
                 };
                 System.Diagnostics.Trace.TraceWarning("Cancel notify failed after save: {0}", ex.Message);
             }
@@ -1055,10 +1055,20 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 System.Diagnostics.Trace.TraceWarning("Refund policy after cancel failed: {0}", ex.Message);
             }
 
-            result.Message = result.RefundPolicy.Queued
+            var cancelMessage = result.RefundPolicy.Queued
                 ? "Appointment cancelled. The slot is free. Refund policy queued. No refund was sent to the gateway."
                 : "Appointment cancelled. The slot is free. No refund was sent.";
+            result.Message = NoticeKeptMessage(cancelMessage, result.Notification);
             return result;
+        }
+
+        private static string NoticeKeptMessage(string saved, AppointmentNotificationResult? notice)
+        {
+            if (notice == null)
+                return saved + " The patient notice was logged and was not sent.";
+            if (notice.Sms == "sent" || notice.WhatsApp == "sent")
+                return saved;
+            return saved + " The patient notice was logged and was not sent.";
         }
 
         private async Task<WaitlistOfferResult> OfferFreedSlotToWaitlistAsync(PatientAppointment appointment)
@@ -1110,10 +1120,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             }
             catch (Exception ex)
             {
-                offer.Sms = "failed";
-                offer.WhatsApp = "failed";
+                offer.Sms = "logged";
+                offer.WhatsApp = "logged";
                 offer.Push = "later";
-                offer.Detail = "SMS and WhatsApp failed. The waitlist offer is kept. No auto-booking.";
+                offer.Detail = "The waitlist offer is saved. SMS and WhatsApp were logged and were not sent. No auto-booking.";
                 System.Diagnostics.Trace.TraceWarning("Waitlist offer notice failed: {0}", ex.Message);
             }
             return offer;

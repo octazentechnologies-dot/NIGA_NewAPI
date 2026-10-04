@@ -18,17 +18,31 @@ using Homeocentrum.Niga.NewAPI.Domain.Configuration.CorsPolicyConfig;
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Logging;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
+using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Hosting;
+using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.Extensions.Logging;
 
 
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.AddServerHeader = false;
+    options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(2);
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(30);
+});
 
 builder.Logging.AddFilter<AppFileLoggerProvider>(null, LogLevel.Debug);
 builder.Logging.AddProvider(new AppFileLoggerProvider());
 
 ConfigurationManager configuration = builder.Configuration;
 IWebHostEnvironment environment = builder.Environment;
+
+// This API has one appsettings.json. Do not load appsettings.Development.json or any other environment file.
+configuration.Sources.Clear();
+configuration.SetBasePath(environment.ContentRootPath);
+configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: false);
 
 // Keep API alive if a background embedding job throws after a long run.
 builder.Services.Configure<HostOptions>(options =>
@@ -68,6 +82,14 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
     options.InvalidModelStateResponseFactory = ApiProblem.Validation;
 });
 builder.Services.AddHealthChecks();
+builder.Services.AddRequestTimeouts(options =>
+{
+    options.DefaultPolicy = new RequestTimeoutPolicy
+    {
+        Timeout = TimeSpan.FromMinutes(5),
+        TimeoutStatusCode = StatusCodes.Status408RequestTimeout
+    };
+});
 var rateLimitEnabled = builder.Configuration.GetValue("RateLimit:Enabled", true);
 if (rateLimitEnabled)
 {
@@ -81,8 +103,7 @@ if (rateLimitEnabled)
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
         {
             var path = httpContext.Request.Path.Value ?? "";
-            if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)
-                || path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
+            if (HostSecurity.IsOpenPath(path))
             {
                 return RateLimitPartition.GetNoLimiter("open");
             }
@@ -92,13 +113,11 @@ if (rateLimitEnabled)
                 limit = parsed;
             if (int.TryParse(builder.Configuration["RateLimit:WindowSeconds"], out parsed) && parsed > 0)
                 window = parsed;
-            var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var ip = httpContext.Connection.RemoteIpAddress?.ToString();
             var userId = httpContext.User?.FindFirst("UserId")?.Value
                 ?? httpContext.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
                 ?? httpContext.User?.FindFirst("sub")?.Value;
-            var partitionKey = !string.IsNullOrWhiteSpace(userId) && userId != "0"
-                ? "u:" + userId
-                : "ip:" + ip;
+            var partitionKey = HostSecurity.RatePartition(userId, ip);
             return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = limit,
@@ -113,6 +132,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opt =>
 {
     opt.SwaggerDoc("v1", new OpenApiInfo { Title = "Homeocentrum New API", Version = "v1" });
+    opt.OperationFilter<ApiDocOperationFilter>();
   opt.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
 {
     Description = "Enter your JWT token **including** 'Bearer ' prefix. Example: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'",
@@ -143,11 +163,7 @@ opt.AddSecurityRequirement(new OpenApiSecurityRequirement
 builder.Services.AddApplicationServices(configuration) 
     .AddCorsPolicy(builder.Environment);   
 
-var sqlOnly = new ConfigurationBuilder()
-    .SetBasePath(environment.ContentRootPath)
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
-    .Build();
-var defaultConnection = sqlOnly.GetConnectionString("DefaultConnection")
+var defaultConnection = configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found in appsettings.json.");
 builder.Services.AddDbContext<NIGACentrumContext>(options => options.UseSqlServer(defaultConnection));
 builder.Services.AddScoped<NIGACentrumContext>();
@@ -195,6 +211,8 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 AppFileLog.Initialize(app.Environment.ContentRootPath, app.Configuration, "NIGA New-API (Niga-Web :5002)");
+AppFileLog.SendDeployNotice("started");
+app.Lifetime.ApplicationStarted.Register(() => AppFileLog.SendDeployNotice("ready"));
 
 app.Use(async (context, next) =>
 {
@@ -227,12 +245,9 @@ app.UseSwaggerUI(c =>
         "});</script>";
 });
 
-app.UseCors(builder => 
-builder.AllowAnyOrigin()
-    .AllowAnyHeader()
-    .AllowAnyMethod()
-    );
+app.UseCorsPolicy();
 app.UseResponseCompression();
+app.UseMiddleware<HostPipelineMiddleware>();
 var listenUrls = app.Configuration["ASPNETCORE_URLS"] ?? Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "";
 var httpsPort = app.Configuration["HTTPS_PORT"] ?? Environment.GetEnvironmentVariable("HTTPS_PORT");
 if (listenUrls.Contains("https://", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(httpsPort))
@@ -243,9 +258,9 @@ app.UseMiddleware<AppDiagnosticsMiddleware>();
 if (rateLimitEnabled)
     app.UseRateLimiter();
 app.UseAuthorization();
+app.UseRequestTimeouts();
 app.UseMiddleware<Homeocentrum.Niga.NewAPI.Domain.Services.MutatingAuditMiddleware>();
-app.UseCorsPolicy()
-    .UseResponseCaching()
+app.UseResponseCaching()
     .UseDefaultFiles()
     .UseStaticFiles();
 

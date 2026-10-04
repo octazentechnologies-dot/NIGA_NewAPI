@@ -65,6 +65,12 @@ public partial class Doctor
 
     public int? StateId { get; set; }
 
+    public int? DistrictId { get; set; }
+
+    public int? CityId { get; set; }
+
+    public int? PinCodeId { get; set; }
+
     public virtual ICollection<CaseEntryDetail> CaseEntryDetails { get; set; } = new List<CaseEntryDetail>();
 
     public virtual PackageMaster? Package { get; set; }

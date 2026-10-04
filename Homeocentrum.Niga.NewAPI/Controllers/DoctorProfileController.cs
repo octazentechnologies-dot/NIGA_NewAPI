@@ -274,6 +274,42 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             });
         }
 
+        /// <summary>Owning doctor or admin opens a credential file stored under Data/DoctorCredentials.</summary>
+        [HttpGet("CredentialDocuments/{id:int}/File")]
+        public async Task<IActionResult> DownloadCredentialDocument(int id)
+        {
+            var row = await _context.DoctorCredentialDocuments.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.DoctorCredentialDocumentId == id && !d.DeleteStatus);
+            if (row == null)
+                return NotFound(new { success = false, message = "Document not found." });
+
+            if (!DoctorOwnership.IsGlobalAdminPortalUser(User))
+            {
+                var deny = DoctorOwnership.ForbidIfReception(User);
+                if (deny != null)
+                    return deny;
+                var doctor = await ResolveDoctorAsync();
+                if (doctor == null || doctor.DoctorId != row.DoctorId)
+                    return Forbid();
+            }
+
+            var relative = (row.FilePath ?? "").Replace('\\', '/').TrimStart('/');
+            if (string.IsNullOrWhiteSpace(relative)
+                || relative.Contains("..", StringComparison.Ordinal)
+                || !relative.StartsWith("DoctorCredentials/", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { success = false, message = "Document path is not valid." });
+            }
+
+            var folder = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "Data", "DoctorCredentials"));
+            var full = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "Data", relative.Replace('/', Path.DirectorySeparatorChar)));
+            if (!full.StartsWith(folder, StringComparison.OrdinalIgnoreCase) || !System.IO.File.Exists(full))
+                return NotFound(new { success = false, message = "Document file is missing on the server." });
+
+            var contentType = string.IsNullOrWhiteSpace(row.ContentType) ? "application/octet-stream" : row.ContentType;
+            return PhysicalFile(full, contentType, row.FileName);
+        }
+
         private async Task<DoctorVerification> EnsurePendingVerificationAsync(int doctorId)
         {
             var row = await _context.DoctorVerifications

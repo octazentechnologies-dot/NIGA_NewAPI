@@ -1,0 +1,21 @@
+Mobile API documentation is only in:
+
+  NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
+
+Filter column Week = S5_Week5, and use the Patient app / Doctor mobile app columns.
+
+These patient-app calls use APIs that already exist. Week 5 adds the notification centre routes.
+
+  PAT-47  POST /api/Reviews
+  PAT-48  GET  /api/Reviews/Mine    POST /api/Reviews/{id}/Appeal
+  PAT-49  GET  /api/Patient/Payments
+  PAT-50  GET  /api/Patient/Profile    PUT /api/Patient/Profile
+  PAT-51  GET  /api/Patient/Consents    POST /api/Patient/DataRequests
+  PAT-52  GET  /api/Notifications    PATCH /api/Notifications/{id}
+  PAT-53  GET  /api/Help    GET /api/Help/{slug}
+  PAT-54  GET  /api/Public/Doctors/{id}/Slots    POST /api/Public/Doctors/{id}/Bookings
+  PAT-55  POST /api/Support/AssistanceRequest
+  PAT-56  same booking and help routes; the app omits video assets
+  PAT-57  POST /api/Device/Register    POST /api/Notifications/Send
+
+Rebuild: python NIGA_NewAPI/ScriptsAndFiles/_rebuild_api_catalog_xlsx.py
