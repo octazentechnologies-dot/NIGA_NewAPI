@@ -793,6 +793,8 @@ public partial class S4Week4Service : IS4Week4Service
         {
             await ApplyS1SubscriptionCaptureAsync(order.GatewayOrderId, gatewayPaymentId);
         }
+
+        await QueueReceiptLogAsync(order.PaymentOrderId, order.PatientId, order.Amount, order.Currency, "CAPTURED");
     }
 
     /// <summary>PAY-06.01 — S1 SaaS PackageEntryDetail stays on this webhook; consult/medicine never write that table.</summary>
@@ -886,7 +888,61 @@ public partial class S4Week4Service : IS4Week4Service
         var order = await LoadOrderAsync(orderId);
         if (order != null)
             await WriteLedgerAsync(order, "CREDIT", amount, gst.Amount, "Appointment", appointment.PatientAppId.ToString());
+        await QueueReceiptLogAsync(orderId, appointment.PatientId, amount, "INR", "COLLECTED");
         _ = userId;
+    }
+
+    /// <summary>COM-04.02 — log the receipt and send it when the patient has an email and SMTP is configured. A send failure does not undo the payment.</summary>
+    private async Task QueueReceiptLogAsync(long paymentOrderId, int? patientId, decimal amount, string? currency, string payStatus)
+    {
+        try
+        {
+            var already = await _context.Database.SqlQuery<ReceiptLogCount>($@"
+                SELECT COUNT(1) AS Value FROM dbo.EmailMessageLog WHERE PaymentOrderId = {paymentOrderId}").FirstAsync();
+            if (already.Value > 0)
+                return;
+            var email = "not-on-file";
+            if (patientId.HasValue)
+            {
+                var found = await _context.Patients.AsNoTracking()
+                    .Where(p => p.PatientId == patientId.Value)
+                    .Select(p => p.Email)
+                    .FirstOrDefaultAsync();
+                if (!string.IsNullOrWhiteSpace(found))
+                    email = found.Trim();
+            }
+            var subject = "Homeocentrum receipt " + paymentOrderId;
+            var body = "Payment " + paymentOrderId + " is " + payStatus + " for " + amount + " " + (currency ?? "INR") + ".";
+            var status = TrySendReceipt(email, subject, body);
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.EmailMessageLog (ToAddress, Subject, Body, Status, PaymentOrderId)
+                VALUES ({email}, {subject}, {body}, {status}, {paymentOrderId})");
+        }
+        catch (SqlException ex) when (ex.Number == 208)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Receipt email log failed for payment {PaymentOrderId}", paymentOrderId);
+        }
+    }
+
+    private string TrySendReceipt(string email, string subject, string body)
+    {
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+            return "LOGGED";
+        var smtp = _config.GetSection("smtp").Get<SmtpSettingsModel>();
+        if (smtp == null || string.IsNullOrWhiteSpace(smtp.host))
+            return "LOGGED";
+        var sender = new EmailSenderService();
+        var sent = sender.SendMail(new EmailSenderModel
+        {
+            ToAddress = email,
+            Subject = subject,
+            Body = body,
+            isHtml = false
+        }, smtp);
+        return sent ? "SENT" : "FAILED";
     }
 
     private async Task<(OrderRow? Order, PatientAppointment? Appointment, S4ActionResult? Error)> LoadRefundContextAsync(
@@ -1265,6 +1321,8 @@ public partial class S4Week4Service : IS4Week4Service
                 await connection.CloseAsync();
         }
     }
+
+    private sealed class ReceiptLogCount { public int Value { get; set; } }
 
     private static SqlParameter P(string name, object? value, int size = 0)
     {

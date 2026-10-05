@@ -15,8 +15,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 OUT = Path(__file__).resolve().parent / "Homeocentrum_All_New_And_Updated+APIs.xlsx"
 OUT_FALLBACK = Path(__file__).resolve().parent / "Homeocentrum_All_New_And_Updated+APIs_UPDATED.xlsx"
 
-NEW_HOST = "http://127.0.0.1:5002"
-OLD_HOST = "http://127.0.0.1:5001"
+NEW_HOST = "https://devapi2.homeocentrum.com"
+OLD_HOST = "https://devapi1.homeocentrum.com"
 
 # Queried from HomeoCentrum_Dev
 IDS = {

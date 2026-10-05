@@ -441,6 +441,17 @@ public partial class S4Week4Service
 
     public async Task<S4ActionResult> ListRefillsAsync(S4Caller caller)
     {
+        if (caller.IsPatient)
+        {
+            if (caller.PatientId is null)
+                return Fail(403, "FORBIDDEN", "A patient profile is required.");
+            var mine = await _context.Database.SqlQuery<RefillRow>($@"
+                SELECT RefillRequestId, ErxSnapshotId, PatientId, DoctorId, Status, Reason, CreatedAt
+                FROM dbo.RefillRequest
+                WHERE PatientId = {caller.PatientId}
+                ORDER BY CreatedAt DESC").ToListAsync();
+            return Ok(new { success = true, data = mine });
+        }
         if (!caller.IsDoctor && !caller.IsAdmin)
             return Fail(403, "FORBIDDEN", "Refill inbox is for the treating doctor.");
         var doctorId = caller.DoctorId ?? 0;

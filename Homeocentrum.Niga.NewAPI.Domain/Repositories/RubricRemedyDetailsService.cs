@@ -266,6 +266,19 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
         )
         {
             var runricModelList = new List<RubricModel>();
+            errorResponseModel = new ErrorResponseModel();
+            if (nigaParameters == null)
+                nigaParameters = new NigaParameters();
+            if (nigaParameters.PageNumber < 1)
+                nigaParameters.PageNumber = 1;
+            if (nigaParameters.PageSize < 1)
+                nigaParameters.PageSize = 10;
+            if (SectionId <= 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "SectionId is required.";
+                return runricModelList;
+            }
             var rubricRemedyGroup = context
                 .RubricRemedyDetails.Include(x => x.SubSection)
                 .Include(x => x.Grade)

@@ -10,14 +10,16 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
 {
     /// <summary>
     /// Patient SMS + WhatsApp notices (reschedule / cancel / waitlist / tele ready).
-    /// SMS via <see cref="ISmsSender"/> (Stub until Sms:Provider keys). WhatsApp via Meta API when configured.
-    /// Push stays deferred. Channel failures never throw after the business write.
+    /// The appointment write is already saved before this runs. A failed or unsent notice is logged
+    /// on NotificationOutbox and does not undo the cancel or reschedule.
+    /// SMS via <see cref="ISmsSender"/>. WhatsApp via Meta when configured. Push stays deferred.
     /// </summary>
     public sealed class AppointmentRescheduleNotifier : IAppointmentRescheduleNotifier
     {
         private readonly ISmsSender _sms;
         private readonly IWhatsAppMetaApiClient _whatsApp;
         private readonly WhatsAppMetaOptions _whatsAppOptions;
+        private readonly SmsOptions _smsOptions;
         private readonly INotificationOutbox _outbox;
         private readonly ILogger<AppointmentRescheduleNotifier> _logger;
 
@@ -25,12 +27,14 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
             ISmsSender sms,
             IWhatsAppMetaApiClient whatsApp,
             IOptions<WhatsAppMetaOptions> whatsAppOptions,
+            IOptions<SmsOptions> smsOptions,
             INotificationOutbox outbox,
             ILogger<AppointmentRescheduleNotifier> logger)
         {
             _sms = sms;
             _whatsApp = whatsApp;
             _whatsAppOptions = whatsAppOptions.Value ?? new WhatsAppMetaOptions();
+            _smsOptions = smsOptions.Value ?? new SmsOptions();
             _outbox = outbox;
             _logger = logger;
         }
@@ -109,12 +113,31 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
             try
             {
                 var accepted = await _sms.SendAsync(mobile, message, cancellationToken);
-                notice.Sms = accepted ? "sent" : "failed";
+                if (SmsProviderIsLive())
+                {
+                    notice.Sms = accepted ? "sent" : "logged";
+                    if (!accepted)
+                    {
+                        await _outbox.EnqueueAsync("SMS", "NOTICE", mobile, message, "LOGGED",
+                            "SMS provider did not accept the notice. The appointment change is saved.");
+                    }
+                }
+                else
+                {
+                    notice.Sms = "logged";
+                    if (!accepted)
+                    {
+                        await _outbox.EnqueueAsync("SMS", "NOTICE", mobile, message, "LOGGED",
+                            "SMS is off or has no provider keys. The appointment change is saved.");
+                    }
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Patient SMS notice failed.");
-                notice.Sms = "failed";
+                notice.Sms = "logged";
+                await _outbox.EnqueueAsync("SMS", "NOTICE", mobile, message, "LOGGED",
+                    "SMS notice failed. The appointment change is saved. " + ex.Message);
             }
 
             if (!whatsAppOptIn)
@@ -124,8 +147,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
             else if (!_whatsAppOptions.IsConfigured())
             {
                 await _outbox.EnqueueAsync("WhatsApp", "NOTICE", mobile, message, "PENDING_KEYS",
-                    "Fill WhatsAppMeta AccessToken and PhoneNumberId in New-API appsettings.");
-                notice.WhatsApp = "queued";
+                    "Fill WhatsAppMeta AccessToken and PhoneNumberId in New-API appsettings. The appointment change is saved.");
+                notice.WhatsApp = "logged";
             }
             else
             {
@@ -135,19 +158,58 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
                         mobile,
                         _whatsAppOptions.DefaultCountryDialCode);
                     var (ok, _, err) = await _whatsApp.SendTextMessageAsync(to, message, cancellationToken);
-                    notice.WhatsApp = ok ? "sent" : "failed";
-                    if (!ok)
+                    if (ok)
+                    {
+                        notice.WhatsApp = "sent";
+                    }
+                    else
+                    {
+                        notice.WhatsApp = "logged";
                         _logger.LogWarning("WhatsApp notice failed. Error={Error}", err);
+                        await _outbox.EnqueueAsync("WhatsApp", "NOTICE", mobile, message, "LOGGED",
+                            string.IsNullOrWhiteSpace(err)
+                                ? "WhatsApp did not accept the notice. The appointment change is saved."
+                                : err);
+                    }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "WhatsApp notice failed.");
-                    notice.WhatsApp = "failed";
+                    notice.WhatsApp = "logged";
+                    await _outbox.EnqueueAsync("WhatsApp", "NOTICE", mobile, message, "LOGGED",
+                        "WhatsApp notice failed. The appointment change is saved. " + ex.Message);
                 }
             }
 
-            notice.Detail = "Push was not sent.";
+            notice.Detail = DescribeNotice(notice);
             return notice;
+        }
+
+        private bool SmsProviderIsLive()
+        {
+            if (!_smsOptions.Enabled)
+                return false;
+            var provider = (_smsOptions.Provider ?? "Stub").Trim();
+            if (provider.Equals("Msg91", StringComparison.OrdinalIgnoreCase))
+                return _smsOptions.Msg91.IsConfigured();
+            if (provider.Equals("Twilio", StringComparison.OrdinalIgnoreCase))
+                return _smsOptions.Twilio.IsConfigured();
+            return false;
+        }
+
+        private static string DescribeNotice(AppointmentNotificationResult notice)
+        {
+            var sms = notice.Sms == "sent"
+                ? "SMS was sent."
+                : notice.Sms == "logged"
+                    ? "SMS was logged and was not sent."
+                    : "SMS was skipped.";
+            var whatsApp = notice.WhatsApp == "sent"
+                ? "WhatsApp was sent."
+                : notice.WhatsApp == "logged"
+                    ? "WhatsApp was logged and was not sent."
+                    : "WhatsApp was skipped.";
+            return "The appointment change is saved. " + sms + " " + whatsApp + " Push was not sent.";
         }
     }
 }

@@ -23,5 +23,7 @@ public partial class StateMaster
 
     public virtual CountryMaster? Country { get; set; }
 
+    public virtual ICollection<DistrictMaster> DistrictMasters { get; set; } = new List<DistrictMaster>();
+
     public virtual ICollection<Patient> Patients { get; set; } = new List<Patient>();
 }

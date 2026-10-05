@@ -84,7 +84,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             var masked = MaskDestination(request.Destination);
 
             // Delivery via ISmsSender (ConfigurableSmsSender — Stub / Msg91 / Twilio).
-            // Raw code is included in the SMS body; Dev also returns devCode for local QA.
+            // Raw code is included in the SMS body and always returned as devCode.
 
             var challenge = new OtpChallenge
             {
@@ -132,7 +132,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 delivered = await _smsSender.SendAsync(request.Destination, otpText);
             }
 
-            // When Sms:Provider is Stub (or Dev), OTP is also returned as devCode for local QA.
             var payload = new Dictionary<string, object?>
             {
                 ["otpChallengeId"] = challenge.OtpChallengeId,
@@ -140,12 +139,11 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 ["expiresAt"] = challenge.ExpiresAt,
                 ["channel"] = channel,
                 ["delivered"] = delivered,
+                ["devCode"] = code,
                 ["message"] = delivered
                     ? $"OTP sent via {channel}."
                     : $"OTP created but {channel} delivery did not confirm. Check provider/SMTP settings."
             };
-            if (HttpContext.RequestServices.GetService<IHostEnvironment>()?.IsDevelopment() == true)
-                payload["devCode"] = code;
 
             return Ok(new { success = true, data = payload });
         }

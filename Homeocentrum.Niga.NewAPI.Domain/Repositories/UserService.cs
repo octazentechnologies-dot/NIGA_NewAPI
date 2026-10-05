@@ -49,6 +49,14 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 return "User name already exists";
             }
 
+            var locationError = ResolveRegistrationLocation(model, out var districtId, out var cityId, out var cityName);
+            if (locationError != null)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = locationError;
+                return locationError;
+            }
+
             var userEntity = new UserMaster
             {
                 UserName = model.UserName.Trim(),
@@ -87,9 +95,11 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 PermanantAddress = string.IsNullOrWhiteSpace(model.PermanantAddress) ? null : model.PermanantAddress.Trim(),
                 PassingUniversity = string.IsNullOrWhiteSpace(model.PassingUniversity) ? null : model.PassingUniversity.Trim(),
                 PassingCertNo = string.IsNullOrWhiteSpace(model.PassingCertNo) ? null : model.PassingCertNo.Trim(),
-                City = string.IsNullOrWhiteSpace(model.City) ? null : model.City.Trim(),
+                City = cityName,
+                CityId = cityId,
                 CountryId = model.CountryId,
                 StateId = model.StateId,
+                DistrictId = districtId,
                 ClinicName = model.CompanyName?.Trim(),
                 DirectoryVisible = false,
                 VerificationStatus = "Pending",
@@ -444,6 +454,49 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             {
                 // Activation email is best-effort.
             }
+        }
+
+        private string ResolveRegistrationLocation(
+            DoctorRegistrationModel model,
+            out int? districtId,
+            out int? cityId,
+            out string cityName)
+        {
+            var requestedDistrictId = model.DistrictId is > 0 ? model.DistrictId : null;
+            var requestedCityId = model.CityId is > 0 ? model.CityId : null;
+            districtId = requestedDistrictId;
+            cityId = requestedCityId;
+            cityName = string.IsNullOrWhiteSpace(model.City) ? null : model.City.Trim();
+
+            DistrictMaster district = null;
+            if (requestedDistrictId.HasValue)
+            {
+                district = _context.DistrictMasters.FirstOrDefault(d => d.DistrictId == requestedDistrictId.Value && !d.DeleteStatus);
+                if (district == null)
+                    return "District is not valid.";
+                if (model.StateId is > 0 && district.StateId != model.StateId)
+                    return "District does not belong to the selected state.";
+            }
+
+            if (requestedCityId.HasValue)
+            {
+                var city = _context.CityMasters.FirstOrDefault(c => c.CityId == requestedCityId.Value && !c.DeleteStatus);
+                if (city == null)
+                    return "City is not valid.";
+                if (requestedDistrictId.HasValue && city.DistrictId != requestedDistrictId.Value)
+                    return "City does not belong to the selected district.";
+                if (!districtId.HasValue)
+                {
+                    districtId = city.DistrictId;
+                    district = _context.DistrictMasters.FirstOrDefault(d => d.DistrictId == city.DistrictId && !d.DeleteStatus);
+                    if (model.StateId is > 0 && district != null && district.StateId != model.StateId)
+                        return "City does not belong to the selected state.";
+                }
+
+                cityName = city.CityName;
+            }
+
+            return null;
         }
     }
 }

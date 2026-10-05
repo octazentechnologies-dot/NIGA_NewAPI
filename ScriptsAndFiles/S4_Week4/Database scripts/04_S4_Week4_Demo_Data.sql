@@ -1,6 +1,8 @@
 /*
-S4 Week 4 — demo rows for collect, GST, trust queue, fees, payees.
+S4 Week 4 — step 4 of 4. Run after 03_S4_Week4_Menus.sql.
+Demo rows for collect, GST, trust queue, fees, payees.
 Idempotent. Does not change an already Verified Tufan doctor.
+After this file, run S5_Week5 in filename order: 01 schema, 02 menus, 03 demo data.
 */
 SET NOCOUNT ON;
 SET QUOTED_IDENTIFIER ON;

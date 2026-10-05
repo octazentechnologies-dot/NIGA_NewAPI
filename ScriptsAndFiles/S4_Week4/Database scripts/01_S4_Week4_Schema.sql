@@ -5,7 +5,18 @@ Created      : 22-09-2026
 Script       : 01_S4_Week4_Schema.sql
 Purpose      : S4 Week 4 tables for fees, payments, ledger, trust, eRx, and medicine orders.
                Does not store Razorpay keys. Does not rewrite existing VisitType rows.
-Use          : HomeoCentrum_Dev. Idempotent. Run before calling the new HTTP routes.
+Use          : HomeoCentrum_Dev. Idempotent. Run this folder in filename order, then S5_Week5.
+               1. 01_S4_Week4_Schema.sql
+               2. 02_S4_Notification_Outbox.sql
+               3. 03_S4_Week4_Menus.sql
+               4. 04_S4_Week4_Demo_Data.sql
+               5. 05_S4_UserAddressLocation_Schema.sql
+               6. 06_S4_CountryMaster_Data.sql
+               7. 07_S4_StateMaster_Data.sql
+               8. 08_S4_IndiaLocation_Data.sql
+               9. 09_S4_AddressLocation_Other.sql
+               10. 10_S4_AddressLocation_EnteredBy.sql
+               11. 11_S4_AddressLocation_UserData.sql
 ================================================================================
 */
 SET NOCOUNT ON;

@@ -21,6 +21,7 @@ public class RubricIntelligenceSettingsService : IRubricIntelligenceSettingsServ
     private readonly IHostEnvironment _hostEnvironment;
     private readonly AppInfoOptions _appInfo;
     private readonly object _sync = new();
+    private readonly SemaphoreSlim _rolloutGate = new(1, 1);
 
     private bool? _enableV2Override;
     private bool? _rollbackOverride;
@@ -194,8 +195,18 @@ public class RubricIntelligenceSettingsService : IRubricIntelligenceSettingsServ
 
     public async Task<RubricIntelligenceRolloutStatusModel> GetRolloutStatusAsync(CancellationToken cancellationToken = default)
     {
-        var summary = await _benchmarkService.GetSummaryAsync(30, cancellationToken);
-        var repertory = await _repertoryRepository.GetMappingStatusAsync(cancellationToken);
+        await _rolloutGate.WaitAsync(cancellationToken);
+        RubricBenchmarkSummaryModel summary;
+        RepertoryMappingStatusModel repertory;
+        try
+        {
+            summary = await _benchmarkService.GetSummaryAsync(30, cancellationToken);
+            repertory = await _repertoryRepository.GetMappingStatusAsync(cancellationToken);
+        }
+        finally
+        {
+            _rolloutGate.Release();
+        }
         var flagGateWarnings = GetEnabledFlagGateWarnings();
 
         var gates = new List<RubricIntelligenceRolloutGateModel>

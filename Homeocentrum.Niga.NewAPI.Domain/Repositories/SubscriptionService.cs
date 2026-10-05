@@ -53,6 +53,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Subscription not found";
+                return null;
             }
             return new SubscriptionModel
             {

@@ -254,6 +254,9 @@ public class RubricIntelligenceOrchestratorTests
         public Task<(bool Success, string Message)> DeleteMetaphorAsync(int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
 
+        public Task<(bool Success, string Message, int DeletedCount)> DeleteAllMetaphorsAsync(int adminUserId, string? ipAddress, CancellationToken cancellationToken = default)
+            => Task.FromResult((true, "ok", 0));
+
         public Task<(bool Success, string Message)> ApproveMetaphorAsync(int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
 
@@ -274,6 +277,9 @@ public class RubricIntelligenceOrchestratorTests
 
         public Task<(bool Success, string Message)> DeleteAliasAsync(int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
+
+        public Task<(bool Success, string Message, int DeletedCount)> DeleteAllAliasesAsync(int adminUserId, string? ipAddress, CancellationToken cancellationToken = default)
+            => Task.FromResult((true, "ok", 0));
     }
 
     private sealed class InMemoryIntelligenceRepository : IAudioCaseIntelligenceRepository

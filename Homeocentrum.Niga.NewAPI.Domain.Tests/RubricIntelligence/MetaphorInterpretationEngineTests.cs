@@ -57,6 +57,7 @@ public class MetaphorInterpretationEngineTests
         public Task<(bool Success, string Message, RubricMetaphorModel? Result)> CreateMetaphorAsync(int adminUserId, RubricMetaphorUpsertModel model, string? ipAddress, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<(bool Success, string Message, RubricMetaphorModel? Result)> UpdateMetaphorAsync(int adminUserId, long id, RubricMetaphorUpsertModel model, string? ipAddress, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<(bool Success, string Message)> DeleteMetaphorAsync(int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<(bool Success, string Message, int DeletedCount)> DeleteAllMetaphorsAsync(int adminUserId, string? ipAddress, CancellationToken cancellationToken = default) => Task.FromResult((true, "ok", 0));
         public Task<(bool Success, string Message)> ApproveMetaphorAsync(int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<(bool Success, string Message)> RejectMetaphorAsync(int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<RubricIntelligenceAdminListModel<RubricAliasModel>> GetAliasesAsync(string? search, string? language, int pageNumber, int pageSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -64,5 +65,6 @@ public class MetaphorInterpretationEngineTests
         public Task<(bool Success, string Message, RubricAliasModel? Result)> CreateAliasAsync(int adminUserId, RubricAliasUpsertModel model, string? ipAddress, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<(bool Success, string Message, RubricAliasModel? Result)> UpdateAliasAsync(int adminUserId, long id, RubricAliasUpsertModel model, string? ipAddress, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<(bool Success, string Message)> DeleteAliasAsync(int adminUserId, long id, string? ipAddress, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<(bool Success, string Message, int DeletedCount)> DeleteAllAliasesAsync(int adminUserId, string? ipAddress, CancellationToken cancellationToken = default) => Task.FromResult((true, "ok", 0));
     }
 }
