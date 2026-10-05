@@ -11,7 +11,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     /// </summary>
     [Route("api/UserAddressLocation")]
     [ApiController]
-    [Authorize]
+    //[Authorize]
     public class UserAddressLocationController : ControllerBase
     {
         private readonly NIGACentrumContext _context;

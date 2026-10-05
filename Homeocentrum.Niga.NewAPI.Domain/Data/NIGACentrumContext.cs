@@ -2390,6 +2390,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
 
             entity.Property(e => e.PatientId).HasColumnName("PatientID");
             entity.Property(e => e.Address).HasMaxLength(500);
+            entity.Property(e => e.AddressLine1); // NVARCHAR(MAX)
+            entity.Property(e => e.AddressLine2).HasMaxLength(500);
+            entity.Property(e => e.Landmark).HasMaxLength(250);
             entity.Property(e => e.ChangedBy).HasMaxLength(50);
             entity.Property(e => e.ChangedDate).HasColumnType("datetime");
             entity.Property(e => e.DateOfBirth).HasColumnType("datetime");

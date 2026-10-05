@@ -17,7 +17,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     /// </summary>
     [Route("api/mastersAPI")]
     [ApiController]
-    [Authorize]
+   // [Authorize]
     public class MastersAPIController : BaseAPIController
     {
         IMastersAPIService _mastersAPIService;

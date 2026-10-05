@@ -16,7 +16,8 @@ SET QUOTED_IDENTIFIER ON;
 SET ANSI_NULLS ON;
 SET XACT_ABORT ON;
 
-DECLARE @OwnerLogin NVARCHAR(200) = N'tufanpowar001@gmail.com';
+DECLARE @OwnerLogin NVARCHAR(200) = N'Tufan_Patient';
+DECLARE @OwnerEmail NVARCHAR(200) = N'tufanpowar001@gmail.com';
 DECLARE @Pwd NVARCHAR(500) = N'PBKDF2$v1$100000$uszumO1aPL3it0x1tm/FcA==$hvFLmFwfXrC7i3Id07HFiH9ah4WiIAdjzYPyQnArLxQ='; -- 123456
 DECLARE @OtpHash NVARCHAR(128) = CONVERT(VARCHAR(64), HASHBYTES(N'SHA2_256', CONVERT(VARBINARY(32), N'123456')), 2);
 DECLARE @Now DATETIME = '2026-09-18T12:00:00';
@@ -52,11 +53,12 @@ FROM dbo.UserMaster um
 INNER JOIN dbo.PatientUserMap pum
     ON pum.UserId = um.UserId AND pum.IsPrimary = 1 AND ISNULL(pum.DeleteStatus, 0) = 0
 WHERE um.UserName = @OwnerLogin
+  AND um.EmailId = @OwnerEmail
   AND ISNULL(um.DeleteStatus, 0) = 0;
 
 IF @OwnerUserId IS NULL OR @OwnerPatientId IS NULL
 BEGIN
-    RAISERROR('Owner tufanpowar001@gmail.com not found. Run 05_DEV_Seed_Patient_Portal_TufanPowar.sql first.', 16, 1);
+    RAISERROR('Owner Tufan_Patient / tufanpowar001@gmail.com not found. Run 05_DEV_Seed_Patient_Portal_TufanPowar.sql first.', 16, 1);
     RETURN;
 END
 
