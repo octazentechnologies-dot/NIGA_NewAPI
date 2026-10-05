@@ -10,7 +10,14 @@ public partial class Patient:AuditableEntities
 
     public string? PatientName { get; set; }
 
+    /// <summary>Legacy single-line address (kept in sync for older clients).</summary>
     public string? Address { get; set; }
+
+    public string? AddressLine1 { get; set; }
+
+    public string? AddressLine2 { get; set; }
+
+    public string? Landmark { get; set; }
 
     public int? StateId { get; set; }
 
@@ -20,6 +27,7 @@ public partial class Patient:AuditableEntities
 
     public int? CityId { get; set; }
 
+    /// <summary>FK to PinCodeMaster.PinCodeId (not free-text PIN).</summary>
     public int? PinCodeId { get; set; }
 
     public string? MobileNo { get; set; }

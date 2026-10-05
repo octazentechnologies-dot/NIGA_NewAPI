@@ -42,6 +42,21 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             if (recent >= 3)
                 return StatusCode(StatusCodes.Status429TooManyRequests, new { success = false, message = "Too many OTP requests." });
 
+            // Option A: registered = active Patient UserMaster for this mobile (Ignore IsUserActivated).
+            var patientRoleId = await _context.RoleMasters.AsNoTracking()
+                .Where(r => r.RoleName == "Patient")
+                .Select(r => (int?)r.RoleId)
+                .FirstOrDefaultAsync();
+            var isUserRegistered = false;
+            if (patientRoleId.HasValue)
+            {
+                var candidateMobiles = await _context.UserMasters.AsNoTracking()
+                    .Where(u => !u.DeleteStatus && u.RoleId == patientRoleId && u.MobileNo != null)
+                    .Select(u => u.MobileNo!)
+                    .ToListAsync();
+                isUserRegistered = candidateMobiles.Any(m => PhoneNormalizer.EqualsNormalized(m, digits));
+            }
+
             var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
             var challenge = new OtpChallenge
             {
@@ -63,7 +78,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 ["otpChallengeId"] = challenge.OtpChallengeId,
                 ["expiresAt"] = challenge.ExpiresAt,
                 ["destinationMasked"] = challenge.DestinationMasked,
-                ["devCode"] = code
+                ["devCode"] = code,
+                ["isUserRegistered"] = isUserRegistered
             };
 
             return Ok(payload);

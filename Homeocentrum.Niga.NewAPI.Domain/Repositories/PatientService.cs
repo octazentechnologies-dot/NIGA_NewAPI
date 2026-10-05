@@ -42,7 +42,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 // Save new patient
                 var patientEntity = new Patient();
                 patientEntity.PatientName = patientModel.PatientName;
-                patientEntity.Address = patientModel.Address;
+                ApplyAddressFields(patientEntity, patientModel);
                 patientEntity.StateId = ToNullableFkId(patientModel.StateId);
                 patientEntity.CountryId = ToNullableFkId(patientModel.CountryId);
                 patientEntity.MobileNo = patientModel.MobileNo;
@@ -107,7 +107,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 }
 
                 patientEntity.PatientName = patientModel.PatientName;
-                patientEntity.Address = patientModel.Address;
+                ApplyAddressFields(patientEntity, patientModel);
                 patientEntity.StateId = ToNullableFkId(patientModel.StateId);
                 patientEntity.CountryId = ToNullableFkId(patientModel.CountryId);
                 patientEntity.MobileNo = patientModel.MobileNo;
@@ -177,6 +177,48 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
         /// <summary>Treats 0 as null for optional FK columns (State, Country).</summary>
         private static int? ToNullableFkId(int? value) => value is > 0 ? value : null;
 
+        private static string? TrimOrNull(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+            return value.Trim();
+        }
+
+        private static string? ComposeAddress(string? line1, string? line2, string? landmark)
+        {
+            var parts = new[] { line1, line2, landmark }
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p!.Trim())
+                .ToArray();
+            if (parts.Length == 0)
+                return null;
+            var joined = string.Join(", ", parts);
+            return joined.Length <= 500 ? joined : joined[..500];
+        }
+
+        /// <summary>
+        /// Maps split address fields + PIN/city FKs. Legacy Address alone fills AddressLine1.
+        /// Address is kept composed for older clients.
+        /// </summary>
+        private static void ApplyAddressFields(Patient entity, PatientModel model)
+        {
+            var line1 = TrimOrNull(model.AddressLine1);
+            var line2 = TrimOrNull(model.AddressLine2);
+            var landmark = TrimOrNull(model.Landmark);
+            var legacy = TrimOrNull(model.Address);
+
+            if (line1 == null && legacy != null)
+                line1 = legacy;
+
+            entity.AddressLine1 = line1;
+            entity.AddressLine2 = line2;
+            entity.Landmark = landmark;
+            entity.Address = ComposeAddress(line1, line2, landmark) ?? legacy;
+            entity.DistrictId = ToNullableFkId(model.DistrictId);
+            entity.CityId = ToNullableFkId(model.CityId);
+            entity.PinCodeId = ToNullableFkId(model.PinCodeId);
+        }
+
         /// <summary>
         /// Method inpmplementaion for get all the cases.
         /// </summary>
@@ -228,7 +270,15 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     UserId = (int)c.UserId,
                     DateodFirstVisit = c.DateodFirstVisit,
                     Gender = p.Gender,
-                    Address = p.Address,
+                    Address = p.AddressLine1 ?? p.Address,
+                    AddressLine1 = p.AddressLine1,
+                    AddressLine2 = p.AddressLine2,
+                    Landmark = p.Landmark,
+                    StateId = p.StateId,
+                    CountryId = p.CountryId,
+                    DistrictId = p.DistrictId,
+                    CityId = p.CityId,
+                    PinCodeId = p.PinCodeId,
                     DateOfBirth = p.DateOfBirth,
                     CaseId = c.CaseId,
                     EnteredDate = c.EnteredDate,
@@ -269,6 +319,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     (x.PatientName != null && x.PatientName.Contains(search))
                     || (x.MobileNo != null && x.MobileNo.Contains(search))
                     || (x.Address != null && x.Address.Contains(search))
+                    || (x.AddressLine1 != null && x.AddressLine1.Contains(search))
+                    || (x.AddressLine2 != null && x.AddressLine2.Contains(search))
+                    || (x.Landmark != null && x.Landmark.Contains(search))
                     || (x.DiagnosisIds != null && x.DiagnosisIds.Contains(search))
                 );
             }
@@ -309,9 +362,15 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     DoctorID = c.DoctorId,
                     PatientID = p.PatientId,
                     PatientName = p.PatientName,
-                    Address = p.Address,
+                    Address = p.AddressLine1 ?? p.Address,
+                    AddressLine1 = p.AddressLine1,
+                    AddressLine2 = p.AddressLine2,
+                    Landmark = p.Landmark,
                     StateId = p.StateId,
                     CountryId = p.CountryId,
+                    DistrictId = p.DistrictId,
+                    CityId = p.CityId,
+                    PinCodeId = p.PinCodeId,
                     MobileNo = p.MobileNo,
                     Email = p.Email,
                     PhoneNo = p.PhoneNo,
@@ -452,7 +511,15 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     UserId = (int)caseEntry.UserId,
                     DateodFirstVisit = caseEntry.DateodFirstVisit,
                     Gender = patient.Gender,
-                    Address = patient.Address,
+                    Address = patient.AddressLine1 ?? patient.Address,
+                    AddressLine1 = patient.AddressLine1,
+                    AddressLine2 = patient.AddressLine2,
+                    Landmark = patient.Landmark,
+                    StateId = patient.StateId,
+                    CountryId = patient.CountryId,
+                    DistrictId = patient.DistrictId,
+                    CityId = patient.CityId,
+                    PinCodeId = patient.PinCodeId,
                     DateOfBirth = patient.DateOfBirth,
                     CaseId = caseEntry.CaseId,
                     EnteredDate = caseEntry.EnteredDate,
@@ -514,7 +581,15 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     UserId = (int)caseEntry.UserId,
                     DateodFirstVisit = caseEntry.DateodFirstVisit,
                     Gender = patient.Gender,
-                    Address = patient.Address,
+                    Address = patient.AddressLine1 ?? patient.Address,
+                    AddressLine1 = patient.AddressLine1,
+                    AddressLine2 = patient.AddressLine2,
+                    Landmark = patient.Landmark,
+                    StateId = patient.StateId,
+                    CountryId = patient.CountryId,
+                    DistrictId = patient.DistrictId,
+                    CityId = patient.CityId,
+                    PinCodeId = patient.PinCodeId,
                     DateOfBirth = patient.DateOfBirth,
                     CaseId = caseEntry.CaseId,
                     EnteredDate = caseEntry.EnteredDate,
@@ -765,6 +840,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     {
                         PatientName = item.PatientName,
                         Address = item.Address,
+                        AddressLine1 = item.Address,
                         StateId = item.StateId,
                         CountryId = item.CountryId,
                         MobileNo = item.MobileNo,

@@ -9,9 +9,17 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public int DoctorID { get; set; }
         public int PatientID { get; set; }
         public string? PatientName { get; set; }
+        /// <summary>Legacy single-line address. Prefer AddressLine1/2 + Landmark.</summary>
         public string? Address { get; set; }
+        public string? AddressLine1 { get; set; }
+        public string? AddressLine2 { get; set; }
+        public string? Landmark { get; set; }
         public int? StateId { get; set; }
         public int? CountryId { get; set; }
+        public int? DistrictId { get; set; }
+        public int? CityId { get; set; }
+        /// <summary>FK to PinCodeMaster.PinCodeId.</summary>
+        public int? PinCodeId { get; set; }
         public string? MobileNo { get; set; }
         public string? Email { get; set; }
 
