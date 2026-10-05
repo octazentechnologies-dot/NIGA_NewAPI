@@ -11,7 +11,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         [Required(ErrorMessage = "First Name is required")]
         public string FirstName { get; set; }
 
-        public string MiddleName { get; set; }
+        public string? MiddleName { get; set; }
 
         [Required(ErrorMessage = "Last Name is required")]
         public string LastName { get; set; }
@@ -43,17 +43,17 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
 
         public int? CityId { get; set; }
 
-        public string City { get; set; }
+        public string? City { get; set; }
 
-        public string PermanantAddress { get; set; }
+        public string? PermanantAddress { get; set; }
 
         [Required(ErrorMessage = "Qualification is required")]
         [Range(1, int.MaxValue, ErrorMessage = "Qualification is required")]
         public int QualificationId { get; set; }
 
-        public string PassingUniversity { get; set; }
+        public string? PassingUniversity { get; set; }
 
-        public string PassingCertNo { get; set; }
+        public string? PassingCertNo { get; set; }
     }
 
     /// <summary>
@@ -63,8 +63,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
     /// </summary>
     public class RegisterDoctorWithDocumentsForm : DoctorRegistrationModel
     {
-        public IFormFile QualificationDoc { get; set; }
+        /// <summary>Optional. Saved under DoctorCredentialDocument.FilePath when sent.</summary>
+        public IFormFile? QualificationDoc { get; set; }
 
-        public IFormFile RegistrationDoc { get; set; }
+        /// <summary>Optional. Saved under DoctorCredentialDocument.FilePath when sent.</summary>
+        public IFormFile? RegistrationDoc { get; set; }
+
+        /// <summary>Optional extra media. Each file path is stored when sent.</summary>
+        public List<IFormFile>? Documents { get; set; }
     }
 }

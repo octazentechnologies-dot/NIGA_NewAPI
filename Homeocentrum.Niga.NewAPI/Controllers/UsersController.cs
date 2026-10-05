@@ -10,6 +10,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
+using Homeocentrum.Niga.NewAPI.Domain.Security;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
@@ -24,17 +25,20 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         private readonly IOptions<SmtpSettingsModel> _mailSettings;
         private readonly NIGACentrumContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly ITokenService _tokenService;
 
         public UsersController(
             IUserService userService,
             IOptions<SmtpSettingsModel> mailSettings,
             NIGACentrumContext context,
-            IWebHostEnvironment env)
+            IWebHostEnvironment env,
+            ITokenService tokenService)
         {
             _userService = userService;
             _mailSettings = mailSettings;
             _context = context;
             _env = env;
+            _tokenService = tokenService;
         }
 
         /// <summary>
@@ -103,21 +107,74 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     .OrderByDescending(d => d.DoctorId)
                     .FirstOrDefaultAsync(d => d.EmailId == model.EmailId.Trim() && !d.DeleteStatus);
 
-                var saved = 0;
+                var saved = new List<DoctorCredentialDocument>();
                 if (doctor != null)
                 {
-                    saved += await SaveRegistrationDocumentAsync(doctor, model.QualificationDoc, "Qualification");
-                    saved += await SaveRegistrationDocumentAsync(doctor, model.RegistrationDoc, "Registration");
+                    var qualification = await SaveRegistrationDocumentAsync(doctor, model.QualificationDoc, "Qualification");
+                    if (qualification != null)
+                        saved.Add(qualification);
+                    var registration = await SaveRegistrationDocumentAsync(doctor, model.RegistrationDoc, "Registration");
+                    if (registration != null)
+                        saved.Add(registration);
+                    if (model.Documents != null)
+                    {
+                        foreach (var file in model.Documents)
+                        {
+                            var extra = await SaveRegistrationDocumentAsync(doctor, file, "Other");
+                            if (extra != null)
+                                saved.Add(extra);
+                        }
+                    }
                 }
 
-                return Ok(new
+                var user = await _context.UserMasters
+                    .FirstOrDefaultAsync(u => u.EmailId == model.EmailId.Trim() && !u.DeleteStatus);
+                string? token = null;
+                object? userDetails = null;
+                if (user != null)
                 {
-                    success = true,
-                    message = result,
-                    documentsSaved = saved,
-                    verificationStatus = "Pending",
-                    directoryVisible = false
-                });
+                    var roleName = await _context.RoleMasters.AsNoTracking()
+                        .Where(r => r.RoleId == user.RoleId && !r.DeleteStatus)
+                        .Select(r => r.RoleName)
+                        .FirstOrDefaultAsync() ?? "Doctor";
+                    token = await _tokenService.CreateToken(user, 7 * 24 * 60, roleName, doctor?.DoctorId);
+                    userDetails = new
+                    {
+                        userId = user.UserId,
+                        userName = user.UserName,
+                        firstName = user.FirstName,
+                        lastName = user.LastName,
+                        email = user.EmailId,
+                        mobileNo = user.MobileNo,
+                        role = roleName,
+                        roleId = user.RoleId,
+                        doctorId = doctor?.DoctorId
+                    };
+                }
+
+                var payload = new Dictionary<string, object?>
+                {
+                    ["success"] = true,
+                    ["message"] = result,
+                    ["mailSent"] = result.StartsWith("Registration successful", StringComparison.Ordinal),
+                    ["documentsSaved"] = saved.Count,
+                    ["documents"] = saved.Select(d => new
+                    {
+                        documentType = d.DocumentType,
+                        fileName = d.FileName,
+                        filePath = d.FilePath
+                    }),
+                    ["verificationStatus"] = "Pending",
+                    ["directoryVisible"] = false,
+                    ["isUserAlreadyRegistered"] = await MobileAlreadyOnAnotherDoctorAsync(model.MobileNo, doctor?.DoctorId)
+                };
+                if (token != null)
+                {
+                    payload["token"] = token;
+                    payload["user"] = userDetails;
+                }
+
+                return Ok(payload);
             }
             catch (Exception ex)
             {
@@ -368,14 +425,26 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
         }
 
-        private async Task<int> SaveRegistrationDocumentAsync(Doctor doctor, IFormFile? file, string documentType)
+        /// <summary>True when this mobile is already stored on a different Doctor row.</summary>
+        private async Task<bool> MobileAlreadyOnAnotherDoctorAsync(string? mobileNo, int? currentDoctorId)
+        {
+            var digits = PhoneNormalizer.Digits(mobileNo);
+            if (digits.Length < 8)
+                return false;
+
+            var mobiles = await _context.Doctors.AsNoTracking()
+                .Where(d => !d.DeleteStatus && d.MobileNo != null && d.DoctorId != currentDoctorId)
+                .Select(d => d.MobileNo!)
+                .ToListAsync();
+            return mobiles.Any(m => PhoneNormalizer.EqualsNormalized(m, digits));
+        }
+
+        private async Task<DoctorCredentialDocument?> SaveRegistrationDocumentAsync(Doctor doctor, IFormFile? file, string documentType)
         {
             if (file == null || file.Length == 0)
-                return 0;
-
-            var ext = Path.GetExtension(file.FileName)?.ToLowerInvariant() ?? string.Empty;
-            if (ext is not (".pdf" or ".jpg" or ".jpeg" or ".png"))
-                return 0;
+                return null;
+            if (!CredentialFileRules.TryGetExtension(file.FileName, out var ext))
+                return null;
 
             var verification = await _context.DoctorVerifications
                 .FirstOrDefaultAsync(v => v.DoctorId == doctor.DoctorId && !v.DeleteStatus);
@@ -399,19 +468,20 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             await using (var stream = System.IO.File.Create(path))
                 await file.CopyToAsync(stream);
 
-            _context.DoctorCredentialDocuments.Add(new DoctorCredentialDocument
+            var row = new DoctorCredentialDocument
             {
                 DoctorId = doctor.DoctorId,
                 DoctorVerificationId = verification.DoctorVerificationId,
                 DocumentType = documentType,
-                FileName = Path.GetExtension(file.FileName) != null ? Path.GetFileName(file.FileName) : name,
+                FileName = Path.GetFileName(file.FileName),
                 FilePath = Path.Combine("DoctorCredentials", name).Replace("\\", "/"),
                 ContentType = file.ContentType,
                 EnteredDate = DateTime.UtcNow,
                 DeleteStatus = false
-            });
+            };
+            _context.DoctorCredentialDocuments.Add(row);
             await _context.SaveChangesAsync();
-            return 1;
+            return row;
         }
     }
 }

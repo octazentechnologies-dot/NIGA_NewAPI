@@ -212,21 +212,14 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             if (deny != null)
                 return deny;
             if (file == null || file.Length == 0)
-                return BadRequest(new { success = false, message = "Document file is required." });
+                return Ok(new { success = true, saved = false, message = "No document was uploaded." });
 
-            var type = (documentType ?? "Other").Trim();
-            if (type.Length == 0)
-                type = "Other";
-            if (!type.Equals("Qualification", StringComparison.OrdinalIgnoreCase)
-                && !type.Equals("Registration", StringComparison.OrdinalIgnoreCase)
-                && !type.Equals("Other", StringComparison.OrdinalIgnoreCase))
-            {
-                return BadRequest(new { success = false, message = "documentType must be Qualification, Registration, or Other." });
-            }
+            var type = string.IsNullOrWhiteSpace(documentType) ? "Other" : documentType.Trim();
+            if (type.Length > 50)
+                type = type[..50];
 
-            var ext = Path.GetExtension(file.FileName)?.ToLowerInvariant() ?? string.Empty;
-            if (ext is not (".pdf" or ".jpg" or ".jpeg" or ".png"))
-                return BadRequest(new { success = false, message = "Only PDF, JPG, or PNG files are accepted." });
+            if (!CredentialFileRules.TryGetExtension(file.FileName, out var ext))
+                return BadRequest(new { success = false, message = "This file type cannot be stored." });
 
             var doctor = await ResolveDoctorAsync();
             if (doctor == null)

@@ -587,7 +587,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
         }
 
-        /// <summary>PAT-03.02 — Phone + OTP → JWT (web login stays classic password).</summary>
+        /// <summary>Doctor phone + OTP login. Mobile is matched on Doctor only.</summary>
         [HttpPost("LoginWithOtp")]
         [AllowAnonymous]
         public async Task<IActionResult> LoginWithOtp([FromBody] LoginWithOtpRequest request)
@@ -652,15 +652,19 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 challenge.VerifiedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
-                var users = await _context.UserMasters
-                    .Where(u => !u.DeleteStatus && u.MobileNo != null)
-                    .ToListAsync();
-                var userEntity = users.FirstOrDefault(u => PhoneNormalizer.EqualsNormalized(u.MobileNo, mobile));
+                var userEntity = await FindLoginUserByRoleTableAsync(mobile);
                 if (userEntity == null)
-                    return Unauthorized(new { success = false, message = "No account for this mobile number." });
+                {
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "No account for this mobile number.",
+                        isUserAlreadyRegistered = false
+                    });
+                }
 
-                if (userEntity.IsUserActivated != true)
-                    return Unauthorized(new { success = false, message = "Account is deactivated. Please contact administrator." });
+                if (userEntity.IsUserActivated != true && userEntity.UserStatus != true)
+                    return Unauthorized(new { success = false, message = "Account is deactivated. Please contact administrator.", isUserAlreadyRegistered = true });
 
                 var roleEntity = await _context.RoleMasters
                     .FirstOrDefaultAsync(x => x.RoleId == userEntity.RoleId);
@@ -674,24 +678,47 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     doctorId = doctorEntity.DoctorId;
 
                 var token = await _tokenService.CreateToken(userEntity, 7 * 24 * 60, roleEntity.RoleName, doctorId);
-                var userData = new AuthModel
-                {
-                    IsSuperUser = roleEntity.RoleId == 1,
-                    UserId = userEntity.UserId,
-                    UserName = $"{userEntity.FirstName} {userEntity.LastName}".Trim(),
-                    Role = roleEntity.RoleName,
-                    RoleId = userEntity.RoleId,
-                    FirmIds = userEntity.FirmIds,
-                    Token = token,
-                    DoctorId = doctorId
-                };
 
-                return Ok(new { success = true, message = "Login successful", data = userData });
+                return Ok(new
+                {
+                    success = true,
+                    message = "Login successful",
+                    isUserAlreadyRegistered = true,
+                    token,
+                    user = new
+                    {
+                        userId = userEntity.UserId,
+                        userName = userEntity.UserName,
+                        firstName = userEntity.FirstName,
+                        lastName = userEntity.LastName,
+                        email = userEntity.EmailId,
+                        mobileNo = mobile,
+                        role = roleEntity.RoleName,
+                        roleId = userEntity.RoleId,
+                        doctorId,
+                        activated = userEntity.IsUserActivated == true
+                    }
+                });
             }
             catch (Exception ex)
             {
                 return StatusCode(500, new { success = false, message = ex.Message });
             }
+        }
+
+        /// <summary>Doctor OTP login matches Doctor.MobileNo only.</summary>
+        private async Task<UserMaster?> FindLoginUserByRoleTableAsync(string digits)
+        {
+            var doctors = await _context.Doctors.AsNoTracking()
+                .Where(d => !d.DeleteStatus && d.MobileNo != null && d.UserId != null)
+                .Select(d => new { d.UserId, d.MobileNo })
+                .ToListAsync();
+            var doctor = doctors.FirstOrDefault(d => PhoneNormalizer.EqualsNormalized(d.MobileNo, digits));
+            if (doctor?.UserId == null)
+                return null;
+
+            return await _context.UserMasters
+                .FirstOrDefaultAsync(u => u.UserId == doctor.UserId.Value && !u.DeleteStatus);
         }
 
         /// <summary>DMO-02.02 — Confirm entered number matches UserMaster / Doctor profile.</summary>

@@ -6,6 +6,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interface;
+using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
 using Homeocentrum.Niga.NewAPI.Domain.Extensions;
 using System.Net;
@@ -26,11 +27,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     {
         IPatientService _patientService;
         private readonly NIGACentrumContext _context;
+        private readonly ITokenService _tokenService;
 
-        public PatientController(IPatientService patientService, NIGACentrumContext context)
+        public PatientController(IPatientService patientService, NIGACentrumContext context, ITokenService tokenService)
         {
             _patientService = patientService;
             _context = context;
+            _tokenService = tokenService;
         }
 
         /// <summary>
@@ -112,6 +115,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     && userModel.Message.Contains("Successfully", StringComparison.OrdinalIgnoreCase)
                 )
                 {
+                    await AttachTokenForExistingMobileAsync(userModel);
                     return Ok(userModel);
                 }
 
@@ -594,6 +598,70 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             foreach (var ch in text)
                 safe.Append(ch <= 255 ? ch : ' ');
             return safe.ToString();
+        }
+
+        /// <summary>
+        /// Token when this mobile is already on another Patient row.
+        /// </summary>
+        private async Task AttachTokenForExistingMobileAsync(PatientModel model)
+        {
+            var digits = PhoneNormalizer.Digits(model.MobileNo);
+            model.IsUserAlreadyRegistered = false;
+            if (digits.Length < 8)
+                return;
+
+            var patients = await _context.Patients.AsNoTracking()
+                .Where(p => p.DeleteStatus != true && p.MobileNo != null && p.PatientId != model.PatientID)
+                .Select(p => new { p.PatientId, p.MobileNo })
+                .ToListAsync();
+            var existing = patients.FirstOrDefault(p => PhoneNormalizer.EqualsNormalized(p.MobileNo, digits));
+            if (existing == null)
+                return;
+
+            var mappedUserId = await _context.PatientUserMaps.AsNoTracking()
+                .Where(m => m.PatientId == existing.PatientId && !m.DeleteStatus)
+                .OrderByDescending(m => m.IsPrimary)
+                .Select(m => (long?)m.UserId)
+                .FirstOrDefaultAsync();
+
+            var user = mappedUserId.HasValue
+                ? await _context.UserMasters.FirstOrDefaultAsync(u => u.UserId == mappedUserId.Value && !u.DeleteStatus)
+                : null;
+            if (user == null)
+            {
+                var rows = await _context.UserMasters.AsNoTracking()
+                    .Where(u => !u.DeleteStatus && u.MobileNo != null && u.IsUserActivated == true)
+                    .Select(u => new { u.UserId, u.MobileNo, u.RoleId })
+                    .ToListAsync();
+                var patientRoleId = await _context.RoleMasters.AsNoTracking()
+                    .Where(r => r.RoleName == "Patient" && !r.DeleteStatus)
+                    .Select(r => (int?)r.RoleId)
+                    .FirstOrDefaultAsync();
+                var chosen = rows
+                    .Where(u => PhoneNormalizer.EqualsNormalized(u.MobileNo, digits))
+                    .OrderByDescending(u => patientRoleId.HasValue && u.RoleId == patientRoleId.Value)
+                    .FirstOrDefault();
+                if (chosen == null)
+                    return;
+                user = await _context.UserMasters.FirstOrDefaultAsync(u => u.UserId == chosen.UserId && !u.DeleteStatus);
+            }
+            if (user == null || user.IsUserActivated != true)
+                return;
+
+            var roleName = await _context.RoleMasters.AsNoTracking()
+                .Where(r => r.RoleId == user.RoleId && !r.DeleteStatus)
+                .Select(r => r.RoleName)
+                .FirstOrDefaultAsync();
+            if (string.IsNullOrWhiteSpace(roleName))
+                return;
+
+            int? doctorId = await _context.Doctors.AsNoTracking()
+                .Where(d => d.UserId == user.UserId && !d.DeleteStatus)
+                .Select(d => (int?)d.DoctorId)
+                .FirstOrDefaultAsync();
+
+            model.Token = await _tokenService.CreateToken(user, 7 * 24 * 60, roleName, doctorId);
+            model.IsUserAlreadyRegistered = true;
         }
 
     }

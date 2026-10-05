@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
@@ -15,7 +14,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     /// </summary>
     [Route("api/state")]
     [ApiController]
-    [Authorize]
     public class StateController : BaseAPIController
     {
         IStateService _stateService;
