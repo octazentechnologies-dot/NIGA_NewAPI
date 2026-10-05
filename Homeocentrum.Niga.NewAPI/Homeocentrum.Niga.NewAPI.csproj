@@ -36,8 +36,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Data\ParentChild\" />
     <Folder Include="Views\" />
+  </ItemGroup>
+
+  <!-- Web SDK publishes wwwroot, json, and config only. Data holds uploaded files the API reads from ContentRootPath. -->
+  <ItemGroup>
+    <None Remove="Data\**\*" />
+    <Content Include="Data\**\*">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 
   <!-- Rebuild copies Domain.dll into this output folder. A running host exe locks that file (MSB3027). -->
