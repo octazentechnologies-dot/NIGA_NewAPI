@@ -62,11 +62,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
        
 
         /// <summary>
-        /// Create new Patient
+        /// Create new Patient. EntityType = DoctorMobile | PatientMobile may call without a token (create only);
+        /// EntityType = Web (or empty) needs a token.
         /// </summary>
         /// <param name="model"></param>
         /// <returns></returns>
         [HttpPost]
+        [AllowAnonymous]
         public async Task<IActionResult> Post(PatientModel model)
         {
             if (model == null || !ModelState.IsValid)
@@ -75,20 +77,35 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             try
             {
+                var isMobile = PatientEntityTypes.IsMobile(model.EntityType);
+                var isAuthenticated = User.Identity?.IsAuthenticated == true;
+                var isCreate = model.PatientID == 0;
+
+                if (!isAuthenticated)
+                {
+                    if (!isMobile)
+                        return Unauthorized(new { success = false, message = "Login required." });
+
+                    // Without a token anyone could overwrite any patient by id.
+                    if (model.PatientID != 0)
+                        return Unauthorized(new { success = false, message = "Login required to update a patient." });
+                }
                 // REC-04.02 — create patient is own-doctor only. Bind DoctorID from JWT; never trust a client DoctorID.
-                if (!DoctorOwnership.IsGlobalAdminPortalUser(User))
+                else if (!DoctorOwnership.IsGlobalAdminPortalUser(User))
                 {
                     var jwtDoctor = DoctorOwnership.GetDoctorId(User);
-                    if (!jwtDoctor.HasValue)
+                    if (jwtDoctor.HasValue)
+                    {
+                        model.DoctorID = jwtDoctor.Value;
+                        var forbid = DoctorOwnership.ForbidIfNotOwner(User, model.DoctorID);
+                        if (forbid != null)
+                            return forbid;
+                    }
+                    else if (!isMobile)
                     {
                         return StatusCode(StatusCodes.Status403Forbidden,
                             new { success = false, message = "Access denied for this doctor resource." });
                     }
-
-                    model.DoctorID = jwtDoctor.Value;
-                    var forbid = DoctorOwnership.ForbidIfNotOwner(User, model.DoctorID);
-                    if (forbid != null)
-                        return forbid;
                 }
 
                 if (model.PatientID == 0 && string.IsNullOrWhiteSpace(model.PatientName))
@@ -96,7 +113,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
                 // REC-04.03 — same POST /api/patient. Reception JWT user id is staff id;
                 // the case must be stored under the clinic doctor's UserId.
-                if (string.Equals(DoctorOwnership.GetRoleName(User), "Reception", StringComparison.OrdinalIgnoreCase))
+                if (isAuthenticated
+                    && string.Equals(DoctorOwnership.GetRoleName(User), "Reception", StringComparison.OrdinalIgnoreCase))
                 {
                     var doctorUserId = DoctorOwnership.GetDoctorUserId(User);
                     if (!doctorUserId.HasValue)
@@ -116,6 +134,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 )
                 {
                     await AttachTokenForExistingMobileAsync(userModel);
+                    if (string.IsNullOrEmpty(userModel.Token) && isCreate && isMobile)
+                        await CreatePatientLoginAsync(userModel);
                     return Ok(userModel);
                 }
 
@@ -662,6 +682,67 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
             model.Token = await _tokenService.CreateToken(user, 7 * 24 * 60, roleName, doctorId);
             model.IsUserAlreadyRegistered = true;
+        }
+
+        /// <summary>
+        /// Mobile create with no existing login: add a Patient login for this mobile, link it to the new
+        /// patient as primary, and return its token. Password is random; the app signs in again by OTP.
+        /// </summary>
+        private async Task CreatePatientLoginAsync(PatientModel model)
+        {
+            var digits = PhoneNormalizer.Digits(model.MobileNo);
+            if (digits.Length < 8 || model.PatientID <= 0)
+                return;
+
+            var patientRoleId = await _context.RoleMasters.AsNoTracking()
+                .Where(r => r.RoleName == "Patient" && !r.DeleteStatus)
+                .Select(r => (int?)r.RoleId)
+                .FirstOrDefaultAsync();
+            if (!patientRoleId.HasValue)
+                return;
+
+            var userName = digits;
+            if (await _context.UserMasters.AnyAsync(u => u.UserName == userName && !u.DeleteStatus))
+                userName = $"{digits}_{model.PatientID}";
+
+            var nameParts = (model.PatientName ?? string.Empty).Trim()
+                .Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            var email = model.Email?.Trim();
+
+            var user = new Homeocentrum.Niga.NewAPI.Domain.Master.UserMaster
+            {
+                UserName = userName,
+                UserPassword = UserPasswordHasher.Hash(Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(24))),
+                MobileNo = digits,
+                EmailId = string.IsNullOrEmpty(email) ? null : (email.Length > 50 ? email[..50] : email),
+                FirstName = nameParts.Length > 0 ? nameParts[0] : null,
+                LastName = nameParts.Length > 1 ? nameParts[1] : null,
+                CountryId = model.CountryId > 0 ? model.CountryId : null,
+                StateId = model.StateId > 0 ? model.StateId : null,
+                RoleId = patientRoleId.Value,
+                UserStatus = true,
+                IsUserActivated = true,
+                DeleteStatus = false,
+                EnteredBy = model.EntityType?.Trim(),
+                EnteredDate = DateTime.Now
+            };
+            _context.UserMasters.Add(user);
+            await _context.SaveChangesAsync();
+
+            _context.PatientUserMaps.Add(new Homeocentrum.Niga.NewAPI.Domain.Master.PatientUserMap
+            {
+                UserId = user.UserId,
+                PatientId = model.PatientID,
+                IsPrimary = true,
+                DeleteStatus = false,
+                EnteredBy = user.UserId.ToString(),
+                EnteredDate = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync();
+
+            model.UserId = (int)user.UserId;
+            model.Token = await _tokenService.CreateToken(user, 7 * 24 * 60, "Patient", null);
+            model.IsUserAlreadyRegistered = false;
         }
 
     }

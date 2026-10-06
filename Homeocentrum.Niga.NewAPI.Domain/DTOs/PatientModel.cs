@@ -59,6 +59,24 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
 
         /// <summary>DOC-03.02 — latest appointment date for this patient (nullable).</summary>
         public DateTime? LastVisitAt { get; set; }
+
+        /// <summary>
+        /// Caller channel for POST api/patient: DoctorMobile | PatientMobile | Web. Not stored.
+        /// DoctorMobile / PatientMobile may call without a token; Web (or empty) needs a token.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? EntityType { get; set; }
+    }
+
+    public static class PatientEntityTypes
+    {
+        public const string DoctorMobile = "DoctorMobile";
+        public const string PatientMobile = "PatientMobile";
+        public const string Web = "Web";
+
+        public static bool IsMobile(string? entityType) =>
+            string.Equals(entityType?.Trim(), DoctorMobile, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(entityType?.Trim(), PatientMobile, StringComparison.OrdinalIgnoreCase);
     }
 
     public class BaseModel
