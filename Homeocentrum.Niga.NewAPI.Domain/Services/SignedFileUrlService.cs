@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.Services
 {
@@ -77,13 +78,30 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
                 return false;
             }
 
-            var folder = Path.Combine(contentRoot, "Data", root);
-            fullPath = Path.GetFullPath(Path.Combine(folder, safeRelative.Replace('/', Path.DirectorySeparatorChar)));
-            var folderFull = Path.GetFullPath(folder);
-            if (!fullPath.StartsWith(folderFull, StringComparison.OrdinalIgnoreCase))
+            var mediaFolder = root.Equals(UploadedMedia.Blogs, StringComparison.OrdinalIgnoreCase)
+                ? UploadedMedia.Blogs
+                : UploadedMedia.Attachments;
+            // Blog rows store "Blogs/x.png"; callers may pass that or just "x.png".
+            if (safeRelative.StartsWith(mediaFolder + "/", StringComparison.OrdinalIgnoreCase))
+                safeRelative = safeRelative[(mediaFolder.Length + 1)..];
+
+            foreach (var folder in new[]
+                     {
+                         UploadedMedia.Folder(contentRoot, mediaFolder),
+                         Path.Combine(contentRoot, "Data", mediaFolder)
+                     })
             {
-                error = "Invalid path.";
-                return false;
+                var folderFull = Path.GetFullPath(folder) + Path.DirectorySeparatorChar;
+                var candidate = Path.GetFullPath(Path.Combine(folder, safeRelative.Replace('/', Path.DirectorySeparatorChar)));
+                if (!candidate.StartsWith(folderFull, StringComparison.OrdinalIgnoreCase))
+                {
+                    error = "Invalid path.";
+                    return false;
+                }
+                if (fullPath.Length == 0 || File.Exists(candidate))
+                    fullPath = candidate;
+                if (File.Exists(candidate))
+                    break;
             }
 
             return true;

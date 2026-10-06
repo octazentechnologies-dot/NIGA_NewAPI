@@ -12,6 +12,10 @@ public class DoctorCredentialDocument
     public string FileName { get; set; } = string.Empty;
     public string FilePath { get; set; } = string.Empty;
     public string? ContentType { get; set; }
+    public string? Degree { get; set; }
+    public string? Specialization { get; set; }
+    public string? Institution { get; set; }
+    public int? PassingYear { get; set; }
     public DateTime EnteredDate { get; set; }
     public bool DeleteStatus { get; set; }
 }

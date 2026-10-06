@@ -269,7 +269,20 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         /// </summary>
         [HttpPost("/api/Tele/Instant")]
         public Task<IActionResult> Instant([FromBody] InstantConsultRequestBody request)
-            => Done(_s3.RequestInstantAsync(request));
+            => Done(_s3.RequestInstantAsync(request, Caller()));
+
+        /// <summary>
+        /// PAT-25.02 — patient polls queue position and doctor offer for an instant request.
+        /// Patient (linked patient or same mobile), the offered doctor, or admin.
+        /// </summary>
+        [HttpGet("/api/Tele/Instant/{requestId:int}")]
+        public Task<IActionResult> InstantStatus(int requestId)
+            => Done(_s3.GetInstantStatusAsync(requestId, Caller()));
+
+        /// <summary>PAT-25.02 — patient cancels an instant request before a doctor accepts.</summary>
+        [HttpPost("/api/Tele/Instant/{requestId:int}/Cancel")]
+        public Task<IActionResult> CancelInstant(int requestId)
+            => Done(_s3.CancelInstantAsync(requestId, Caller()));
 
         /// <summary>TEL-12.02 — doctor lists open instant offers for self.</summary>
         [HttpGet("/api/Tele/Instant/Offers")]
@@ -423,30 +436,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             if (result.StatusCode != 200)
                 return StatusCode(result.StatusCode, result.Body);
             return StatusCode(result.StatusCode, result.Body);
-        }
-
-        [HttpGet("/api/Refill")]
-        public Task<IActionResult> Refills()
-        {
-            if (DoctorOwnership.ForbidIfNotTreatingDoctor(User) != null)
-                return Task.FromResult<IActionResult>(ForbidRole("Refill approval is for the treating doctor."));
-            return Done(_s3.ListRefillsAsync());
-        }
-
-        [HttpPost("/api/Refill/{refillId:int}/Approve")]
-        public Task<IActionResult> ApproveRefill(int refillId)
-        {
-            if (DoctorOwnership.ForbidIfNotTreatingDoctor(User) != null)
-                return Task.FromResult<IActionResult>(ForbidRole("Refill approval is for the treating doctor."));
-            return Done(_s3.DecideRefillAsync(refillId, true, null));
-        }
-
-        [HttpPost("/api/Refill/{refillId:int}/Reject")]
-        public Task<IActionResult> RejectRefill(int refillId, [FromBody] RejectRefillBody? body)
-        {
-            if (DoctorOwnership.ForbidIfNotTreatingDoctor(User) != null)
-                return Task.FromResult<IActionResult>(ForbidRole("Refill approval is for the treating doctor."));
-            return Done(_s3.DecideRefillAsync(refillId, false, body?.Reason));
         }
 
         private async Task<IActionResult> Done(Task<S3ActionResult> work)

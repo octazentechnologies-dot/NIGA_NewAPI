@@ -102,6 +102,12 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public decimal? ConsultFeeTele { get; set; }
         public string? PhotoPath { get; set; }
         public string? WorkingHoursNote { get; set; }
+        public decimal? FollowUpFeeInClinic { get; set; }
+        public decimal? FollowUpFeeTele { get; set; }
+        public int? FreeFollowUpDaysInClinic { get; set; }
+        public int? FreeFollowUpDaysTele { get; set; }
+        public string? FeeCurrency { get; set; }
+        public string? GoogleMapsLink { get; set; }
         public bool IsOnline { get; set; }
         public string VerificationStatus { get; set; } = string.Empty;
         public bool DirectoryVisible { get; set; }
@@ -130,7 +136,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string DocumentType { get; set; } = string.Empty;
         public string FileName { get; set; } = string.Empty;
         public string FilePath { get; set; } = string.Empty;
+        public string? Degree { get; set; }
+        public string? Specialization { get; set; }
+        public string? Institution { get; set; }
+        public int? PassingYear { get; set; }
         public DateTime EnteredDate { get; set; }
+        /// <summary>Authorised GET for the stored file (owning doctor or admin JWT).</summary>
+        public string DownloadUrl => $"/api/Profile/CredentialDocuments/{DoctorCredentialDocumentId}/File";
     }
 
     public class DoctorCredentialsMeDto
@@ -160,6 +172,14 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string? PassingCertNo { get; set; }
         public decimal? ConsultFeeInClinic { get; set; }
         public decimal? ConsultFeeTele { get; set; }
+        /// <summary>True clears the tele fee (teleconsultation turned off).</summary>
+        public bool? TeleDisabled { get; set; }
+        public decimal? FollowUpFeeInClinic { get; set; }
+        public decimal? FollowUpFeeTele { get; set; }
+        public int? FreeFollowUpDaysInClinic { get; set; }
+        public int? FreeFollowUpDaysTele { get; set; }
+        public string? FeeCurrency { get; set; }
+        public string? GoogleMapsLink { get; set; }
         public string? WorkingHoursNote { get; set; }
         /// <summary>REC-02.02 — used by Reception Profile/Me PUT; ignored for doctors.</summary>
         public string? Country { get; set; }
@@ -173,6 +193,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string? AccountNumber { get; set; }
         public string? Ifsc { get; set; }
         public string? Pan { get; set; }
+        public string? BranchName { get; set; }
+        public string? AccountType { get; set; }
     }
 
     public class AvailabilityMeDto

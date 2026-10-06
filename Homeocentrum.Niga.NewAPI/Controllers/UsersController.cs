@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
+using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
@@ -26,19 +27,22 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         private readonly NIGACentrumContext _context;
         private readonly IWebHostEnvironment _env;
         private readonly ITokenService _tokenService;
+        private readonly ILogger<UsersController> _logger;
 
         public UsersController(
             IUserService userService,
             IOptions<SmtpSettingsModel> mailSettings,
             NIGACentrumContext context,
             IWebHostEnvironment env,
-            ITokenService tokenService)
+            ITokenService tokenService,
+            ILogger<UsersController> logger)
         {
             _userService = userService;
             _mailSettings = mailSettings;
             _context = context;
             _env = env;
             _tokenService = tokenService;
+            _logger = logger;
         }
 
         /// <summary>
@@ -62,7 +66,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
                 if (result == "User already exists" || result == "User name already exists")
                 {
-                    return BadRequest(result);
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = result,
+                        code = result == "User already exists" ? "EMAIL_EXISTS" : "USERNAME_EXISTS",
+                        isUserAlreadyRegistered = true
+                    });
                 }
 
                 if (!string.IsNullOrWhiteSpace(result))
@@ -82,15 +92,21 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
         }
 
-        /// <summary>WEB-09.03 — same RegisterDoctor fields plus qualification/registration files.</summary>
+        /// <summary>
+        /// WEB-09.03 / DMO mobile — same RegisterDoctor fields plus optional files.
+        /// Every file is optional; zero files is a valid registration. Rejected files are listed
+        /// in rejectedDocuments and never fail the registration.
+        /// </summary>
         [HttpPost("RegisterDoctorWithDocuments")]
         [AllowAnonymous]
         [Consumes("multipart/form-data")]
+        [RequestSizeLimit(80_000_000)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 80_000_000)]
         public async Task<IActionResult> RegisterDoctorWithDocuments(
             [FromForm] RegisterDoctorWithDocumentsForm model)
         {
             if (model == null || !ModelState.IsValid)
-                return BadRequest("Invalid request, please verify details");
+                return BadRequest(new { success = false, message = "Invalid request, please verify details" });
 
             try
             {
@@ -98,7 +114,16 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 var result = _userService.RegisterDoctor(model, _mailSettings.Value, ref errorMessage);
 
                 if (result == "User already exists" || result == "User name already exists")
-                    return BadRequest(result);
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = result,
+                        code = result == "User already exists" ? "EMAIL_EXISTS" : "USERNAME_EXISTS",
+                        isUserAlreadyRegistered = true,
+                        documentsSaved = 0
+                    });
+                }
 
                 if (string.IsNullOrWhiteSpace(result))
                     return ReturnErrorResponse(errorMessage);
@@ -108,22 +133,44 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     .FirstOrDefaultAsync(d => d.EmailId == model.EmailId.Trim() && !d.DeleteStatus);
 
                 var saved = new List<DoctorCredentialDocument>();
-                if (doctor != null)
+                var rejected = new List<object>();
+                async Task SaveAsync(IFormFile? file, string documentType)
                 {
-                    var qualification = await SaveRegistrationDocumentAsync(doctor, model.QualificationDoc, "Qualification");
-                    if (qualification != null)
-                        saved.Add(qualification);
-                    var registration = await SaveRegistrationDocumentAsync(doctor, model.RegistrationDoc, "Registration");
-                    if (registration != null)
-                        saved.Add(registration);
-                    if (model.Documents != null)
+                    if (file == null)
+                        return;
+                    var reason = CredentialFileRules.RejectReason(file.FileName, file.Length);
+                    if (reason == null && doctor == null)
+                        reason = "Doctor profile was not found after registration.";
+                    if (reason == null)
                     {
-                        foreach (var file in model.Documents)
+                        try
                         {
-                            var extra = await SaveRegistrationDocumentAsync(doctor, file, "Other");
-                            if (extra != null)
-                                saved.Add(extra);
+                            var row = await SaveRegistrationDocumentAsync(doctor!, file, documentType);
+                            if (row != null)
+                            {
+                                saved.Add(row);
+                                return;
+                            }
+                            reason = "This file type cannot be stored.";
                         }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Registration document save failed for {FileName}", file.FileName);
+                            reason = "The file could not be saved on the server.";
+                        }
+                    }
+                    rejected.Add(new { documentType, fileName = Path.GetFileName(file.FileName), reason });
+                }
+
+                await SaveAsync(model.QualificationDoc, "Qualification");
+                await SaveAsync(model.RegistrationDoc, "Registration");
+                if (model.Documents != null)
+                {
+                    for (var i = 0; i < model.Documents.Count; i++)
+                    {
+                        var type = CredentialFileRules.CanonicalType(
+                            model.DocumentTypes != null && i < model.DocumentTypes.Count ? model.DocumentTypes[i] : null);
+                        await SaveAsync(model.Documents[i], type);
                     }
                 }
 
@@ -152,21 +199,32 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     };
                 }
 
+                var savedTypes = saved.Select(d => d.DocumentType).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 var payload = new Dictionary<string, object?>
                 {
                     ["success"] = true,
                     ["message"] = result,
                     ["mailSent"] = result.StartsWith("Registration successful", StringComparison.Ordinal),
+                    ["doctorId"] = doctor?.DoctorId,
                     ["documentsSaved"] = saved.Count,
                     ["documents"] = saved.Select(d => new
                     {
+                        documentId = d.DoctorCredentialDocumentId,
                         documentType = d.DocumentType,
                         fileName = d.FileName,
-                        filePath = d.FilePath
+                        filePath = d.FilePath,
+                        contentType = d.ContentType,
+                        downloadUrl = CredentialFileRules.DownloadUrl(d.DoctorCredentialDocumentId)
                     }),
-                    ["verificationStatus"] = "Pending",
-                    ["directoryVisible"] = false,
-                    ["isUserAlreadyRegistered"] = await MobileAlreadyOnAnotherDoctorAsync(model.MobileNo, doctor?.DoctorId)
+                    ["documentsRejected"] = rejected.Count,
+                    ["rejectedDocuments"] = rejected,
+                    ["hasQualificationDoc"] = savedTypes.Contains("Qualification"),
+                    ["hasRegistrationDoc"] = savedTypes.Contains("Registration"),
+                    ["missingDocumentTypes"] = new[] { "Qualification", "Registration" }.Where(t => !savedTypes.Contains(t)).ToArray(),
+                    ["verificationStatus"] = string.IsNullOrWhiteSpace(doctor?.VerificationStatus) ? "Pending" : doctor!.VerificationStatus,
+                    ["directoryVisible"] = doctor?.DirectoryVisible == true,
+                    ["isUserAlreadyRegistered"] = false,
+                    ["mobileUsedByAnotherDoctor"] = await MobileAlreadyOnAnotherDoctorAsync(model.MobileNo, doctor?.DoctorId)
                 };
                 if (token != null)
                 {
@@ -461,7 +519,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            var folder = Path.Combine(_env.ContentRootPath, "Data", "DoctorCredentials");
+            var folder = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.DoctorCredentials);
             Directory.CreateDirectory(folder);
             var name = $"doc_{doctor.DoctorId}_{Guid.NewGuid():N}{ext}";
             var path = Path.Combine(folder, name);
@@ -474,7 +532,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 DoctorVerificationId = verification.DoctorVerificationId,
                 DocumentType = documentType,
                 FileName = Path.GetFileName(file.FileName),
-                FilePath = Path.Combine("DoctorCredentials", name).Replace("\\", "/"),
+                FilePath = UploadedMedia.MediaRelative(UploadedMedia.DoctorCredentials, name),
                 ContentType = file.ContentType,
                 EnteredDate = DateTime.UtcNow,
                 DeleteStatus = false

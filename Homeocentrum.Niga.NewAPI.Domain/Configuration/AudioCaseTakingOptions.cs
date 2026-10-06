@@ -4,7 +4,7 @@ public class AudioCaseTakingOptions
 {
     public const string SectionName = "AudioCaseTaking";
 
-    public string StoragePath { get; set; } = "Data/AudioCaseTaking";
+    public string StoragePath { get; set; } = "Data/UploadedMedia/AudioCaseTaking";
 
     public long MaxFileSizeBytes { get; set; } = 52_428_800;
 

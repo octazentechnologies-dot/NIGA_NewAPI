@@ -39,7 +39,8 @@
     <Folder Include="Views\" />
   </ItemGroup>
 
-  <!-- Web SDK publishes wwwroot, json, and config only. Data holds uploaded files the API reads from ContentRootPath. -->
+  <!-- Web SDK publishes wwwroot, json, and config only. Data holds uploaded files the API reads from ContentRootPath.
+       Uploads live under Data\UploadedMedia\{folder}; the .keep files make the empty folders publish. -->
   <ItemGroup>
     <None Remove="Data\**\*" />
     <Content Include="Data\**\*">

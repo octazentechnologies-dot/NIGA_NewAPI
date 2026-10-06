@@ -47,7 +47,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> ClinicCollectionsAsync(DateTime? from, DateTime? to, int? doctorId, S4Caller caller);
     Task<S4ActionResult> TrailAsync(int? patientAppId, long? paymentOrderId, int? doctorId, S4Caller caller);
     /// <summary>DMO-10.02 — doctor mobile earnings summary for the signed-in clinic.</summary>
-    Task<S4ActionResult> EarningsSummaryAsync(DateTime? from, DateTime? to, S4Caller caller);
+    Task<S4ActionResult> EarningsSummaryAsync(DateTime? from, DateTime? to, S4Caller caller, int? doctorFilter = null);
 
     Task<S4ActionResult> MyVerificationAsync(S4Caller caller);
     Task<S4ActionResult> VerificationQueueAsync(string? status, S4Caller caller);
@@ -68,7 +68,8 @@ public interface IS4Week4Service
     Task<S4ActionResult> ErxHistoryAsync(int? patientId, int? patientAppId, S4Caller caller);
     Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller);
     Task<S4ActionResult> RequestRefillAsync(RefillCreateRequest request, S4Caller caller);
-    Task<S4ActionResult> ListRefillsAsync(S4Caller caller);
+    Task<S4ActionResult> ListRefillsAsync(S4Caller caller, string? status = null);
+    Task<S4ActionResult> RefillDetailAsync(int refillId, S4Caller caller);
     Task<S4ActionResult> DecideRefillAsync(int refillId, bool approve, string? reason, S4Caller caller);
 
     Task<S4ActionResult> OnboardPharmacyAsync(PharmacyOnboardRequest request, S4Caller caller);
@@ -96,6 +97,9 @@ public interface IS4Week4Service
     Task<S4ActionResult> TimelineAsync(int? patientId, S4Caller caller);
     Task<S4ActionResult> ConsultationNoteAsync(int patientAppId, S4Caller caller);
     Task<S4ActionResult> SavePatientDocumentAsync(IFormFile file, S4Caller caller);
+    Task<S4ActionResult> ListPatientDocumentsAsync(int? patientId, S4Caller caller);
+    Task<S4ActionResult> PatientDocumentFileAsync(long documentId, S4Caller caller);
+    Task<S4ActionResult> DeletePatientDocumentAsync(long documentId, S4Caller caller);
     Task<S4ActionResult> SetFollowUpAsync(FollowUpCreateRequest request, S4Caller caller);
     Task<S4ActionResult> ListFollowUpsAsync(int? patientId, S4Caller caller);
     Task<S4ActionResult> CompleteFollowUpAsync(int taskId, S4Caller caller);
@@ -105,6 +109,9 @@ public interface IS4Week4Service
     Task<S4ActionResult> DeleteDiaryAsync(int diaryId, S4Caller caller);
     Task<S4ActionResult> ProgressAsync(int? patientId, S4Caller caller);
     Task<S4ActionResult> ListConsentsAsync(S4Caller caller);
+    Task<S4ActionResult> GrantConsentAsync(int consentTypeId, S4Caller caller);
+    Task<S4ActionResult> PatientVisitDetailAsync(int patientAppId, S4Caller caller);
+    Task<S4ActionResult> PatientVisitsAsync(int? patientId, S4Caller caller);
     Task<S4ActionResult> WithdrawConsentAsync(long consentId, S4Caller caller);
     Task<S4ActionResult> CreateDataRequestAsync(DataRequestCreate request, S4Caller caller);
     Task<S4ActionResult> GetHealthProfileAsync(S4Caller caller);
@@ -134,8 +141,14 @@ public class S4ActionResult
 {
     public int StatusCode { get; set; }
     public object? Body { get; set; }
+    public byte[]? FileBytes { get; set; }
+    public string? FileName { get; set; }
+    public string? FileMime { get; set; }
 
     public static S4ActionResult Ok(object body) => new() { StatusCode = 200, Body = body };
+
+    public static S4ActionResult File(byte[] bytes, string fileName, string mime)
+        => new() { StatusCode = 200, FileBytes = bytes, FileName = fileName, FileMime = mime };
 
     public static S4ActionResult Fail(int status, string code, string message)
         => new() { StatusCode = status, Body = new { success = false, code, message } };

@@ -32,7 +32,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Interfaces
         Task<S3ActionResult> SaveSummaryAsync(ConsultationSummaryRequest request, int doctorId);
         Task<S3ActionResult> GetSummaryAsync(int patientAppId, S3Caller caller);
 
-        Task<S3ActionResult> RequestInstantAsync(InstantConsultRequestBody request);
+        Task<S3ActionResult> RequestInstantAsync(InstantConsultRequestBody request, S3Caller? caller = null);
+        Task<S3ActionResult> GetInstantStatusAsync(int requestId, S3Caller caller);
+        Task<S3ActionResult> CancelInstantAsync(int requestId, S3Caller caller);
         Task<S3ActionResult> ListInstantOffersAsync(int doctorId);
         Task<S3ActionResult> AcceptInstantAsync(int requestId, int doctorId);
 

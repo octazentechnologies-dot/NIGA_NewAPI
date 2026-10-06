@@ -71,5 +71,11 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
 
         /// <summary>Optional extra media. Each file path is stored when sent.</summary>
         public List<IFormFile>? Documents { get; set; }
+
+        /// <summary>
+        /// Optional. Same order as <see cref="Documents"/>: Qualification, Registration, Experience or Other.
+        /// Missing or unknown entries are saved as Other.
+        /// </summary>
+        public List<string>? DocumentTypes { get; set; }
     }
 }

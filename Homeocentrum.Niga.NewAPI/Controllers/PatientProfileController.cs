@@ -78,6 +78,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             if (request == null)
                 return BadRequest(new { success = false, message = "Body is required." });
+            if (!string.IsNullOrWhiteSpace(request.MobileNo) && PhoneNormalizer.Digits(request.MobileNo).Length is < 10 or > 15)
+                return BadRequest(new { success = false, message = "Enter a valid mobile number." });
+            if (!string.IsNullOrWhiteSpace(request.Email)
+                && !System.Text.RegularExpressions.Regex.IsMatch(request.Email.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+                return BadRequest(new { success = false, message = "Enter a valid email address." });
+            if (request.DateOfBirth.HasValue && request.DateOfBirth.Value.Date > DateTime.Today)
+                return BadRequest(new { success = false, message = "Date of birth cannot be in the future." });
 
             var userId = (long)User.GetUserId();
             var user = await _context.UserMasters
@@ -162,8 +169,19 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             {
                 if (!string.IsNullOrWhiteSpace(request.PatientName))
                     patient.PatientName = request.PatientName.Trim();
+                else if (!string.IsNullOrWhiteSpace(request.FirstName) || !string.IsNullOrWhiteSpace(request.LastName))
+                    patient.PatientName = $"{user.FirstName} {user.LastName}".Trim();
                 if (request.DateOfBirth.HasValue)
+                {
                     patient.DateOfBirth = request.DateOfBirth;
+                    if (!request.Age.HasValue)
+                    {
+                        var dob = request.DateOfBirth.Value.Date;
+                        var age = DateTime.Today.Year - dob.Year;
+                        if (dob > DateTime.Today.AddYears(-age)) age--;
+                        patient.Age = Math.Max(0, age);
+                    }
+                }
                 if (request.Gender.HasValue)
                     patient.Gender = request.Gender;
                 if (request.Age.HasValue)

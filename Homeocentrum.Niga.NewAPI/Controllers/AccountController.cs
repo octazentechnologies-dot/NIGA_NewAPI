@@ -253,6 +253,119 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
         }
 
+        private const int RefreshGraceDays = 7;
+
+        /// <summary>
+        /// DMO-11.02 — swap the current token (still valid, or expired less than 7 days ago) for a new 7-day token.
+        /// Body { token } or Authorization: Bearer. The old token is signed out. Same call for web, patient app and doctor app.
+        /// </summary>
+        [HttpPost("RefreshToken")]
+        [AllowAnonymous]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest? request)
+        {
+            var raw = request?.Token;
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                var header = Request.Headers.Authorization.ToString();
+                if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                    raw = header[7..];
+            }
+            if (string.IsNullOrWhiteSpace(raw))
+                return BadRequest(new { success = false, code = "TOKEN_REQUIRED", message = "Send the current token in the body or the Authorization header." });
+
+            System.Security.Claims.ClaimsPrincipal principal;
+            DateTime expiresUtc;
+            try
+            {
+                var handler = new JwtSecurityTokenHandler();
+                principal = handler.ValidateToken(raw.Trim(), new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+                {
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+                    ValidateLifetime = false,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["TokenKey"]!))
+                }, out var validated);
+                expiresUtc = validated.ValidTo;
+            }
+            catch
+            {
+                return Unauthorized(new { success = false, code = "TOKEN_INVALID", message = "This token is not valid. Sign in again." });
+            }
+
+            if (expiresUtc < DateTime.UtcNow.AddDays(-RefreshGraceDays))
+                return Unauthorized(new { success = false, code = "SESSION_EXPIRED", message = "The session expired more than 7 days ago. Sign in again." });
+            var oldJti = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+            if (_jwtDenylist.IsDenied(oldJti))
+                return Unauthorized(new { success = false, code = "SIGNED_OUT", message = "This session was signed out. Sign in again." });
+
+            var role = principal.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+                ?? principal.FindFirst("RoleName")?.Value
+                ?? string.Empty;
+            if (!long.TryParse(principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var subjectId) || subjectId <= 0)
+                return Unauthorized(new { success = false, code = "TOKEN_INVALID", message = "This token has no user. Sign in again." });
+
+            string token;
+            object user;
+            if (role.Equals("Reception", StringComparison.OrdinalIgnoreCase))
+            {
+                var staff = await _context.DoctorReceptionStaffs.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.ReceptionStaffId == subjectId && !s.DeleteStatus && s.IsActive);
+                if (staff == null)
+                    return Unauthorized(new { success = false, code = "ACCOUNT_INACTIVE", message = "This reception login is no longer active." });
+                var doctorUserId = await _context.Doctors.AsNoTracking()
+                    .Where(d => d.DoctorId == staff.DoctorId && !d.DeleteStatus)
+                    .Select(d => d.UserId)
+                    .FirstOrDefaultAsync();
+                token = await _tokenService.CreateReceptionStaffToken(
+                    staff.ReceptionStaffId, staff.UserId, staff.DoctorId, staff.FullName,
+                    7 * 24 * 60, roleId: null, roleName: "Reception", doctorUserId: doctorUserId);
+                user = new { userId = staff.ReceptionStaffId, userName = staff.FullName, role = "Reception", doctorId = staff.DoctorId };
+            }
+            else
+            {
+                var userEntity = await _context.UserMasters.AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.UserId == subjectId && !u.DeleteStatus);
+                if (userEntity == null)
+                    return Unauthorized(new { success = false, code = "ACCOUNT_INACTIVE", message = "This account no longer exists." });
+                if (userEntity.IsUserActivated != true && !userEntity.UserStatus)
+                    return Unauthorized(new { success = false, code = "ACCOUNT_INACTIVE", message = "Account is deactivated. Please contact administrator." });
+                var roleName = await _context.RoleMasters.AsNoTracking()
+                    .Where(r => r.RoleId == userEntity.RoleId && !r.DeleteStatus)
+                    .Select(r => r.RoleName)
+                    .FirstOrDefaultAsync();
+                if (string.IsNullOrWhiteSpace(roleName))
+                    return Unauthorized(new { success = false, code = "ACCOUNT_INACTIVE", message = "User role not found." });
+                var doctorId = await _context.Doctors.AsNoTracking()
+                    .Where(d => d.UserId == userEntity.UserId && !d.DeleteStatus)
+                    .Select(d => (int?)d.DoctorId)
+                    .FirstOrDefaultAsync();
+                token = await _tokenService.CreateToken(userEntity, 7 * 24 * 60, roleName, doctorId);
+                user = new
+                {
+                    userId = userEntity.UserId,
+                    userName = userEntity.UserName,
+                    firstName = userEntity.FirstName,
+                    lastName = userEntity.LastName,
+                    role = roleName,
+                    roleId = userEntity.RoleId,
+                    doctorId
+                };
+            }
+
+            if (!string.IsNullOrEmpty(oldJti))
+                _jwtDenylist.Deny(oldJti, expiresUtc.AddDays(RefreshGraceDays));
+
+            return Ok(new
+            {
+                success = true,
+                message = "Session refreshed.",
+                token,
+                expiresAt = DateTime.Now.AddMinutes(7 * 24 * 60),
+                user
+            });
+        }
+
         /// <summary>Lists every non-deleted login that shares this email or username, so the user can pick a role.</summary>
         [HttpPost("ForgotPasswordAccounts")]
         [AllowAnonymous]
@@ -974,5 +1087,10 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
             return token.Split('&', '#')[0].Trim();
         }
+    }
+
+    public class RefreshTokenRequest
+    {
+        public string? Token { get; set; }
     }
 }

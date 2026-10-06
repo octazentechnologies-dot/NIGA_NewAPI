@@ -53,6 +53,18 @@ public partial class Doctor
 
     public string? WorkingHoursNote { get; set; }
 
+    public decimal? FollowUpFeeInClinic { get; set; }
+
+    public decimal? FollowUpFeeTele { get; set; }
+
+    public int? FreeFollowUpDaysInClinic { get; set; }
+
+    public int? FreeFollowUpDaysTele { get; set; }
+
+    public string? FeeCurrency { get; set; }
+
+    public string? GoogleMapsLink { get; set; }
+
     public bool IsOnline { get; set; }
 
     public bool DirectoryVisible { get; set; }

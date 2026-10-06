@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.Extensions;
+using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
 
@@ -38,12 +39,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             if (string.IsNullOrWhiteSpace(ownerType) || ownerId <= 0)
                 return BadRequest(new { success = false, message = "ownerType and ownerId are required." });
 
-            var root = Path.Combine(_env.ContentRootPath, "Data", "SecureDocuments");
+            var root = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.SecureDocuments);
             Directory.CreateDirectory(root);
 
             var safeName = Path.GetFileName(file.FileName);
             var storedName = $"{Guid.NewGuid():N}_{safeName}";
-            var relativePath = Path.Combine("Data", "SecureDocuments", storedName).Replace('\\', '/');
+            var relativePath = UploadedMedia.ContentRelative(UploadedMedia.SecureDocuments, storedName);
             var fullPath = Path.Combine(root, storedName);
 
             string hashHex;
@@ -87,7 +88,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     doc.FileName,
                     doc.Mime,
                     doc.Hash,
-                    doc.CreatedAt
+                    doc.CreatedAt,
+                    path = doc.BlobPath,
+                    downloadUrl = $"/api/SecureDocument/{doc.SecureDocumentId}"
                 }
             });
         }
@@ -110,9 +113,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             if (!allowed)
                 return Forbid();
 
-            var fullPath = Path.IsPathRooted(doc.BlobPath)
-                ? doc.BlobPath
-                : Path.Combine(_env.ContentRootPath, doc.BlobPath.Replace('/', Path.DirectorySeparatorChar));
+            var fullPath = UploadedMedia.Resolve(_env.ContentRootPath, doc.BlobPath);
 
             if (!System.IO.File.Exists(fullPath))
                 return NotFound(new { success = false, message = "Blob missing on server." });

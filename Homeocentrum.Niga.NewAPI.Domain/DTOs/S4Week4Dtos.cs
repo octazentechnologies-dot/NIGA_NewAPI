@@ -194,7 +194,7 @@ public class SignErxRequest
 
 public class PharmacyAcceptRequest
 {
-    [Range(1, int.MaxValue)]
+    /// <summary>Taken from the route; a body value is ignored.</summary>
     public int MedicineOrderId { get; set; }
 
     [Required]

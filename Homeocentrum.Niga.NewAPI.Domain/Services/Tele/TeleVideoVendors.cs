@@ -46,7 +46,7 @@ public sealed class StubTeleVideoVendor : ITeleVideoVendor
             ClientConfig = new Dictionary<string, string>
             {
                 ["mode"] = "stub",
-                ["hint"] = "No media plane. Set TeleVideo:Vendor + vendor keys for Agora/Twilio/Daily."
+                ["hint"] = "No media plane. Set TeleVideo:Vendor + vendor keys for Agora/Twilio/Daily/100ms."
             }
         });
     }
@@ -169,17 +169,20 @@ public sealed class ConfigurableTeleVideoVendor : ITeleVideoVendor
     private readonly TeleVideoOptions _options;
     private readonly StubTeleVideoVendor _stub;
     private readonly AgoraTeleVideoVendor _agora;
+    private readonly HundredMsTeleVideoVendor _hundredMs;
     private readonly ILogger<ConfigurableTeleVideoVendor> _logger;
 
     public ConfigurableTeleVideoVendor(
         IOptions<TeleVideoOptions> options,
         StubTeleVideoVendor stub,
         AgoraTeleVideoVendor agora,
+        HundredMsTeleVideoVendor hundredMs,
         ILogger<ConfigurableTeleVideoVendor> logger)
     {
         _options = options.Value ?? new TeleVideoOptions();
         _stub = stub;
         _agora = agora;
+        _hundredMs = hundredMs;
         _logger = logger;
     }
 
@@ -203,6 +206,10 @@ public sealed class ConfigurableTeleVideoVendor : ITeleVideoVendor
 
         if (vendor.Equals("Daily", StringComparison.OrdinalIgnoreCase))
             return IssueDailyShellAsync(request, cancellationToken);
+
+        if (vendor.Equals("100ms", StringComparison.OrdinalIgnoreCase)
+            || vendor.Equals("HundredMs", StringComparison.OrdinalIgnoreCase))
+            return _hundredMs.IssueTokenAsync(request, cancellationToken);
 
         return _stub.IssueTokenAsync(request, cancellationToken);
     }

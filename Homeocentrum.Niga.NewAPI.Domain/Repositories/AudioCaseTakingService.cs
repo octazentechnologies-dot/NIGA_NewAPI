@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Homeocentrum.Niga.NewAPI.Domain.Configuration;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
+using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Services;
@@ -462,10 +463,10 @@ public class AudioCaseTakingService : IAudioCaseTakingService
     {
         var session = await GetOwnedSessionAsync(doctorUserId, sessionId, cancellationToken);
         if (session == null) return (false, "Session not found.", null);
-        if (string.IsNullOrWhiteSpace(session.AudioFilePath) || !File.Exists(session.AudioFilePath))
+        if (string.IsNullOrWhiteSpace(AudioFile(session)) || !File.Exists(AudioFile(session)))
             return (false, "Recording file is no longer available.", null);
 
-        var bytes = await File.ReadAllBytesAsync(session.AudioFilePath, cancellationToken);
+        var bytes = await File.ReadAllBytesAsync(AudioFile(session), cancellationToken);
         await LogEventAsync(sessionId, session.CorrelationId, "AudioDownloaded", "Success", "Recording downloaded.", doctorUserId, ipAddress);
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -499,7 +500,7 @@ public class AudioCaseTakingService : IAudioCaseTakingService
             var whisperSw = Stopwatch.StartNew();
             if (_options.OutputEnglishOnly)
             {
-                var translation = await _aiProcessor.TranslateAudioToEnglishAsync(session.AudioFilePath!, processingToken);
+                var translation = await _aiProcessor.TranslateAudioToEnglishAsync(AudioFile(session)!, processingToken);
                 await LogAiRequestAsync(sessionId, correlationId, "OpenAI", "Translation", "whisper-1", translation.LatencyMs,
                     translation.RequestJson, translation.ResponseJson, translation.Success, translation.Error);
 
@@ -511,7 +512,7 @@ public class AudioCaseTakingService : IAudioCaseTakingService
             }
             else
             {
-                var transcription = await _aiProcessor.TranscribeAsync(session.AudioFilePath!, language, processingToken);
+                var transcription = await _aiProcessor.TranscribeAsync(AudioFile(session)!, language, processingToken);
                 await LogAiRequestAsync(sessionId, correlationId, "OpenAI", "Transcription", "whisper-1", transcription.LatencyMs,
                     transcription.RequestJson, transcription.ResponseJson, transcription.Success, transcription.Error);
 
@@ -597,9 +598,9 @@ public class AudioCaseTakingService : IAudioCaseTakingService
         var purged = 0;
         foreach (var session in sessions)
         {
-            if (!string.IsNullOrWhiteSpace(session.AudioFilePath) && File.Exists(session.AudioFilePath))
+            if (!string.IsNullOrWhiteSpace(AudioFile(session)) && File.Exists(AudioFile(session)))
             {
-                try { File.Delete(session.AudioFilePath); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to delete audio file {Path}", session.AudioFilePath); }
+                try { File.Delete(AudioFile(session)); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to delete audio file {Path}", AudioFile(session)); }
             }
 
             session.AudioPurgedAtUtc = DateTime.UtcNow;
@@ -685,7 +686,7 @@ public class AudioCaseTakingService : IAudioCaseTakingService
         var requeued = 0;
         foreach (var session in orphaned)
         {
-            if (string.IsNullOrWhiteSpace(session.AudioFilePath) || !File.Exists(session.AudioFilePath))
+            if (string.IsNullOrWhiteSpace(AudioFile(session)) || !File.Exists(AudioFile(session)))
             {
                 var correlationId = session.CorrelationId ?? session.AudioCaseSessionId.ToString("N")[..12];
                 await FailSessionAsync(
@@ -1401,7 +1402,7 @@ public class AudioCaseTakingService : IAudioCaseTakingService
         }
 
         // Cost control: at most ONE extra source-language Whisper call per case.
-        if (string.IsNullOrWhiteSpace(session.AudioFilePath) || !File.Exists(session.AudioFilePath))
+        if (string.IsNullOrWhiteSpace(AudioFile(session)) || !File.Exists(AudioFile(session)))
         {
             _logger.LogWarning(
                 "DualLanguageForSensationSegments skipped — audio path missing for session {SessionId}",
@@ -1418,7 +1419,7 @@ public class AudioCaseTakingService : IAudioCaseTakingService
             };
         }
 
-        var transcription = await _aiProcessor.TranscribeAsync(session.AudioFilePath, language, cancellationToken);
+        var transcription = await _aiProcessor.TranscribeAsync(AudioFile(session), language, cancellationToken);
         await LogAiRequestAsync(
             session.AudioCaseSessionId,
             correlationId,
@@ -2013,13 +2014,19 @@ public class AudioCaseTakingService : IAudioCaseTakingService
         }
     }
 
+    /// <summary>Stored absolute path, mapped to Data/UploadedMedia when the row predates that folder.</summary>
+    private static string? AudioFile(AudioCaseSession session)
+        => string.IsNullOrWhiteSpace(session.AudioFilePath)
+            ? null
+            : UploadedMedia.Resolve(Directory.GetCurrentDirectory(), session.AudioFilePath);
+
     private static bool HasStoredAudioFile(AudioCaseSession session)
     {
         try
         {
             return session.AudioPurgedAtUtc == null
-                && !string.IsNullOrWhiteSpace(session.AudioFilePath)
-                && File.Exists(session.AudioFilePath);
+                && !string.IsNullOrWhiteSpace(AudioFile(session))
+                && File.Exists(AudioFile(session));
         }
         catch (Exception)
         {

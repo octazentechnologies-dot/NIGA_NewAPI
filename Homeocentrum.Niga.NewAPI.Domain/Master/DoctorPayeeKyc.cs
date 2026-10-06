@@ -11,6 +11,8 @@ public class DoctorPayeeKyc
     public string? AccountNumber { get; set; }
     public string? Ifsc { get; set; }
     public string? Pan { get; set; }
+    public string? BranchName { get; set; }
+    public string? AccountType { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public bool DeleteStatus { get; set; }

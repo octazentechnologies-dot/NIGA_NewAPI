@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
+using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Services;
@@ -380,9 +381,12 @@ public partial class S4Week4Service
 
     public async Task<S4ActionResult> ErxHistoryAsync(int? patientId, int? patientAppId, S4Caller caller)
     {
+        var doctorScope = 0;
         if (caller.IsPatient)
             patientId = caller.PatientId;
-        if (patientId is null or <= 0 && patientAppId is null or <= 0)
+        else if (caller.IsDoctor && !caller.IsAdmin)
+            doctorScope = caller.DoctorId ?? -1;
+        if (patientId is null or <= 0 && patientAppId is null or <= 0 && doctorScope == 0)
             return Fail(400, "VALIDATION", "Provide a patient or appointment id.");
         if (caller.IsDoctor && patientId.HasValue)
         {
@@ -391,13 +395,19 @@ public partial class S4Week4Service
             if (!owns && !caller.IsAdmin)
                 return Fail(403, "FORBIDDEN", "This patient is not on your list.");
         }
-        var rows = await _context.Database.SqlQuery<SnapshotRow>($@"
-            SELECT ErxSnapshotId, PatientAppId, PatientId, DoctorId, Status, SignedAt
-            FROM dbo.ErxSnapshot
-            WHERE Status = N'SIGNED'
-              AND ({patientId ?? 0} = 0 OR PatientId = {patientId ?? 0})
-              AND ({patientAppId ?? 0} = 0 OR PatientAppId = {patientAppId ?? 0})
-            ORDER BY SignedAt DESC").ToListAsync();
+        var rows = await _context.Database.SqlQuery<ErxHistoryRow>($@"
+            SELECT TOP 100 s.ErxSnapshotId, s.PatientAppId, s.PatientId, s.DoctorId, s.Status, s.SignedAt,
+                   p.PatientName,
+                   LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
+                   (SELECT COUNT(1) FROM dbo.ErxSnapshotItem i WHERE i.ErxSnapshotId = s.ErxSnapshotId) AS ItemCount
+            FROM dbo.ErxSnapshot s
+            LEFT JOIN dbo.Patient p ON p.PatientId = s.PatientId
+            LEFT JOIN dbo.Doctor d ON d.DoctorID = s.DoctorId
+            WHERE s.Status = N'SIGNED'
+              AND ({patientId ?? 0} = 0 OR s.PatientId = {patientId ?? 0})
+              AND ({patientAppId ?? 0} = 0 OR s.PatientAppId = {patientAppId ?? 0})
+              AND ({doctorScope} = 0 OR s.DoctorId = {doctorScope})
+            ORDER BY s.SignedAt DESC").ToListAsync();
         return Ok(new { success = true, data = rows });
     }
 
@@ -411,10 +421,41 @@ public partial class S4Week4Service
             return Fail(409, "CONFLICT", "Only a signed prescription can be printed.");
         var reveal = !caller.IsPatient || await PharmacyAcceptedAsync(snapshot.ErxSnapshotId);
         var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, reveal);
-        var lines = items.Select(i => (reveal ? i.RemedyName : i.RemedyCode) + " " + i.PotencyCode + " " + i.Dose);
-        var pdf = Helpers.ClinicalCasePdfBuilder.Build("Signed prescription " + snapshot.ErxSnapshotId, lines);
-        var stored = await StorePdfAsync(pdf, "erx-" + snapshot.ErxSnapshotId + ".pdf", "Erx", snapshot.ErxSnapshotId, caller.UserId);
-        return Ok(new { success = true, data = new { stored.DocumentId, stored.Path } });
+        var fileName = "eRx-" + snapshot.ErxSnapshotId + ".pdf";
+
+        var doctor = await _context.Doctors.AsNoTracking()
+            .Where(d => d.DoctorId == snapshot.DoctorId)
+            .Select(d => new { d.FirstName, d.LastName, d.ClinicName, d.City, d.MobileNo, d.EmailId })
+            .FirstOrDefaultAsync();
+        var patient = await _context.Patients.AsNoTracking()
+            .Where(p => p.PatientId == snapshot.PatientId)
+            .Select(p => new { p.PatientName, p.Age, p.Gender, p.MobileNo })
+            .FirstOrDefaultAsync();
+        var gender = patient?.Gender switch { 0 => "Male", 1 => "Female", 2 => "Other", _ => null };
+        var header = new Helpers.ErxPdfHeader
+        {
+            ErxId = snapshot.ErxSnapshotId,
+            PatientAppId = snapshot.PatientAppId,
+            ClinicName = doctor?.ClinicName ?? "",
+            DoctorName = doctor == null ? "Doctor" : $"Dr. {doctor.FirstName} {doctor.LastName}".Trim(),
+            ClinicContact = string.Join(" · ", new[] { doctor?.City, doctor?.MobileNo, doctor?.EmailId }.Where(s => !string.IsNullOrWhiteSpace(s))),
+            PatientName = patient?.PatientName ?? ("Patient " + snapshot.PatientId),
+            PatientMeta = string.Join(" · ", new[] { patient?.Age is > 0 ? patient.Age + " yrs" : null, gender }.Where(s => !string.IsNullOrWhiteSpace(s))),
+            SignedAt = snapshot.SignedAt
+        };
+        var lines = items.Select(i => new Helpers.ErxPdfLine
+        {
+            Remedy = reveal && !string.IsNullOrWhiteSpace(i.RemedyName) ? i.RemedyName : i.RemedyCode,
+            Potency = i.PotencyCode,
+            Dose = i.Dose,
+            Frequency = i.Frequency,
+            Duration = i.Duration,
+            Instructions = i.Instructions
+        }).ToList();
+        var pdf = Helpers.ErxPdfBuilder.Build(header, lines);
+        if (reveal && !await _context.SecureDocuments.AnyAsync(d => d.OwnerType == "ErxPdf" && d.OwnerId == snapshot.ErxSnapshotId))
+            await StorePdfAsync(pdf, fileName, "ErxPdf", snapshot.ErxSnapshotId, caller.UserId);
+        return S4ActionResult.File(pdf, fileName, "application/pdf");
     }
 
     public async Task<S4ActionResult> RequestRefillAsync(RefillCreateRequest request, S4Caller caller)
@@ -428,6 +469,10 @@ public partial class S4Week4Service
             return Fail(404, "NOT_FOUND", "Signed prescription not found.");
         if (snapshot.PatientId != caller.PatientId)
             return Fail(403, "FORBIDDEN", "This prescription belongs to another patient.");
+        if (await _context.Database.SqlQuery<int>($@"
+                SELECT COUNT(1) AS Value FROM dbo.RefillRequest
+                WHERE ErxSnapshotId = {snapshot.ErxSnapshotId} AND Status = N'PENDING'").SingleAsync() > 0)
+            return Fail(409, "CONFLICT", "A refill request for this prescription is already pending.");
         var id = await InsertAsync(
             @"INSERT INTO dbo.RefillRequest (ErxSnapshotId, PatientId, DoctorId, Status, CreatedAt)
               VALUES (@Erx, @Patient, @Doctor, N'PENDING', @At);
@@ -439,28 +484,66 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = new { refillRequestId = id, status = "PENDING" } });
     }
 
-    public async Task<S4ActionResult> ListRefillsAsync(S4Caller caller)
+    public async Task<S4ActionResult> ListRefillsAsync(S4Caller caller, string? status = null)
     {
         if (caller.IsPatient)
         {
             if (caller.PatientId is null)
                 return Fail(403, "FORBIDDEN", "A patient profile is required.");
-            var mine = await _context.Database.SqlQuery<RefillRow>($@"
-                SELECT RefillRequestId, ErxSnapshotId, PatientId, DoctorId, Status, Reason, CreatedAt
-                FROM dbo.RefillRequest
-                WHERE PatientId = {caller.PatientId}
-                ORDER BY CreatedAt DESC").ToListAsync();
+            var mine = await _context.Database.SqlQuery<RefillListRow>($@"
+                SELECT r.RefillRequestId, r.ErxSnapshotId, r.PatientId, r.DoctorId, r.Status, r.Reason, r.CreatedAt, r.DecidedAt,
+                       p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId
+                FROM dbo.RefillRequest r
+                LEFT JOIN dbo.Patient p ON p.PatientId = r.PatientId
+                LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
+                LEFT JOIN dbo.ErxSnapshot s ON s.ErxSnapshotId = r.ErxSnapshotId
+                WHERE r.PatientId = {caller.PatientId}
+                ORDER BY r.CreatedAt DESC").ToListAsync();
             return Ok(new { success = true, data = mine });
         }
         if (!caller.IsDoctor && !caller.IsAdmin)
             return Fail(403, "FORBIDDEN", "Refill inbox is for the treating doctor.");
-        var doctorId = caller.DoctorId ?? 0;
-        var rows = await _context.Database.SqlQuery<RefillRow>($@"
-            SELECT RefillRequestId, ErxSnapshotId, PatientId, DoctorId, Status, Reason, CreatedAt
-            FROM dbo.RefillRequest
-            WHERE ({doctorId} = 0 OR DoctorId = {doctorId}) AND Status = N'PENDING'
-            ORDER BY CreatedAt").ToListAsync();
+        if (!caller.IsAdmin && caller.DoctorId is null)
+            return Fail(403, "FORBIDDEN", "A doctor profile is required.");
+        var doctorId = caller.IsAdmin ? 0 : caller.DoctorId!.Value;
+        var filter = (status ?? "PENDING").Trim().ToUpperInvariant();
+        if (filter is not ("PENDING" or "APPROVED" or "REJECTED" or "ALL"))
+            return Fail(400, "VALIDATION", "Status must be PENDING, APPROVED, REJECTED, or ALL.");
+        var rows = await _context.Database.SqlQuery<RefillListRow>($@"
+            SELECT TOP 200 r.RefillRequestId, r.ErxSnapshotId, r.PatientId, r.DoctorId, r.Status, r.Reason, r.CreatedAt, r.DecidedAt,
+                   p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId
+            FROM dbo.RefillRequest r
+            LEFT JOIN dbo.Patient p ON p.PatientId = r.PatientId
+            LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
+            LEFT JOIN dbo.ErxSnapshot s ON s.ErxSnapshotId = r.ErxSnapshotId
+            WHERE ({doctorId} = 0 OR r.DoctorId = {doctorId})
+              AND ({filter} = N'ALL' OR r.Status = {filter})
+            ORDER BY CASE WHEN r.Status = N'PENDING' THEN 0 ELSE 1 END, r.CreatedAt DESC").ToListAsync();
         return Ok(new { success = true, data = rows });
+    }
+
+    public async Task<S4ActionResult> RefillDetailAsync(int refillId, S4Caller caller)
+    {
+        var row = await _context.Database.SqlQuery<RefillListRow>($@"
+            SELECT r.RefillRequestId, r.ErxSnapshotId, r.PatientId, r.DoctorId, r.Status, r.Reason, r.CreatedAt, r.DecidedAt,
+                   p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId
+            FROM dbo.RefillRequest r
+            LEFT JOIN dbo.Patient p ON p.PatientId = r.PatientId
+            LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
+            LEFT JOIN dbo.ErxSnapshot s ON s.ErxSnapshotId = r.ErxSnapshotId
+            WHERE r.RefillRequestId = {refillId}").FirstOrDefaultAsync();
+        if (row == null) return Fail(404, "NOT_FOUND", "Refill request not found.");
+        if (caller.IsPatient)
+        {
+            if (caller.PatientId != row.PatientId) return Fail(403, "FORBIDDEN", "This refill belongs to another patient.");
+        }
+        else if (!caller.OwnsDoctor(row.DoctorId))
+        {
+            return Fail(403, "FORBIDDEN", "This refill is for another clinic.");
+        }
+        var items = await LoadSnapshotItemsAsync(row.ErxSnapshotId, revealNames: !caller.IsPatient);
+        var snapshot = await LoadSnapshotAsync(row.ErxSnapshotId);
+        return Ok(new { success = true, data = new { refill = row, signedAt = snapshot?.SignedAt, items } });
     }
 
     public async Task<S4ActionResult> DecideRefillAsync(int refillId, bool approve, string? reason, S4Caller caller)
@@ -577,20 +660,24 @@ public partial class S4Week4Service
 
     public async Task<S4ActionResult> PharmacyQueueAsync(S4Caller caller)
     {
-        if (caller.IsAdmin)
-        {
-            var all = await _context.Database.SqlQuery<MedicineRow>($@"
-                SELECT MedicineOrderId, ErxSnapshotId, PatientId, PharmacyPartnerId, Status, ConsentGranted, QuoteAmount, PayMode
-                FROM dbo.MedicineOrder ORDER BY MedicineOrderId DESC").ToListAsync();
-            return Ok(new { success = true, data = all });
-        }
-        var pharmacyId = await CallerPharmacyIdAsync(caller);
-        if (!pharmacyId.HasValue)
+        if (!caller.IsAdmin && (await CallerPharmacyIdAsync(caller)) is null)
             return Fail(403, "FORBIDDEN", "This login is not an active pharmacy partner.");
-        var rows = await _context.Database.SqlQuery<MedicineRow>($@"
-            SELECT MedicineOrderId, ErxSnapshotId, PatientId, PharmacyPartnerId, Status, ConsentGranted, QuoteAmount, PayMode
-            FROM dbo.MedicineOrder WHERE PharmacyPartnerId = {pharmacyId.Value}
-            ORDER BY MedicineOrderId DESC").ToListAsync();
+        var isAdmin = caller.IsAdmin ? 1 : 0;
+        var rows = await _context.Database.SqlQuery<PharmacyQueueRow>($@"
+            SELECT TOP 300 o.MedicineOrderId, o.ErxSnapshotId, o.PatientId, o.PharmacyPartnerId, ph.Name AS PharmacyName,
+                   o.Status, o.ConsentGranted, o.QuoteAmount, o.PayMode, o.CreatedAt,
+                   (SELECT COUNT(1) FROM dbo.MedicineOrderItem i WHERE i.MedicineOrderId = o.MedicineOrderId) AS ItemCount,
+                   (SELECT MAX(e.At) FROM dbo.MedicineOrderEvent e WHERE e.MedicineOrderId = o.MedicineOrderId) AS LastEventAt,
+                   CASE WHEN {isAdmin} = 1 OR o.Status NOT IN (N'OFFERED', N'REJECTED') THEN p.PatientName END AS PatientName,
+                   CASE WHEN {isAdmin} = 1 OR o.Status NOT IN (N'OFFERED', N'REJECTED') THEN p.MobileNo END AS PatientMobile,
+                   CASE WHEN {isAdmin} = 1 OR o.Status NOT IN (N'OFFERED', N'REJECTED') THEN p.Address END AS PatientAddress
+            FROM dbo.MedicineOrder o
+            LEFT JOIN dbo.PharmacyPartner ph ON ph.PharmacyPartnerId = o.PharmacyPartnerId
+            LEFT JOIN dbo.Patient p ON p.PatientId = o.PatientId
+            WHERE {isAdmin} = 1
+               OR o.PharmacyPartnerId IN (SELECT PharmacyPartnerId FROM dbo.PharmacyPartner
+                                          WHERE UserId = {caller.UserId} AND Status = N'ACTIVE')
+            ORDER BY o.MedicineOrderId DESC").ToListAsync();
         return Ok(new { success = true, data = rows });
     }
 
@@ -640,8 +727,12 @@ public partial class S4Week4Service
             return Fail(403, "FORBIDDEN", "Only the pharmacy can request an accept OTP.");
         var order = await LoadMedicineAsync(orderId);
         if (order == null) return Fail(404, "NOT_FOUND", "Medicine order not found.");
+        var denied = await EnsurePharmacyOwnsOrderAsync(order, caller);
+        if (denied != null) return denied;
         if (!string.Equals(order.Status, "OFFERED", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "Accept OTP is only for an offered order.");
+        if (!order.ConsentGranted)
+            return Fail(409, "CONFLICT", "Patient consent is required before accept.");
         var code = await IssueOtpAsync("PharmacyAccept", "MedicineOrder", orderId.ToString(), caller.UserId);
         return Ok(new { success = true, message = "OTP created for pharmacy accept.", devCode = code });
     }
@@ -658,9 +749,8 @@ public partial class S4Week4Service
             return Fail(409, "CONFLICT", "Patient consent is required before accept.");
         if (!string.Equals(order.Status, "OFFERED", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "Only an offered order can be accepted.");
-        var pharmacyId = await CallerPharmacyIdAsync(caller);
-        if (!caller.IsAdmin && pharmacyId != order.PharmacyPartnerId)
-            return Fail(403, "FORBIDDEN", "This order is assigned to another pharmacy.");
+        var denied = await EnsurePharmacyOwnsOrderAsync(order, caller);
+        if (denied != null) return denied;
         var otp = await ConsumeOtpAsync("PharmacyAccept", "MedicineOrder", order.MedicineOrderId.ToString(), request.Otp);
         if (otp != null) return otp;
         await SetMedicineStatusAsync(order.MedicineOrderId, "ACCEPTED", "Accepted with OTP");
@@ -678,6 +768,8 @@ public partial class S4Week4Service
             return Fail(400, "VALIDATION", "Reason must be OUT_OF_STOCK, CLOSED, or OTHER.");
         var order = await LoadMedicineAsync(orderId);
         if (order == null) return Fail(404, "NOT_FOUND", "Medicine order not found.");
+        var denied = await EnsurePharmacyOwnsOrderAsync(order, caller);
+        if (denied != null) return denied;
         if (order.Status is not ("OFFERED" or "ACCEPTED"))
             return Fail(409, "CONFLICT", "This order can no longer be rejected.");
         await SetMedicineStatusAsync(orderId, "REJECTED", reason);
@@ -693,6 +785,8 @@ public partial class S4Week4Service
             return Fail(400, "VALIDATION", "Quote amount must be greater than 0 and at most 1000000.");
         var order = await LoadMedicineAsync(orderId);
         if (order == null) return Fail(404, "NOT_FOUND", "Medicine order not found.");
+        var denied = await EnsurePharmacyOwnsOrderAsync(order, caller);
+        if (denied != null) return denied;
         if (!string.Equals(order.Status, "ACCEPTED", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "Quote is allowed only after accept.");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
@@ -725,7 +819,12 @@ public partial class S4Week4Service
     {
         var order = await LoadMedicineAsync(orderId);
         if (order == null) return Fail(404, "NOT_FOUND", "Medicine order not found.");
-        if (!caller.IsAdmin && caller.PatientId != order.PatientId && !caller.IsPharmacy)
+        if (caller.IsPharmacy && !caller.IsAdmin)
+        {
+            var denied = await EnsurePharmacyOwnsOrderAsync(order, caller);
+            if (denied != null) return denied;
+        }
+        else if (!caller.IsAdmin && caller.PatientId != order.PatientId)
             return Fail(403, "FORBIDDEN", "You cannot track this order.");
         var reveal = !string.Equals(order.Status, "OFFERED", StringComparison.OrdinalIgnoreCase);
         var items = await _context.Database.SqlQuery<OrderItemRow>($@"
@@ -833,6 +932,112 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = new { appointments, prescriptions = erx } });
     }
 
+    public async Task<S4ActionResult> PatientVisitsAsync(int? patientId, S4Caller caller)
+    {
+        var owned = await ResolvePatientAsync(patientId, caller, write: false);
+        if (owned.Error != null) return owned.Error;
+        var id = owned.PatientId;
+        var rows = await _context.Database.SqlQuery<PatientVisitRow>($@"
+            SELECT TOP 100 a.PatientAppId, a.AppointmentDate,
+                   CONVERT(nvarchar(5), a.AppointmentTime, 108) AS AppointmentTime,
+                   a.Status, a.ConsultMode, CAST(ISNULL(a.IsTele, 0) AS bit) AS IsTele, a.DoctorId,
+                   LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
+                   ts.TeleSessionId, ts.Status AS SessionStatus,
+                   (SELECT COUNT(1) FROM dbo.TeleChatMessage m WHERE m.PatientAppId = a.PatientAppId) AS ChatCount,
+                   CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.ConsultationSummary cs WHERE cs.PatientAppId = a.PatientAppId)
+                        THEN 1 ELSE 0 END AS bit) AS HasSummary
+            FROM dbo.PatientAppointment a
+            LEFT JOIN dbo.Doctor d ON d.DoctorID = a.DoctorId
+            OUTER APPLY (SELECT TOP 1 t.TeleSessionId, t.Status FROM dbo.TeleSession t
+                         WHERE t.PatientAppId = a.PatientAppId ORDER BY t.TeleSessionId DESC) ts
+            WHERE a.PatientId = {id} AND ISNULL(a.DeleteStatus, 0) = 0
+            ORDER BY a.AppointmentDate DESC, a.AppointmentTime DESC").ToListAsync();
+        return Ok(new { success = true, data = rows });
+    }
+
+    /// <summary>PAT-20.02 — one appointment for the patient app: doctor, slot, payment, tele, eRx and next actions.</summary>
+    public async Task<S4ActionResult> PatientVisitDetailAsync(int patientAppId, S4Caller caller)
+    {
+        if (patientAppId <= 0) return Fail(400, "VALIDATION", "PatientAppId is required.");
+        var appointment = await LoadAppointmentAsync(patientAppId);
+        if (appointment == null) return Fail(404, "NOT_FOUND", "Appointment not found.");
+        var access = await EnsureAppointmentAccessAsync(appointment, caller);
+        if (access != null) return access;
+
+        var visit = await _context.Database.SqlQuery<PatientVisitRow>($@"
+            SELECT a.PatientAppId, a.AppointmentDate,
+                   CONVERT(nvarchar(5), a.AppointmentTime, 108) AS AppointmentTime,
+                   a.Status, a.ConsultMode, CAST(ISNULL(a.IsTele, 0) AS bit) AS IsTele, a.DoctorId,
+                   LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
+                   ts.TeleSessionId, ts.Status AS SessionStatus,
+                   (SELECT COUNT(1) FROM dbo.TeleChatMessage m WHERE m.PatientAppId = a.PatientAppId) AS ChatCount,
+                   CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.ConsultationSummary cs WHERE cs.PatientAppId = a.PatientAppId)
+                        THEN 1 ELSE 0 END AS bit) AS HasSummary
+            FROM dbo.PatientAppointment a
+            LEFT JOIN dbo.Doctor d ON d.DoctorID = a.DoctorId
+            OUTER APPLY (SELECT TOP 1 t.TeleSessionId, t.Status FROM dbo.TeleSession t
+                         WHERE t.PatientAppId = a.PatientAppId ORDER BY t.TeleSessionId DESC) ts
+            WHERE a.PatientAppId = {patientAppId}").FirstAsync();
+
+        var doctor = await _context.Doctors.AsNoTracking()
+            .Where(d => d.DoctorId == appointment.DoctorId)
+            .Select(d => new { d.ClinicName, d.City, d.GoogleMapsLink, d.PhotoPath })
+            .FirstOrDefaultAsync();
+        var erx = await LoadSnapshotByAppointmentAsync(patientAppId);
+        var cancelled = S3AppointmentRulesCancelled(appointment.Status);
+        var completed = appointment.Status is not null
+            && (appointment.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
+                || appointment.Status.Equals("Closed", StringComparison.OrdinalIgnoreCase)
+                || appointment.Status.Equals("Done", StringComparison.OrdinalIgnoreCase));
+        var slotAt = appointment.AppointmentDate?.Date.Add(appointment.AppointmentTime?.ToTimeSpan() ?? TimeSpan.Zero);
+        var upcoming = slotAt.HasValue && slotAt.Value > DateTime.Now;
+        var paid = IsPaid(appointment.PaymentStatus);
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                visit.PatientAppId,
+                visit.AppointmentDate,
+                visit.AppointmentTime,
+                visit.Status,
+                visit.ConsultMode,
+                visit.IsTele,
+                appointment.VisitType,
+                appointment.QueuePosition,
+                visit.DoctorId,
+                visit.DoctorName,
+                clinicName = doctor?.ClinicName,
+                clinicCity = doctor?.City,
+                clinicMapLink = doctor?.GoogleMapsLink,
+                doctorPhotoUrl = string.IsNullOrWhiteSpace(doctor?.PhotoPath) ? null : $"/api/Profile/Photo/{appointment.DoctorId}",
+                paymentStatus = appointment.PaymentStatus,
+                paymentMethod = appointment.PaymentMethod,
+                isPaid = paid,
+                payAtClinicAllowed = appointment.PayAtClinicAllowed == true,
+                cancelReason = appointment.CancelReasonText ?? appointment.CancelReasonCode,
+                appointment.CancelledAt,
+                visit.TeleSessionId,
+                visit.SessionStatus,
+                visit.ChatCount,
+                visit.HasSummary,
+                erxSnapshotId = erx?.Status == "SIGNED" ? erx.ErxSnapshotId : (int?)null,
+                erxSigned = erx?.Status == "SIGNED",
+                actions = new
+                {
+                    canPay = !cancelled && !paid,
+                    canReschedule = !cancelled && !completed && upcoming,
+                    canCancel = !cancelled && !completed && upcoming,
+                    canJoinTele = visit.IsTele && visit.TeleSessionId.HasValue
+                        && (visit.SessionStatus == "Waiting" || visit.SessionStatus == "Active"),
+                    canChat = visit.TeleSessionId.HasValue,
+                    canReview = !cancelled && completed
+                }
+            }
+        });
+    }
+
     public async Task<S4ActionResult> ConsultationNoteAsync(int patientAppId, S4Caller caller)
     {
         var appointment = await LoadAppointmentAsync(patientAppId);
@@ -859,7 +1064,81 @@ public partial class S4Week4Service
         await stream.CopyToAsync(memory);
         var bytes = memory.ToArray();
         var stored = await StorePdfAsync(bytes, Path.GetFileName(file.FileName), "Patient", caller.PatientId.Value, caller.UserId, file.ContentType);
-        return Ok(new { success = true, data = new { stored.DocumentId, stored.Path } });
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                stored.DocumentId,
+                stored.Path,
+                fileName = Path.GetFileName(file.FileName),
+                mime = file.ContentType,
+                size = file.Length,
+                downloadUrl = $"/api/Patient/Documents/{stored.DocumentId}"
+            }
+        });
+    }
+
+    public async Task<S4ActionResult> ListPatientDocumentsAsync(int? patientId, S4Caller caller)
+    {
+        var owned = await ResolvePatientAsync(patientId, caller, write: false);
+        if (owned.Error != null) return owned.Error;
+        var rows = await _context.SecureDocuments.AsNoTracking()
+            .Where(d => d.OwnerType == "Patient" && d.OwnerId == owned.PatientId)
+            .OrderByDescending(d => d.CreatedAt)
+            .Select(d => new { documentId = d.SecureDocumentId, d.FileName, d.Mime, d.CreatedAt, d.CreatedBy })
+            .ToListAsync();
+        return Ok(new
+        {
+            success = true,
+            data = rows.Select(d => new
+            {
+                d.documentId,
+                d.FileName,
+                d.Mime,
+                d.CreatedAt,
+                d.CreatedBy,
+                downloadUrl = $"/api/Patient/Documents/{d.documentId}"
+            })
+        });
+    }
+
+    public async Task<S4ActionResult> PatientDocumentFileAsync(long documentId, S4Caller caller)
+    {
+        var doc = await _context.SecureDocuments.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.SecureDocumentId == documentId && d.OwnerType == "Patient");
+        if (doc == null) return Fail(404, "NOT_FOUND", "Document not found.");
+        var owned = await ResolvePatientAsync((int)doc.OwnerId, caller, write: false);
+        if (owned.Error != null) return owned.Error;
+        var full = ResolveStoredPath(doc.BlobPath);
+        if (full == null || !File.Exists(full)) return Fail(404, "NOT_FOUND", "The file is missing on the server.");
+        var mime = string.IsNullOrWhiteSpace(doc.Mime) ? "application/octet-stream" : doc.Mime;
+        return S4ActionResult.File(await File.ReadAllBytesAsync(full), doc.FileName ?? Path.GetFileName(full), mime);
+    }
+
+    public async Task<S4ActionResult> DeletePatientDocumentAsync(long documentId, S4Caller caller)
+    {
+        if (caller.PatientId is null) return Fail(403, "FORBIDDEN", "Only the patient can delete their document.");
+        var doc = await _context.SecureDocuments
+            .FirstOrDefaultAsync(d => d.SecureDocumentId == documentId && d.OwnerType == "Patient");
+        if (doc == null) return Fail(404, "NOT_FOUND", "Document not found.");
+        if (doc.OwnerId != caller.PatientId.Value) return Fail(403, "FORBIDDEN", "This document belongs to another patient.");
+        var full = ResolveStoredPath(doc.BlobPath);
+        _context.SecureDocuments.Remove(doc);
+        await _context.SaveChangesAsync();
+        if (full != null && File.Exists(full))
+        {
+            try { File.Delete(full); }
+            catch (IOException ex) { _logger.LogWarning(ex, "Could not delete document file {Path}", full); }
+        }
+        return Ok(new { success = true, message = "Document deleted." });
+    }
+
+    private string? ResolveStoredPath(string blobPath)
+    {
+        var root = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "Data")) + Path.DirectorySeparatorChar;
+        var full = UploadedMedia.Resolve(_env.ContentRootPath, blobPath);
+        return full.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? full : null;
     }
 
     public async Task<S4ActionResult> SetFollowUpAsync(FollowUpCreateRequest request, S4Caller caller)
@@ -974,16 +1253,82 @@ public partial class S4Week4Service
         });
     }
 
+    private static readonly Dictionary<string, (string Title, string Description)> PatientConsentText =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Privacy"] = ("Privacy & data processing", "Lets the clinic store and process your health records for your care."),
+            ["Booking"] = ("Appointment booking", "Lets the clinic book, remind and reschedule your appointments."),
+            ["TeleRecording"] = ("Video consult recording", "Allows your online consultations to be recorded for your medical record."),
+            ["PharmacyShare"] = ("Share prescriptions with pharmacy", "Lets the pharmacy you choose see your prescription to deliver medicines."),
+            ["Marketing"] = ("Health tips & offers", "Occasional messages about clinic services and health tips."),
+            ["Caregiver"] = ("Caregiver access", "Lets a family member or caregiver view your records. Managed on the Caregiver page."),
+        };
+
+    private static IQueryable<ConsentRecord> PatientConsentRecords(IQueryable<ConsentRecord> source, S4Caller caller)
+    {
+        var patientId = (long)(caller.PatientId ?? 0);
+        var userId = caller.UserId;
+        return source.Where(c => (c.SubjectType == "Patient" && c.SubjectId == patientId)
+                              || (c.SubjectType == "User" && c.SubjectId == userId));
+    }
+
     public async Task<S4ActionResult> ListConsentsAsync(S4Caller caller)
     {
         if (caller.PatientId is null) return Fail(403, "FORBIDDEN", "A patient profile is required.");
-        var patientId = (long)caller.PatientId.Value;
-        var rows = await _context.ConsentRecords.AsNoTracking()
-            .Where(c => c.SubjectType == "Patient" && c.SubjectId == patientId)
-            .OrderByDescending(c => c.GrantedAt)
-            .Select(c => new { c.ConsentRecordId, c.ConsentTypeId, c.GrantedAt, c.WithdrawnAt })
+        var types = await _context.ConsentTypes.AsNoTracking()
+            .Where(t => t.IsActive)
+            .OrderBy(t => t.ConsentTypeId)
             .ToListAsync();
+        var records = await PatientConsentRecords(_context.ConsentRecords.AsNoTracking(), caller)
+            .OrderByDescending(c => c.GrantedAt)
+            .ToListAsync();
+        var rows = types.Select(t =>
+        {
+            var active = records.FirstOrDefault(r => r.ConsentTypeId == t.ConsentTypeId && r.WithdrawnAt == null);
+            var latest = active ?? records.FirstOrDefault(r => r.ConsentTypeId == t.ConsentTypeId);
+            var text = PatientConsentText.TryGetValue(t.Code, out var known) ? known : (t.Name, t.Description ?? "");
+            return new
+            {
+                consentTypeId = t.ConsentTypeId,
+                code = t.Code,
+                title = text.Item1,
+                description = text.Item2,
+                consentRecordId = active?.ConsentRecordId,
+                granted = active != null,
+                grantedAt = active?.GrantedAt,
+                withdrawnAt = active == null ? latest?.WithdrawnAt : null,
+                manageLink = string.Equals(t.Code, "Caregiver", StringComparison.OrdinalIgnoreCase) ? "/caregiver" : null
+            };
+        });
         return Ok(new { success = true, data = rows });
+    }
+
+    public async Task<S4ActionResult> GrantConsentAsync(int consentTypeId, S4Caller caller)
+    {
+        if (caller.PatientId is null) return Fail(403, "FORBIDDEN", "A patient profile is required.");
+        var type = await _context.ConsentTypes.AsNoTracking()
+            .FirstOrDefaultAsync(t => t.ConsentTypeId == consentTypeId && t.IsActive);
+        if (type == null) return Fail(404, "NOT_FOUND", "Consent type not found.");
+        if (string.Equals(type.Code, "Caregiver", StringComparison.OrdinalIgnoreCase))
+            return Fail(409, "CONFLICT", "Caregiver access is granted from the Caregiver page.");
+        var existing = await PatientConsentRecords(_context.ConsentRecords.AsNoTracking(), caller)
+            .Where(c => c.ConsentTypeId == consentTypeId && c.WithdrawnAt == null)
+            .OrderByDescending(c => c.GrantedAt)
+            .FirstOrDefaultAsync();
+        if (existing != null)
+            return Ok(new { success = true, alreadyGranted = true, data = new { consentRecordId = existing.ConsentRecordId, grantedAt = existing.GrantedAt } });
+        var record = new ConsentRecord
+        {
+            ConsentTypeId = consentTypeId,
+            SubjectType = "Patient",
+            SubjectId = caller.PatientId.Value,
+            GrantedByUserId = caller.UserId,
+            GrantedAt = DateTime.UtcNow,
+            Notes = "Granted from patient consent centre"
+        };
+        _context.ConsentRecords.Add(record);
+        await _context.SaveChangesAsync();
+        return Ok(new { success = true, data = new { consentRecordId = record.ConsentRecordId, grantedAt = record.GrantedAt } });
     }
 
     public async Task<S4ActionResult> WithdrawConsentAsync(long consentId, S4Caller caller)
@@ -991,7 +1336,9 @@ public partial class S4Week4Service
         if (caller.PatientId is null) return Fail(403, "FORBIDDEN", "A patient profile is required.");
         var row = await _context.ConsentRecords.FirstOrDefaultAsync(c => c.ConsentRecordId == consentId);
         if (row == null) return Fail(404, "NOT_FOUND", "Consent record not found.");
-        if (row.SubjectType != "Patient" || row.SubjectId != caller.PatientId)
+        var ownsRecord = (row.SubjectType == "Patient" && row.SubjectId == caller.PatientId)
+                         || (row.SubjectType == "User" && row.SubjectId == caller.UserId);
+        if (!ownsRecord)
             return Fail(403, "FORBIDDEN", "This consent belongs to another patient.");
         if (row.WithdrawnAt != null) return Fail(409, "CONFLICT", "This consent is already withdrawn.");
         row.WithdrawnAt = DateTime.UtcNow;
@@ -1086,6 +1433,8 @@ public partial class S4Week4Service
             return Fail(403, "FORBIDDEN", "Only the pharmacy can update fulfilment.");
         var order = await LoadMedicineAsync(orderId);
         if (order == null) return Fail(404, "NOT_FOUND", "Medicine order not found.");
+        var denied = await EnsurePharmacyOwnsOrderAsync(order, caller);
+        if (denied != null) return denied;
         if (!string.Equals(order.Status, from, StringComparison.OrdinalIgnoreCase)
             && (alternate == null || !string.Equals(order.Status, alternate, StringComparison.OrdinalIgnoreCase)))
             return Fail(409, "CONFLICT", "Order status " + order.Status + " cannot move to " + to + ".");
@@ -1139,6 +1488,17 @@ public partial class S4Week4Service
         var row = await _context.Database.SqlQuery<IdIntRow>($@"
             SELECT TOP 1 PharmacyPartnerId AS Id FROM dbo.PharmacyPartner WHERE UserId = {caller.UserId} AND Status = N'ACTIVE'").FirstOrDefaultAsync();
         return row?.Id;
+    }
+
+    private async Task<S4ActionResult?> EnsurePharmacyOwnsOrderAsync(MedicineRow order, S4Caller caller)
+    {
+        if (caller.IsAdmin) return null;
+        if (order.PharmacyPartnerId is null)
+            return Fail(403, "FORBIDDEN", "This order is not assigned to a pharmacy yet.");
+        var count = await _context.Database.SqlQuery<CountRow>($@"
+            SELECT COUNT(1) AS Value FROM dbo.PharmacyPartner
+            WHERE PharmacyPartnerId = {order.PharmacyPartnerId} AND UserId = {caller.UserId} AND Status = N'ACTIVE'").FirstAsync();
+        return count.Value > 0 ? null : Fail(403, "FORBIDDEN", "This order is assigned to another pharmacy.");
     }
 
     private async Task<bool> PharmacyAcceptedAsync(int erxId)
@@ -1312,6 +1672,34 @@ public partial class S4Week4Service
         public string? Frequency { get; set; }
         public string? Duration { get; set; }
         public string? Instructions { get; set; }
+    }
+
+    private sealed class ErxHistoryRow
+    {
+        public int ErxSnapshotId { get; set; }
+        public int PatientAppId { get; set; }
+        public int PatientId { get; set; }
+        public int DoctorId { get; set; }
+        public string Status { get; set; } = "";
+        public DateTime? SignedAt { get; set; }
+        public string? PatientName { get; set; }
+        public string? DoctorName { get; set; }
+        public int ItemCount { get; set; }
+    }
+
+    private sealed class RefillListRow
+    {
+        public int RefillRequestId { get; set; }
+        public int ErxSnapshotId { get; set; }
+        public int PatientId { get; set; }
+        public int DoctorId { get; set; }
+        public string Status { get; set; } = "";
+        public string? Reason { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? DecidedAt { get; set; }
+        public string? PatientName { get; set; }
+        public string? DoctorName { get; set; }
+        public int? PatientAppId { get; set; }
     }
 
     private sealed class RefillRow

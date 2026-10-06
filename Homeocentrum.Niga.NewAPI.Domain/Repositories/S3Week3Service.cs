@@ -5,6 +5,7 @@ using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
+using Homeocentrum.Niga.NewAPI.Domain.Security;
 using Homeocentrum.Niga.NewAPI.Domain.Services;
 using Homeocentrum.Niga.NewAPI.Domain.Services.Tele;
 
@@ -747,10 +748,27 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
         /// TEL-12.02 — patient requests instant consult: queue position, match online doctor, create offer.
         /// No online doctor → status NO_DOCTOR (no push). Match → DoctorOffer OFFERED.
         /// </summary>
-        public async Task<S3ActionResult> RequestInstantAsync(InstantConsultRequestBody request)
+        public async Task<S3ActionResult> RequestInstantAsync(InstantConsultRequestBody request, S3Caller? caller = null)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.ContactMobile))
                 return S3ActionResult.Fail(400, "ContactMobile is required.");
+
+            if (caller != null && string.Equals(caller.Role, "Patient", StringComparison.OrdinalIgnoreCase))
+            {
+                if (request.PatientId is > 0)
+                {
+                    if (!await PatientOwnsAsync(caller.UserId, request.PatientId.Value))
+                        return S3ActionResult.Fail(403, "This patient is not linked to your login.");
+                }
+                else
+                {
+                    request.PatientId = await _context.PatientUserMaps.AsNoTracking()
+                        .Where(m => m.UserId == caller.UserId && !m.DeleteStatus)
+                        .OrderBy(m => m.PatientId)
+                        .Select(m => (int?)m.PatientId)
+                        .FirstOrDefaultAsync();
+                }
+            }
 
             await ExpireHeartbeatsAsync();
             var open = await _context.Database.SqlQuery<IdRow>($@"
@@ -848,6 +866,136 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 doctorOfferId = offer.Id,
                 status = "ACCEPTED"
             });
+        }
+
+        /// <summary>
+        /// PAT-25.02 — patient polls an instant request. A NO_DOCTOR request is matched again
+        /// on each poll so the patient sees an offer as soon as a doctor comes online.
+        /// </summary>
+        public async Task<S3ActionResult> GetInstantStatusAsync(int requestId, S3Caller caller)
+        {
+            var row = await LoadInstantAsync(requestId);
+            if (row == null)
+                return S3ActionResult.Fail(404, "Instant consult request not found.");
+            if (!await CanSeeInstantAsync(row, caller))
+                return S3ActionResult.Fail(403, "This instant request belongs to another patient.");
+
+            if (row.Status == "NO_DOCTOR" && !string.Equals(caller.Role, "Doctor", StringComparison.OrdinalIgnoreCase))
+            {
+                await ExpireHeartbeatsAsync();
+                var online = await _context.Database.SqlQuery<IdRow>($@"
+                    SELECT TOP 1 DoctorId AS Id
+                    FROM dbo.TeleAvailability
+                    WHERE IsOnline = 1
+                    ORDER BY LastHeartbeat DESC").FirstOrDefaultAsync();
+                if (online != null)
+                {
+                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                        INSERT INTO dbo.DoctorOffer (InstantConsultRequestId, DoctorId, Status, At)
+                        VALUES ({requestId}, {online.Id}, N'OFFERED', {DateTime.Now})");
+                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                        UPDATE dbo.InstantConsultRequest SET Status = N'OFFERED'
+                        WHERE InstantConsultRequestId = {requestId} AND Status = N'NO_DOCTOR'");
+                    row = await LoadInstantAsync(requestId) ?? row;
+                }
+            }
+
+            var offer = await _context.Database.SqlQuery<InstantOfferRow>($@"
+                SELECT TOP 1 o.DoctorOfferId, o.DoctorId, o.Status, o.At,
+                       LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName
+                FROM dbo.DoctorOffer o
+                LEFT JOIN dbo.Doctor d ON d.DoctorID = o.DoctorId
+                WHERE o.InstantConsultRequestId = {requestId}
+                ORDER BY o.DoctorOfferId DESC").FirstOrDefaultAsync();
+
+            var waiting = row.Status is "OPEN" or "NO_DOCTOR" or "OFFERED";
+            var position = row.QueuePosition;
+            if (waiting)
+            {
+                var ahead = await _context.Database.SqlQuery<IdRow>($@"
+                    SELECT COUNT(1) AS Id FROM dbo.InstantConsultRequest
+                    WHERE Status IN (N'OPEN', N'NO_DOCTOR', N'OFFERED')
+                      AND InstantConsultRequestId < {requestId}").FirstAsync();
+                position = ahead.Id + 1;
+            }
+
+            var message = row.Status switch
+            {
+                "OPEN" => "Looking for an online doctor.",
+                "NO_DOCTOR" => "No doctor is online right now. Keep this screen open; each refresh tries again.",
+                "OFFERED" => "A doctor has your request. Waiting for the doctor to accept.",
+                "ACCEPTED" => "The doctor accepted. Stay on this screen; the doctor will start the call.",
+                "CANCELLED" => "You cancelled this request.",
+                _ => row.Status
+            };
+
+            return S3ActionResult.Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    instantConsultRequestId = row.InstantConsultRequestId,
+                    status = row.Status,
+                    queuePosition = waiting ? position : (int?)null,
+                    contactName = row.ContactName,
+                    createdAt = row.CreatedAt,
+                    doctorId = offer?.DoctorId,
+                    doctorName = offer?.DoctorName,
+                    offerStatus = offer?.Status,
+                    offeredAt = offer?.At,
+                    canCancel = waiting,
+                    message
+                }
+            });
+        }
+
+        /// <summary>PAT-25.02 — patient withdraws an instant request that no doctor has accepted yet.</summary>
+        public async Task<S3ActionResult> CancelInstantAsync(int requestId, S3Caller caller)
+        {
+            var row = await LoadInstantAsync(requestId);
+            if (row == null)
+                return S3ActionResult.Fail(404, "Instant consult request not found.");
+            if (string.Equals(caller.Role, "Doctor", StringComparison.OrdinalIgnoreCase) && !caller.IsAdmin)
+                return S3ActionResult.Fail(403, "Only the patient can cancel an instant request.");
+            if (!await CanSeeInstantAsync(row, caller))
+                return S3ActionResult.Fail(403, "This instant request belongs to another patient.");
+            if (row.Status is not ("OPEN" or "NO_DOCTOR" or "OFFERED"))
+                return S3ActionResult.Fail(409, $"A request in status {row.Status} cannot be cancelled.");
+
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.InstantConsultRequest SET Status = N'CANCELLED'
+                WHERE InstantConsultRequestId = {requestId}");
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.DoctorOffer SET Status = N'WITHDRAWN', At = {DateTime.Now}
+                WHERE InstantConsultRequestId = {requestId} AND Status = N'OFFERED'");
+            return S3ActionResult.Ok(new { success = true, instantConsultRequestId = requestId, status = "CANCELLED", message = "Instant request cancelled." });
+        }
+
+        private async Task<InstantRow?> LoadInstantAsync(int requestId)
+            => await _context.Database.SqlQuery<InstantRow>($@"
+                SELECT InstantConsultRequestId, PatientId, ContactName, ContactMobile, Status, QueuePosition, CreatedAt
+                FROM dbo.InstantConsultRequest
+                WHERE InstantConsultRequestId = {requestId}").FirstOrDefaultAsync();
+
+        private async Task<bool> CanSeeInstantAsync(InstantRow row, S3Caller caller)
+        {
+            if (caller.IsAdmin)
+                return true;
+            if (caller.DoctorId.HasValue && string.Equals(caller.Role, "Doctor", StringComparison.OrdinalIgnoreCase))
+            {
+                var doctorId = caller.DoctorId.Value;
+                var offered = await _context.Database.SqlQuery<IdRow>($@"
+                    SELECT COUNT(1) AS Id FROM dbo.DoctorOffer
+                    WHERE InstantConsultRequestId = {row.InstantConsultRequestId} AND DoctorId = {doctorId}").FirstAsync();
+                return offered.Id > 0;
+            }
+            if (row.PatientId is > 0 && await PatientOwnsAsync(caller.UserId, row.PatientId.Value))
+                return true;
+            var mobile = await _context.UserMasters.AsNoTracking()
+                .Where(u => u.UserId == caller.UserId)
+                .Select(u => u.MobileNo)
+                .FirstOrDefaultAsync();
+            return !string.IsNullOrWhiteSpace(mobile) && PhoneNormalizer.EqualsNormalized(mobile, row.ContactMobile);
         }
 
         /// <summary>SUP-01.02 — create support ticket for the authenticated reporter (patient Mine flow).</summary>
@@ -1524,6 +1672,26 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             public int DoctorId { get; set; }
             public string Text { get; set; } = "";
             public DateTime At { get; set; }
+        }
+
+        private sealed class InstantRow
+        {
+            public int InstantConsultRequestId { get; set; }
+            public int? PatientId { get; set; }
+            public string? ContactName { get; set; }
+            public string? ContactMobile { get; set; }
+            public string Status { get; set; } = "";
+            public int QueuePosition { get; set; }
+            public DateTime CreatedAt { get; set; }
+        }
+
+        private sealed class InstantOfferRow
+        {
+            public int DoctorOfferId { get; set; }
+            public int DoctorId { get; set; }
+            public string? Status { get; set; }
+            public DateTime? At { get; set; }
+            public string? DoctorName { get; set; }
         }
 
         private sealed class OfferRow
