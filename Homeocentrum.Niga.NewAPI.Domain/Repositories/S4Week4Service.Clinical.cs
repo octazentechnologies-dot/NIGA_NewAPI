@@ -815,6 +815,9 @@ public partial class S4Week4Service
     public async Task<S4ActionResult> DispatchMedicineAsync(int orderId, S4Caller caller)
         => await MoveMedicineAsync(orderId, caller, "READY", null, "DISPATCHED");
 
+    public async Task<S4ActionResult> DeliverMedicineAsync(int orderId, S4Caller caller)
+        => await MoveMedicineAsync(orderId, caller, "DISPATCHED", null, "DELIVERED");
+
     public async Task<S4ActionResult> MedicineTrackingAsync(int orderId, S4Caller caller)
     {
         var order = await LoadMedicineAsync(orderId);

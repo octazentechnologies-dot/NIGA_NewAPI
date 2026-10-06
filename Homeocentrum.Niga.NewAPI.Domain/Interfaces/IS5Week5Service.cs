@@ -13,6 +13,7 @@ public interface IS5Week5Service
     Task<S4ActionResult> RegisterDeviceAsync(DeviceRegisterRequest request, S4Caller caller);
     Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request);
     Task<S4ActionResult> WhatsAppBulkAsync(S4Caller caller);
+    Task<S4ActionResult> WhatsAppAudienceAsync(S4Caller caller);
     Task<S4ActionResult> SendNotificationAsync(NotificationSendRequest request, S4Caller caller);
     Task<S4ActionResult> ListNotificationsAsync(S4Caller caller);
     Task<S4ActionResult> PatchNotificationAsync(long id, bool isRead, S4Caller caller);
@@ -30,6 +31,76 @@ public interface IS5Week5Service
     Task<S4ActionResult> ExportUsersAsync(S4Caller caller);
     Task<S4ActionResult> ImportUsersAsync(UserImportRequest request, S4Caller caller);
     Task<S4ActionResult> SecurityPostureAsync(S4Caller caller);
+    Task<S4ActionResult> ListRemindersAsync(DateTime? from, DateTime? to, S4Caller caller);
+    Task<S4ActionResult> SaveReminderAsync(int? reminderId, DoctorReminderWrite request, S4Caller caller);
+    Task<S4ActionResult> DeleteReminderAsync(int reminderId, S4Caller caller);
+    Task<S4ActionResult> PracticeReportAsync(DateTime? from, DateTime? to, S4Caller caller);
+    Task<S4ActionResult> FollowUpReportAsync(DateTime? from, DateTime? to, S4Caller caller);
+    Task<S4ActionResult> UpdateFollowUpTaskAsync(int taskId, FollowUpTaskWrite request, S4Caller caller);
+    Task<S4ActionResult> EarningsReportAsync(DateTime? from, DateTime? to, S4Caller caller);
+    Task<S4ActionResult> ListDoctorReviewsAsync(S4Caller caller);
+    Task<S4ActionResult> SaveReviewReplyAsync(int reviewId, ReviewReplyWrite request, S4Caller caller);
+    Task<S4ActionResult> ListAdminReviewsAsync(S4Caller caller);
+    Task<S4ActionResult> SetReviewStatusAsync(int reviewId, ReviewStatusWrite request, S4Caller caller);
+    Task<S4ActionResult> GetPharmacyConfigAsync(int pharmacyPartnerId, S4Caller caller);
+    Task<S4ActionResult> SavePharmacyConfigAsync(int pharmacyPartnerId, PharmacyConfigWrite request, S4Caller caller);
+
+    Task<S4ActionResult> AdminSummaryAsync(DateTime? from, DateTime? to, int? doctorId, S4Caller caller);
+    Task<S4ActionResult> PatientMedicineHistoryAsync(S4Caller caller);
+    Task<S4ActionResult> ReviewMedicineOrderAsync(int orderId, MedicineOrderReviewWrite request, S4Caller caller);
+}
+
+public class MedicineOrderReviewWrite
+{
+    /// <summary>1 to 5.</summary>
+    public int? Rating { get; set; }
+    public string? Comment { get; set; }
+}
+
+public class PharmacyConfigWrite
+{
+    /// <summary>HH:mm.</summary>
+    public string? OpenTime { get; set; }
+    /// <summary>HH:mm, after OpenTime.</summary>
+    public string? CloseTime { get; set; }
+    /// <summary>Mon..Sun short names.</summary>
+    public List<string>? Days { get; set; }
+    public List<string>? Areas { get; set; }
+    public decimal? DeliveryCharge { get; set; }
+    public decimal? FreeAbove { get; set; }
+    public int? Capacity { get; set; }
+}
+
+public class ReviewStatusWrite
+{
+    /// <summary>APPROVED (published) or REJECTED (hidden from the profile).</summary>
+    public string? Status { get; set; }
+    public string? Note { get; set; }
+}
+
+public class ReviewReplyWrite
+{
+    /// <summary>Empty removes the reply.</summary>
+    public string? Reply { get; set; }
+}
+
+public class FollowUpTaskWrite
+{
+    public DateTime? DueDate { get; set; }
+    public string? Title { get; set; }
+    /// <summary>OPEN, DONE or CANCELLED.</summary>
+    public string? Status { get; set; }
+}
+
+public class DoctorReminderWrite
+{
+    public DateTime? ReminderDate { get; set; }
+    /// <summary>24-hour "HH:mm"; empty means an all-day / call reminder.</summary>
+    public string? ReminderTime { get; set; }
+    public string? Title { get; set; }
+    public string? Description { get; set; }
+    public string? ContactNumber { get; set; }
+    public bool IsDone { get; set; }
 }
 
 public class SmsTemplateWrite

@@ -154,6 +154,16 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             return Done(_s3.GetTeleQueueAsync(doctorId.Id));
         }
 
+        /// <summary>Doctor web tele board — all tele appointments for a day (default today).</summary>
+        [HttpGet("/api/Tele/Day")]
+        public Task<IActionResult> TeleDay([FromQuery] DateTime? date)
+        {
+            var doctorId = RequireSelfDoctor();
+            if (doctorId.Error != null)
+                return Task.FromResult(doctorId.Error);
+            return Done(_s3.GetTeleDayAsync(doctorId.Id, date));
+        }
+
         /// <summary>
         /// TEL-02.02 — open a Waiting tele session for a queue appointment (own doctor only).
         /// </summary>

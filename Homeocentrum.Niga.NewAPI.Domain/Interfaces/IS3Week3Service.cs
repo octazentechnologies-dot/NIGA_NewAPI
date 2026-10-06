@@ -20,6 +20,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Interfaces
         Task<S3ActionResult> GetTeleAvailabilityAsync(int doctorId);
 
         Task<S3ActionResult> GetTeleQueueAsync(int doctorId);
+        Task<S3ActionResult> GetTeleDayAsync(int doctorId, DateTime? date);
         Task<S3ActionResult> CreateSessionAsync(int patientAppId, int doctorId);
         Task<S3ActionResult> StartSessionAsync(int sessionId, int doctorId);
         Task<S3ActionResult> EndSessionAsync(int sessionId, int doctorId);

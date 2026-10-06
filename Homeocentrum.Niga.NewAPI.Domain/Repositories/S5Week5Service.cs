@@ -14,7 +14,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories;
 /// S5 Week 5 — SMS log, notifications, receipt email, and clinic reports.
 /// Provider calls run only when the matching key is present in appsettings.json.
 /// </summary>
-public class S5Week5Service : IS5Week5Service
+public partial class S5Week5Service : IS5Week5Service
 {
     private readonly NIGACentrumContext _context;
     private readonly IConfiguration _config;
@@ -215,6 +215,23 @@ public class S5Week5Service : IS5Week5Service
         return S4ActionResult.Ok(new { success = true, data = rows });
     });
 
+    public Task<S4ActionResult> WhatsAppAudienceAsync(S4Caller caller) => Guard(async () =>
+    {
+        if (!caller.IsAdmin) return Admin(caller)!;
+        var rows = await _context.Database.SqlQuery<AudienceRow>($@"
+            SELECT d.DoctorID AS DoctorId,
+                   LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
+                   COUNT(DISTINCT p.PatientID) AS OptedIn
+            FROM dbo.Doctor d
+            LEFT JOIN dbo.CaseEntryDetails c ON c.DoctorID = d.DoctorID AND ISNULL(c.DeleteStatus, 0) = 0
+            LEFT JOIN dbo.Patient p ON p.PatientID = c.PatientID AND ISNULL(p.DeleteStatus, 0) = 0
+                 AND p.IsWhatsAppOptIn = 1 AND LTRIM(RTRIM(ISNULL(p.MobileNo, N''))) <> N''
+            WHERE ISNULL(d.DeleteStatus, 0) = 0
+            GROUP BY d.DoctorID, d.FirstName, d.LastName
+            ORDER BY OptedIn DESC, DoctorName").ToListAsync();
+        return S4ActionResult.Ok(new { success = true, data = rows });
+    });
+
     public Task<S4ActionResult> SendNotificationAsync(NotificationSendRequest request, S4Caller caller) => Guard(async () =>
     {
         if (!caller.IsAdmin && !caller.IsDoctor)
@@ -340,8 +357,22 @@ public class S5Week5Service : IS5Week5Service
     {
         if (!CanReadClinic(caller))
             return S4ActionResult.Fail(403, "FORBIDDEN", "Clinic staff can read follow-ups.");
-        var rows = await _context.Database.SqlQuery<GroupRow>($@"
-            SELECT Status AS Name, COUNT(1) AS Cnt FROM dbo.FollowUpTask GROUP BY Status").ToListAsync();
+        List<GroupRow> rows;
+        if (caller.IsAdmin || !caller.DoctorId.HasValue)
+        {
+            rows = await _context.Database.SqlQuery<GroupRow>($@"
+                SELECT Status AS Name, COUNT(1) AS Cnt FROM dbo.FollowUpTask GROUP BY Status").ToListAsync();
+        }
+        else
+        {
+            var doctorId = caller.DoctorId.Value;
+            rows = await _context.Database.SqlQuery<GroupRow>($@"
+                SELECT t.Status AS Name, COUNT(1) AS Cnt
+                FROM dbo.FollowUpTask t
+                INNER JOIN dbo.FollowUpPlan p ON p.FollowUpPlanId = t.FollowUpPlanId
+                WHERE p.DoctorId = {doctorId}
+                GROUP BY t.Status").ToListAsync();
+        }
         return S4ActionResult.Ok(new { success = true, data = rows });
     });
 
@@ -351,16 +382,75 @@ public class S5Week5Service : IS5Week5Service
             return S4ActionResult.Fail(403, "FORBIDDEN", "Clinic staff can read performance.");
         var start = (from ?? DateTime.Today.AddDays(-30)).Date;
         var end = (to ?? DateTime.Today).Date.AddDays(1);
+        int? doctorId = caller.IsAdmin ? null : caller.DoctorId;
         var visits = await _context.Database.SqlQuery<GroupRow>($@"
             SELECT ISNULL(NULLIF(ConsultMode,''), ISNULL(NULLIF(VisitType,''), N'Unknown')) AS Name, COUNT(1) AS Cnt
             FROM dbo.PatientAppointment
             WHERE ISNULL(DeleteStatus,0)=0 AND AppointmentDate >= {start} AND AppointmentDate < {end}
+              AND ({doctorId} IS NULL OR DoctorId = {doctorId})
             GROUP BY ISNULL(NULLIF(ConsultMode,''), ISNULL(NULLIF(VisitType,''), N'Unknown'))").ToListAsync();
+        var statuses = await _context.Database.SqlQuery<GroupRow>($@"
+            SELECT ISNULL(NULLIF(Status,''), N'Unknown') AS Name, COUNT(1) AS Cnt
+            FROM dbo.PatientAppointment
+            WHERE ISNULL(DeleteStatus,0)=0 AND AppointmentDate >= {start} AND AppointmentDate < {end}
+              AND ({doctorId} IS NULL OR DoctorId = {doctorId})
+            GROUP BY ISNULL(NULLIF(Status,''), N'Unknown')").ToListAsync();
+        var daily = await _context.Database.SqlQuery<BucketRow>($@"
+            SELECT CONVERT(char(10), AppointmentDate, 120) AS Bucket, CAST(0 AS decimal(18,2)) AS Amount, COUNT(1) AS Cnt
+            FROM dbo.PatientAppointment
+            WHERE ISNULL(DeleteStatus,0)=0 AND AppointmentDate >= {start} AND AppointmentDate < {end}
+              AND ({doctorId} IS NULL OR DoctorId = {doctorId})
+            GROUP BY CONVERT(char(10), AppointmentDate, 120)
+            ORDER BY Bucket").ToListAsync();
+        var patients = await _context.Database.SqlQuery<CountRow>($@"
+            SELECT COUNT(DISTINCT PatientId) AS Value
+            FROM dbo.PatientAppointment
+            WHERE ISNULL(DeleteStatus,0)=0 AND AppointmentDate >= {start} AND AppointmentDate < {end}
+              AND ({doctorId} IS NULL OR DoctorId = {doctorId})").FirstAsync();
         var paid = await _context.Database.SqlQuery<MoneyRow>($@"
             SELECT ISNULL(SUM(Amount),0) AS Amount, COUNT(1) AS Cnt
             FROM dbo.PaymentOrder
-            WHERE Status = N'PAID' AND CreatedAt >= {start} AND CreatedAt < {end}").FirstAsync();
-        return S4ActionResult.Ok(new { success = true, from = start, to = end.AddDays(-1), visits, paid });
+            WHERE Status IN (N'CAPTURED', N'COLLECTED', N'PAID') AND CreatedAt >= {start} AND CreatedAt < {end}
+              AND ({doctorId} IS NULL OR DoctorId = {doctorId})").FirstAsync();
+        var dailyStatus = await _context.Database.SqlQuery<DayStatusRow>($@"
+            SELECT CONVERT(char(10), AppointmentDate, 120) AS Bucket, UPPER(ISNULL(NULLIF(Status,''), N'UNKNOWN')) AS Status, COUNT(1) AS Cnt
+            FROM dbo.PatientAppointment
+            WHERE ISNULL(DeleteStatus,0)=0 AND AppointmentDate >= {start} AND AppointmentDate < {end}
+              AND ({doctorId} IS NULL OR DoctorId = {doctorId})
+            GROUP BY CONVERT(char(10), AppointmentDate, 120), UPPER(ISNULL(NULLIF(Status,''), N'UNKNOWN'))").ToListAsync();
+        var hours = await _context.Database.SqlQuery<HourRow>($@"
+            SELECT DATEPART(hour, AppointmentTime) AS Hour, COUNT(1) AS Cnt
+            FROM dbo.PatientAppointment
+            WHERE ISNULL(DeleteStatus,0)=0 AND AppointmentTime IS NOT NULL
+              AND AppointmentDate >= {start} AND AppointmentDate < {end}
+              AND UPPER(ISNULL(Status,'')) <> N'CANCELLED'
+              AND ({doctorId} IS NULL OR DoctorId = {doctorId})
+            GROUP BY DATEPART(hour, AppointmentTime)").ToListAsync();
+        var missed = await _context.Database.SqlQuery<MissedRow>($@"
+            SELECT TOP 300 a.PatientAppId, a.PatientId, p.PatientName, p.MobileNo, a.AppointmentDate, a.AppointmentTime,
+                   a.Status, a.ConsultMode, a.IsTele, a.CancelReasonCode, a.CancelReasonText, a.CancelledAt
+            FROM dbo.PatientAppointment a
+            LEFT JOIN dbo.Patient p ON p.PatientID = a.PatientId
+            WHERE ISNULL(a.DeleteStatus,0)=0 AND a.AppointmentDate >= {start} AND a.AppointmentDate < {end}
+              AND UPPER(ISNULL(a.Status,'')) IN (N'CANCELLED', N'NOT ARRIVED')
+              AND ({doctorId} IS NULL OR a.DoctorId = {doctorId})
+            ORDER BY a.AppointmentDate DESC, a.AppointmentTime DESC").ToListAsync();
+        var peak = hours.OrderByDescending(h => h.Cnt).FirstOrDefault();
+        return S4ActionResult.Ok(new
+        {
+            success = true,
+            from = start,
+            to = end.AddDays(-1),
+            visits,
+            statuses,
+            daily,
+            dailyStatus,
+            hours,
+            peakHour = peak?.Hour,
+            missed,
+            uniquePatients = patients.Value,
+            paid
+        });
     });
 
     public Task<S4ActionResult> ExportReconciliationAsync(S4Caller caller) => Guard(async () =>
@@ -419,7 +509,7 @@ public class S5Week5Service : IS5Week5Service
             rows = await _context.Database.SqlQuery<BucketRow>($@"
                 SELECT CONVERT(char(7), CreatedAt, 120) AS Bucket, ISNULL(SUM(Amount),0) AS Amount, COUNT(1) AS Cnt
                 FROM dbo.PaymentOrder
-                WHERE Status = N'PAID' AND CreatedAt >= {start} AND CreatedAt < {end}
+                WHERE Status IN (N'CAPTURED', N'COLLECTED', N'PAID') AND CreatedAt >= {start} AND CreatedAt < {end}
                 GROUP BY CONVERT(char(7), CreatedAt, 120)
                 ORDER BY Bucket").ToListAsync();
         }
@@ -429,7 +519,7 @@ public class S5Week5Service : IS5Week5Service
             rows = await _context.Database.SqlQuery<BucketRow>($@"
                 SELECT CONVERT(char(7), CreatedAt, 120) AS Bucket, ISNULL(SUM(Amount),0) AS Amount, COUNT(1) AS Cnt
                 FROM dbo.PaymentOrder
-                WHERE Status = N'PAID' AND DoctorId = {doctorId} AND CreatedAt >= {start} AND CreatedAt < {end}
+                WHERE Status IN (N'CAPTURED', N'COLLECTED', N'PAID') AND DoctorId = {doctorId} AND CreatedAt >= {start} AND CreatedAt < {end}
                 GROUP BY CONVERT(char(7), CreatedAt, 120)
                 ORDER BY Bucket").ToListAsync();
         }
@@ -610,6 +700,86 @@ public class S5Week5Service : IS5Week5Service
         }
     }
 
+    public Task<S4ActionResult> ListRemindersAsync(DateTime? from, DateTime? to, S4Caller caller) => Guard(async () =>
+    {
+        if (!caller.DoctorId.HasValue)
+            return S4ActionResult.Fail(403, "FORBIDDEN", "Reminders are for a doctor account.");
+        var doctorId = caller.DoctorId.Value;
+        var start = (from ?? DateTime.Today).Date;
+        var end = (to ?? start).Date;
+        if (end < start)
+            end = start;
+        if ((end - start).TotalDays > 62)
+            end = start.AddDays(62);
+        var rows = await _context.Database.SqlQuery<ReminderRow>($@"
+            SELECT DoctorReminderId, ReminderDate, ReminderTime, Title, Description, ContactNumber, IsDone, CreatedAt
+            FROM dbo.DoctorReminder
+            WHERE DoctorId = {doctorId} AND IsDeleted = 0
+              AND ReminderDate >= {start} AND ReminderDate <= {end}
+            ORDER BY ReminderDate, CASE WHEN ReminderTime IS NULL THEN 1 ELSE 0 END, ReminderTime, DoctorReminderId").ToListAsync();
+        return S4ActionResult.Ok(new { success = true, from = start, to = end, data = rows });
+    });
+
+    public Task<S4ActionResult> SaveReminderAsync(int? reminderId, DoctorReminderWrite request, S4Caller caller) => Guard(async () =>
+    {
+        if (!caller.DoctorId.HasValue)
+            return S4ActionResult.Fail(403, "FORBIDDEN", "Reminders are for a doctor account.");
+        var doctorId = caller.DoctorId.Value;
+        var title = (request?.Title ?? "").Trim();
+        if (title.Length == 0)
+            return S4ActionResult.Fail(400, "VALIDATION", "Title is required.");
+        if (title.Length > 200)
+            return S4ActionResult.Fail(400, "VALIDATION", "Title must be 200 characters or fewer.");
+        var description = string.IsNullOrWhiteSpace(request!.Description) ? null : request.Description.Trim();
+        if (description != null && description.Length > 1000)
+            return S4ActionResult.Fail(400, "VALIDATION", "Description must be 1000 characters or fewer.");
+        var contact = string.IsNullOrWhiteSpace(request.ContactNumber) ? null : request.ContactNumber.Trim();
+        if (contact != null && (contact.Length > 20 || Digits(contact).Length < 6))
+            return S4ActionResult.Fail(400, "VALIDATION", "Contact number is not valid.");
+        TimeSpan? time = null;
+        if (!string.IsNullOrWhiteSpace(request.ReminderTime))
+        {
+            if (!TimeSpan.TryParse(request.ReminderTime.Trim(), out var parsed) || parsed < TimeSpan.Zero || parsed >= TimeSpan.FromDays(1))
+                return S4ActionResult.Fail(400, "VALIDATION", "Reminder time must be HH:mm.");
+            time = new TimeSpan(parsed.Hours, parsed.Minutes, 0);
+        }
+        var date = (request.ReminderDate ?? DateTime.Today).Date;
+        var now = DateTime.Now;
+
+        if (reminderId.HasValue)
+        {
+            var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.DoctorReminder
+                SET ReminderDate = {date}, ReminderTime = {time}, Title = {title}, Description = {description},
+                    ContactNumber = {contact}, IsDone = {request.IsDone}, UpdatedAt = {now}
+                WHERE DoctorReminderId = {reminderId.Value} AND DoctorId = {doctorId} AND IsDeleted = 0");
+            if (updated == 0)
+                return S4ActionResult.Fail(404, "NOT_FOUND", "Reminder not found.");
+            return S4ActionResult.Ok(new { success = true, doctorReminderId = reminderId.Value });
+        }
+
+        var userId = caller.UserId;
+        var id = await _context.Database.SqlQuery<int>($@"
+            INSERT INTO dbo.DoctorReminder (DoctorId, UserId, ReminderDate, ReminderTime, Title, Description, ContactNumber, IsDone, IsDeleted, CreatedAt)
+            OUTPUT INSERTED.DoctorReminderId AS Value
+            VALUES ({doctorId}, {userId}, {date}, {time}, {title}, {description}, {contact}, 0, 0, {now})").ToListAsync();
+        return S4ActionResult.Ok(new { success = true, doctorReminderId = id.FirstOrDefault() });
+    });
+
+    public Task<S4ActionResult> DeleteReminderAsync(int reminderId, S4Caller caller) => Guard(async () =>
+    {
+        if (!caller.DoctorId.HasValue)
+            return S4ActionResult.Fail(403, "FORBIDDEN", "Reminders are for a doctor account.");
+        var doctorId = caller.DoctorId.Value;
+        var now = DateTime.Now;
+        var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.DoctorReminder SET IsDeleted = 1, UpdatedAt = {now}
+            WHERE DoctorReminderId = {reminderId} AND DoctorId = {doctorId} AND IsDeleted = 0");
+        if (updated == 0)
+            return S4ActionResult.Fail(404, "NOT_FOUND", "Reminder not found.");
+        return S4ActionResult.Ok(new { success = true, doctorReminderId = reminderId });
+    });
+
     private static string Csv(IEnumerable<string> lines) => string.Join("\n", lines);
 
     private static string CsvCell(string? value)
@@ -716,6 +886,17 @@ public class S5Week5Service : IS5Week5Service
         public decimal Amount { get; set; }
         public int Cnt { get; set; }
     }
+    private sealed class ReminderRow
+    {
+        public int DoctorReminderId { get; set; }
+        public DateTime ReminderDate { get; set; }
+        public TimeSpan? ReminderTime { get; set; }
+        public string Title { get; set; } = "";
+        public string? Description { get; set; }
+        public string? ContactNumber { get; set; }
+        public bool IsDone { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
     private sealed class BulkRow
     {
         public int Id { get; set; }
@@ -723,5 +904,12 @@ public class S5Week5Service : IS5Week5Service
         public string? DeliveryStatus { get; set; }
         public bool SendStatus { get; set; }
         public DateTime CreatedDate { get; set; }
+    }
+
+    private sealed class AudienceRow
+    {
+        public int DoctorId { get; set; }
+        public string? DoctorName { get; set; }
+        public int OptedIn { get; set; }
     }
 }

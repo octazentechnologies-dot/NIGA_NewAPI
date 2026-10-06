@@ -87,6 +87,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> AcceptQuoteAsync(int orderId, S4Caller caller);
     Task<S4ActionResult> MarkMedicineReadyAsync(int orderId, S4Caller caller);
     Task<S4ActionResult> DispatchMedicineAsync(int orderId, S4Caller caller);
+    Task<S4ActionResult> DeliverMedicineAsync(int orderId, S4Caller caller);
     Task<S4ActionResult> MedicineTrackingAsync(int orderId, S4Caller caller);
     Task<S4ActionResult> PatientMedicineOrdersAsync(S4Caller caller);
     Task<S4ActionResult> CloneRefillOrderAsync(int refillId, S4Caller caller);

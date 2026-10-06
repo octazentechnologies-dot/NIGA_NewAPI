@@ -104,11 +104,52 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 );
             }
 
-            return await PagedList<PatientAppointmentModel>.CreateAsync(
+            var page = await PagedList<PatientAppointmentModel>.CreateAsync(
                 patientAppEntityList.AsQueryable(),
                 parameter.PageNumber,
                 parameter.PageSize
             );
+            await FillConsultFeesAsync(page);
+            return page;
+        }
+
+        /// <summary>Consult fee per appointment: the booked consult payment, else the doctor's in-clinic / tele fee.</summary>
+        private async Task FillConsultFeesAsync(List<PatientAppointmentModel> rows)
+        {
+            if (rows.Count == 0) return;
+            var appIds = string.Join(",", rows.Select(r => r.PatientAppId).Distinct());
+            var paid = await context.Database.SqlQuery<AppointmentAmountRow>($@"
+                SELECT po.PatientAppId, po.Amount
+                FROM dbo.PaymentOrder po
+                WHERE po.PaymentOrderId IN (
+                    SELECT MAX(PaymentOrderId) FROM dbo.PaymentOrder
+                    WHERE Stream = N'CONSULT'
+                      AND PatientAppId IN (SELECT TRY_CAST(value AS int) FROM STRING_SPLIT({appIds}, ','))
+                    GROUP BY PatientAppId)").ToListAsync();
+            var amountByApp = paid.Where(p => p.PatientAppId.HasValue)
+                .GroupBy(p => p.PatientAppId!.Value)
+                .ToDictionary(g => g.Key, g => g.First().Amount);
+            var doctorIds = rows.Select(r => r.DoctorId).Distinct().ToList();
+            var fees = await context.Doctors
+                .Where(d => doctorIds.Contains(d.DoctorId))
+                .Select(d => new { d.DoctorId, d.ConsultFeeInClinic, d.ConsultFeeTele })
+                .ToDictionaryAsync(d => d.DoctorId);
+            foreach (var row in rows)
+            {
+                if (amountByApp.TryGetValue(row.PatientAppId, out var amount))
+                {
+                    row.ConsultFee = amount;
+                    continue;
+                }
+                if (fees.TryGetValue(row.DoctorId, out var fee))
+                    row.ConsultFee = row.IsTele == true ? fee.ConsultFeeTele ?? fee.ConsultFeeInClinic : fee.ConsultFeeInClinic;
+            }
+        }
+
+        private sealed class AppointmentAmountRow
+        {
+            public int? PatientAppId { get; set; }
+            public decimal Amount { get; set; }
         }
 
         /// <summary>

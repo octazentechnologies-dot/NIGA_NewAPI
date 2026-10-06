@@ -305,6 +305,9 @@ public class S4Week4Controller : ControllerBase
     [HttpPost("/api/MedicineOrders/{id:int}/Dispatch")]
     public Task<IActionResult> Dispatch(int id) => Done(_s4.DispatchMedicineAsync(id, Caller()));
 
+    [HttpPost("/api/MedicineOrders/{id:int}/Deliver")]
+    public Task<IActionResult> Deliver(int id) => Done(_s4.DeliverMedicineAsync(id, Caller()));
+
     [HttpGet("/api/MedicineOrders/{id:int}/Tracking")]
     public Task<IActionResult> Tracking(int id) => Done(_s4.MedicineTrackingAsync(id, Caller()));
 

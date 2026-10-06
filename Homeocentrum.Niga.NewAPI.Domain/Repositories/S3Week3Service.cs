@@ -420,6 +420,82 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             return S3ActionResult.Ok(new { success = true, polledAt = now, data });
         }
 
+        /// <summary>
+        /// Doctor web tele board: every non-cancelled tele appointment for one day with patient
+        /// contact, fee, latest session and a derived board status (Scheduled / Waiting / Completed).
+        /// </summary>
+        public async Task<S3ActionResult> GetTeleDayAsync(int doctorId, DateTime? date)
+        {
+            var day = (date ?? DateTime.Today).Date;
+            var next = day.AddDays(1);
+            var rows = await _context.Database.SqlQuery<TeleDayRow>($@"
+                SELECT a.PatientAppId, a.PatientId, p.PatientName, p.MobileNo, p.Gender, p.Age, p.DateOfBirth,
+                       a.AppointmentDate, CAST(a.AppointmentTime AS time) AS AppointmentTime, a.Status, a.PaymentStatus,
+                       a.BookingChannel, a.CalledAt,
+                       pay.Amount, s.TeleSessionId, s.Status AS SessionStatus
+                FROM dbo.PatientAppointment a
+                LEFT JOIN dbo.Patient p ON p.PatientId = a.PatientId
+                OUTER APPLY (
+                    SELECT TOP 1 po.Amount FROM dbo.PaymentOrder po
+                    WHERE po.PatientAppId = a.PatientAppId
+                    ORDER BY CASE WHEN po.Status = N'PAID' THEN 0 ELSE 1 END, po.PaymentOrderId DESC) pay
+                OUTER APPLY (
+                    SELECT TOP 1 ts.TeleSessionId, ts.Status FROM dbo.TeleSession ts
+                    WHERE ts.PatientAppId = a.PatientAppId
+                    ORDER BY ts.TeleSessionId DESC) s
+                WHERE a.DoctorId = {doctorId}
+                  AND ISNULL(a.DeleteStatus, 0) = 0
+                  AND a.AppointmentDate >= {day} AND a.AppointmentDate < {next}
+                  AND (a.ConsultMode = N'Tele' OR a.IsTele = 1 OR a.Status = N'E-CONSULT')
+                  AND ISNULL(a.Status, N'') <> N'CANCELLED'
+                ORDER BY a.AppointmentTime, a.PatientAppId").ToListAsync();
+
+            var data = rows.Select(r =>
+            {
+                var status = (r.Status ?? "").Trim().ToUpperInvariant();
+                var session = (r.SessionStatus ?? "").Trim();
+                string board;
+                if (status == "COMPLETED" || session.Equals("Ended", StringComparison.OrdinalIgnoreCase))
+                    board = "Completed";
+                else if (status == "E-CONSULT" || status == "WAITING"
+                         || session.Equals("Waiting", StringComparison.OrdinalIgnoreCase)
+                         || session.Equals("Active", StringComparison.OrdinalIgnoreCase))
+                    board = "Waiting";
+                else
+                    board = "Scheduled";
+
+                int? age = r.Age;
+                if ((age == null || age <= 0) && r.DateOfBirth.HasValue)
+                {
+                    var dob = r.DateOfBirth.Value.Date;
+                    var years = day.Year - dob.Year;
+                    if (dob > day.AddYears(-years)) years--;
+                    age = years >= 0 ? years : null;
+                }
+
+                return new
+                {
+                    r.PatientAppId,
+                    r.PatientId,
+                    r.PatientName,
+                    r.MobileNo,
+                    Gender = r.Gender == 1 ? "F" : r.Gender == 0 ? "M" : null,
+                    Age = age,
+                    r.AppointmentDate,
+                    r.AppointmentTime,
+                    r.Status,
+                    PaymentStatus = string.IsNullOrWhiteSpace(r.PaymentStatus) ? "UNPAID" : r.PaymentStatus,
+                    r.Amount,
+                    r.TeleSessionId,
+                    r.SessionStatus,
+                    ConsultType = (r.BookingChannel ?? "").Contains("Instant", StringComparison.OrdinalIgnoreCase) ? "instant" : "scheduled",
+                    BoardStatus = board
+                };
+            }).ToList();
+
+            return S3ActionResult.Ok(new { success = true, date = day, data });
+        }
+
         /// <summary>TEL-02.02 — create Waiting TeleSession for an owned appointment.</summary>
         public async Task<S3ActionResult> CreateSessionAsync(int patientAppId, int doctorId)
         {
@@ -1029,10 +1105,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
         public async Task<S3ActionResult> ListMyTicketsAsync(long userId)
         {
             var rows = await _context.Database.SqlQuery<TicketRow>($@"
-                SELECT SupportTicketId, ReporterUserId, ReporterRole, Category, Subject, Status, Priority, AssigneeUserId, SlaDueAt, CreatedAt
-                FROM dbo.SupportTicket
-                WHERE ReporterUserId = {userId}
-                ORDER BY SupportTicketId DESC").ToListAsync();
+                SELECT t.SupportTicketId, t.ReporterUserId, t.ReporterRole, t.Category, t.Subject, t.Body, t.Status, t.Priority,
+                       t.AssigneeUserId, t.SlaDueAt, t.CreatedAt,
+                       LTRIM(RTRIM(CONCAT(u.FirstName, N' ', u.LastName))) AS ReporterName, u.EmailId AS ReporterEmail
+                FROM dbo.SupportTicket t
+                LEFT JOIN dbo.UserMaster u ON u.UserId = t.ReporterUserId
+                WHERE t.ReporterUserId = {userId}
+                ORDER BY t.SupportTicketId DESC").ToListAsync();
             return S3ActionResult.Ok(new { success = true, data = rows });
         }
 
@@ -1043,9 +1122,12 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
         public async Task<S3ActionResult> ListAdminTicketsAsync(string? status, string? priority)
         {
             var rows = await _context.Database.SqlQuery<TicketRow>($@"
-                SELECT SupportTicketId, ReporterUserId, ReporterRole, Category, Subject, Status, Priority, AssigneeUserId, SlaDueAt, CreatedAt
-                FROM dbo.SupportTicket
-                ORDER BY SupportTicketId DESC").ToListAsync();
+                SELECT t.SupportTicketId, t.ReporterUserId, t.ReporterRole, t.Category, t.Subject, t.Body, t.Status, t.Priority,
+                       t.AssigneeUserId, t.SlaDueAt, t.CreatedAt,
+                       LTRIM(RTRIM(CONCAT(u.FirstName, N' ', u.LastName))) AS ReporterName, u.EmailId AS ReporterEmail
+                FROM dbo.SupportTicket t
+                LEFT JOIN dbo.UserMaster u ON u.UserId = t.ReporterUserId
+                ORDER BY t.SupportTicketId DESC").ToListAsync();
 
             if (!string.IsNullOrWhiteSpace(status))
             {
@@ -1079,7 +1161,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 return S3ActionResult.Fail(400, "Body required.");
 
             var current = await _context.Database.SqlQuery<TicketRow>($@"
-                SELECT SupportTicketId, ReporterUserId, ReporterRole, Category, Subject, Status, Priority, AssigneeUserId, SlaDueAt, CreatedAt
+                SELECT SupportTicketId, ReporterUserId, ReporterRole, Category, Subject, Body, Status, Priority, AssigneeUserId, SlaDueAt, CreatedAt,
+                       CAST(NULL AS nvarchar(200)) AS ReporterName, CAST(NULL AS nvarchar(200)) AS ReporterEmail
                 FROM dbo.SupportTicket
                 WHERE SupportTicketId = {ticketId}").FirstOrDefaultAsync();
             if (current == null)
@@ -1711,11 +1794,14 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             public string ReporterRole { get; set; } = "";
             public string Category { get; set; } = "";
             public string Subject { get; set; } = "";
+            public string? Body { get; set; }
             public string Status { get; set; } = "";
             public string Priority { get; set; } = "";
             public long? AssigneeUserId { get; set; }
             public DateTime? SlaDueAt { get; set; }
             public DateTime CreatedAt { get; set; }
+            public string? ReporterName { get; set; }
+            public string? ReporterEmail { get; set; }
         }
 
         /// <summary>SUP-07.02 / SUP-07.03 — AssistedRequest queue includes Body for staff prefill.</summary>
@@ -1741,6 +1827,26 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             public string FileName { get; set; } = "";
             public string StorageKey { get; set; } = "";
             public DateTime At { get; set; }
+        }
+
+        private sealed class TeleDayRow
+        {
+            public int PatientAppId { get; set; }
+            public int? PatientId { get; set; }
+            public string? PatientName { get; set; }
+            public string? MobileNo { get; set; }
+            public int? Gender { get; set; }
+            public int? Age { get; set; }
+            public DateTime? DateOfBirth { get; set; }
+            public DateTime? AppointmentDate { get; set; }
+            public TimeSpan? AppointmentTime { get; set; }
+            public string? Status { get; set; }
+            public string? PaymentStatus { get; set; }
+            public string? BookingChannel { get; set; }
+            public DateTime? CalledAt { get; set; }
+            public decimal? Amount { get; set; }
+            public int? TeleSessionId { get; set; }
+            public string? SessionStatus { get; set; }
         }
 
         private sealed class MessageRow
