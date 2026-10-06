@@ -1076,6 +1076,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
             entity.Property(e => e.ConsultFeeTele).HasColumnType("decimal(10,2)");
             entity.Property(e => e.PhotoPath).HasMaxLength(500);
             entity.Property(e => e.WorkingHoursNote).HasMaxLength(500);
+            entity.Property(e => e.FollowUpFeeInClinic).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.FollowUpFeeTele).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.FeeCurrency).HasMaxLength(3);
+            entity.Property(e => e.GoogleMapsLink).HasMaxLength(500);
             entity.Property(e => e.VerificationStatus).HasMaxLength(30);
 
             entity.HasOne(d => d.Package).WithMany(p => p.Doctors)
@@ -3044,6 +3048,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
             entity.Property(e => e.AccountNumber).HasMaxLength(50);
             entity.Property(e => e.Ifsc).HasMaxLength(20);
             entity.Property(e => e.Pan).HasMaxLength(20);
+            entity.Property(e => e.BranchName).HasMaxLength(150);
+            entity.Property(e => e.AccountType).HasMaxLength(20);
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
         });
@@ -3067,6 +3073,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
             entity.Property(e => e.FileName).HasMaxLength(260);
             entity.Property(e => e.FilePath).HasMaxLength(500);
             entity.Property(e => e.ContentType).HasMaxLength(100);
+            entity.Property(e => e.Degree).HasMaxLength(50);
+            entity.Property(e => e.Specialization).HasMaxLength(150);
+            entity.Property(e => e.Institution).HasMaxLength(200);
             entity.Property(e => e.EnteredDate).HasColumnType("datetime");
         });
 

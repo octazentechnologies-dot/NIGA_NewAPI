@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
+using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
 using Homeocentrum.Niga.NewAPI.Domain.Services;
@@ -18,10 +19,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     {
         private const int OtpTtlMinutes = 10;
         private readonly NIGACentrumContext _context;
+        private readonly ITokenService _tokenService;
 
-        public PatientAuthController(NIGACentrumContext context)
+        public PatientAuthController(NIGACentrumContext context, ITokenService tokenService)
         {
             _context = context;
+            _tokenService = tokenService;
         }
 
         [HttpPost("RequestOtp")]
@@ -114,7 +117,120 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
             row.VerifiedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
-            return Ok(new { success = true, bookingSessionId = row.OtpChallengeId, mobile = digits });
+
+            var payload = new Dictionary<string, object?>
+            {
+                ["success"] = true,
+                ["bookingSessionId"] = row.OtpChallengeId,
+                ["mobile"] = digits
+            };
+            var user = await ExistingPatientUserAsync(digits);
+            payload["isUserAlreadyRegistered"] = user != null;
+            if (user != null)
+            {
+                payload["token"] = user.Token;
+                payload["user"] = new
+                {
+                    user.UserId,
+                    user.UserName,
+                    user.FirstName,
+                    user.LastName,
+                    user.Email,
+                    user.MobileNo,
+                    user.Role,
+                    user.RoleId,
+                    user.PatientId,
+                    user.PatientName
+                };
+            }
+            return Ok(payload);
+        }
+
+        /// <summary>
+        /// User details and token only when this mobile is already on a Patient row and that login exists.
+        /// </summary>
+        private async Task<PatientAuthUserDetails?> ExistingPatientUserAsync(string digits)
+        {
+            var patients = await _context.Patients.AsNoTracking()
+                .Where(p => p.DeleteStatus != true && p.MobileNo != null)
+                .Select(p => new { p.PatientId, p.PatientName, p.MobileNo, p.Email })
+                .ToListAsync();
+            var patient = patients.FirstOrDefault(p => PhoneNormalizer.EqualsNormalized(p.MobileNo, digits));
+            if (patient == null)
+                return null;
+
+            var mappedUserId = await _context.PatientUserMaps.AsNoTracking()
+                .Where(m => m.PatientId == patient.PatientId && !m.DeleteStatus)
+                .OrderByDescending(m => m.IsPrimary)
+                .Select(m => (long?)m.UserId)
+                .FirstOrDefaultAsync();
+            var user = mappedUserId.HasValue
+                ? await _context.UserMasters.FirstOrDefaultAsync(u => u.UserId == mappedUserId.Value && !u.DeleteStatus && u.IsUserActivated == true)
+                : null;
+            if (user == null)
+            {
+                var users = await _context.UserMasters.AsNoTracking()
+                    .Where(u => !u.DeleteStatus && u.MobileNo != null && u.IsUserActivated == true)
+                    .Select(u => new { u.UserId, u.MobileNo, u.RoleId })
+                    .ToListAsync();
+                var patientRoleId = await _context.RoleMasters.AsNoTracking()
+                    .Where(r => r.RoleName == "Patient" && !r.DeleteStatus)
+                    .Select(r => (int?)r.RoleId)
+                    .FirstOrDefaultAsync();
+                var chosen = users
+                    .Where(u => PhoneNormalizer.EqualsNormalized(u.MobileNo, digits))
+                    .OrderByDescending(u => patientRoleId.HasValue && u.RoleId == patientRoleId.Value)
+                    .FirstOrDefault();
+                if (chosen == null)
+                    return null;
+                user = await _context.UserMasters
+                    .FirstOrDefaultAsync(u => u.UserId == chosen.UserId && !u.DeleteStatus);
+            }
+            if (user == null)
+                return null;
+
+            var roleName = await _context.RoleMasters.AsNoTracking()
+                .Where(r => r.RoleId == user.RoleId && !r.DeleteStatus)
+                .Select(r => r.RoleName)
+                .FirstOrDefaultAsync();
+            if (string.IsNullOrWhiteSpace(roleName))
+                return null;
+
+            int? doctorId = await _context.Doctors.AsNoTracking()
+                .Where(d => d.UserId == user.UserId && !d.DeleteStatus)
+                .Select(d => (int?)d.DoctorId)
+                .FirstOrDefaultAsync();
+
+            var token = await _tokenService.CreateToken(user, 7 * 24 * 60, roleName, doctorId);
+            return new PatientAuthUserDetails
+            {
+                UserId = user.UserId,
+                UserName = user.UserName,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.EmailId ?? patient.Email,
+                MobileNo = digits,
+                Role = roleName,
+                RoleId = user.RoleId,
+                PatientId = patient.PatientId,
+                PatientName = patient.PatientName,
+                Token = token
+            };
+        }
+
+        private sealed class PatientAuthUserDetails
+        {
+            public long UserId { get; set; }
+            public string? UserName { get; set; }
+            public string? FirstName { get; set; }
+            public string? LastName { get; set; }
+            public string? Email { get; set; }
+            public string? MobileNo { get; set; }
+            public string? Role { get; set; }
+            public int? RoleId { get; set; }
+            public int PatientId { get; set; }
+            public string? PatientName { get; set; }
+            public string Token { get; set; } = string.Empty;
         }
     }
 }

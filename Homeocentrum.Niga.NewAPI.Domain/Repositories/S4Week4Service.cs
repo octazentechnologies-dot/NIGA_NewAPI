@@ -1229,10 +1229,10 @@ public partial class S4Week4Service : IS4Week4Service
 
     private async Task<(string Path, long DocumentId)> StorePdfAsync(byte[] pdf, string fileName, string ownerType, long ownerId, long userId, string mime = "application/pdf")
     {
-        var root = Path.Combine(_env.ContentRootPath, "Data", "SecureDocuments");
+        var root = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.SecureDocuments);
         Directory.CreateDirectory(root);
         var stored = Guid.NewGuid().ToString("N") + "_" + fileName;
-        var relative = Path.Combine("Data", "SecureDocuments", stored).Replace('\\', '/');
+        var relative = UploadedMedia.ContentRelative(UploadedMedia.SecureDocuments, stored);
         await File.WriteAllBytesAsync(Path.Combine(root, stored), pdf);
         var hash = Convert.ToHexString(SHA256.HashData(pdf));
         var doc = new SecureDocument

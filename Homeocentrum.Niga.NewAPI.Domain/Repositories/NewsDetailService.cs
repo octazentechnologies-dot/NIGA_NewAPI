@@ -85,13 +85,11 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             var base64Parts = base64String.Split(',');
             var imageData = base64Parts.Length > 1 ? base64Parts[1] : base64Parts[0];
             var imageBytes = Convert.FromBase64String(imageData);
-            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data", folderName);
-            if (!Directory.Exists(uploadsFolder))
-                Directory.CreateDirectory(uploadsFolder);
+            var uploadsFolder = UploadedMedia.Folder(Directory.GetCurrentDirectory(), folderName);
+            Directory.CreateDirectory(uploadsFolder);
             var fileName = Guid.NewGuid().ToString() + ".png";
-            var filePath = Path.Combine(uploadsFolder, fileName);
-            await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
-            return Path.Combine(folderName, fileName);
+            await System.IO.File.WriteAllBytesAsync(Path.Combine(uploadsFolder, fileName), imageBytes);
+            return UploadedMedia.MediaRelative(folderName, fileName);
         }
 
         public NewDetailModel1 GetNewsDetailsbyId(long newsId, ref ErrorResponseModel errorResponseModel)

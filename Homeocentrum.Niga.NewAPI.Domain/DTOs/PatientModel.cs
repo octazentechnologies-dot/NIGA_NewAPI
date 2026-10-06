@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
 {
@@ -41,6 +42,14 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public DateTime? DateodFirstVisit { get; set; }
         public string? RefBy { get; set; }
         public string? Message { get; set; }
+
+        /// <summary>Set when MobileNo already belongs to a login. Same JWT as Account/Login.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Token { get; set; }
+
+        /// <summary>True only when Token is returned for an existing login. Omitted on other patient calls.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IsUserAlreadyRegistered { get; set; }
         public int CaseId { get; set; }
         public int? Age { get; set; }
 

@@ -14,11 +14,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     {
         private readonly IBlogDetailService _blogService;
         private readonly IMapper _mapper;
+        private readonly IWebHostEnvironment _env;
 
-        public BlogController(IBlogDetailService blogService, IMapper mapper)
+        public BlogController(IBlogDetailService blogService, IMapper mapper, IWebHostEnvironment env)
         {
             _blogService = blogService;
             _mapper = mapper;
+            _env = env;
         }
 
         /// <summary>
@@ -88,51 +90,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             try
             {
                 if (!string.IsNullOrEmpty(blogDetail.Src1))
-                {
-                    // Example: "data:image/png;base64,iVBORw0KGgoAAAANS..."
-                    var base64Parts = blogDetail.Src1.Split(",");
-                    var imageData = base64Parts.Length > 1 ? base64Parts[1] : base64Parts[0];
-                    var imageBytes = Convert.FromBase64String(imageData);
-
-                    var uploadsFolder = Path.Combine(
-                        Directory.GetCurrentDirectory(),
-                        "Data",
-                        "Blogs"
-                    );
-                    if (!Directory.Exists(uploadsFolder))
-                        Directory.CreateDirectory(uploadsFolder);
-
-                    var fileName = Guid.NewGuid().ToString() + ".png"; // You can parse the mime type to get file extension
-                    var filePath = Path.Combine(uploadsFolder, fileName);
-
-                    await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
-
-                    // Save the image path
-                    blogDetail.BlogImage1 = Path.Combine("Blogs", fileName);
-                }
+                    blogDetail.BlogImage1 = await SaveBase64Image(blogDetail.Src1, UploadedMedia.Blogs);
                 if (!string.IsNullOrEmpty(blogDetail.Src2))
-                {
-                    // Example: "data:image/png;base64,iVBORw0KGgoAAAANS..."
-                    var base64Parts = blogDetail.Src2.Split(",");
-                    var imageData = base64Parts.Length > 1 ? base64Parts[1] : base64Parts[0];
-                    var imageBytes = Convert.FromBase64String(imageData);
-
-                    var uploadsFolder = Path.Combine(
-                        Directory.GetCurrentDirectory(),
-                        "Data",
-                        "Blogs"
-                    );
-                    if (!Directory.Exists(uploadsFolder))
-                        Directory.CreateDirectory(uploadsFolder);
-
-                    var fileName = Guid.NewGuid().ToString() + ".png"; // You can parse the mime type to get file extension
-                    var filePath = Path.Combine(uploadsFolder, fileName);
-
-                    await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
-
-                    // Save the image path
-                    blogDetail.BlogImage2 = Path.Combine("Blogs", fileName);
-                }
+                    blogDetail.BlogImage2 = await SaveBase64Image(blogDetail.Src2, UploadedMedia.Blogs);
                 var Blog = _mapper.Map<BlogDetail>(blogDetail);
                 _blogService.SaveBlog(Blog);
                 if (await _blogService.SaveAllAsync())
@@ -156,17 +116,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             var imageData = base64Parts.Length > 1 ? base64Parts[1] : base64Parts[0];
             var imageBytes = Convert.FromBase64String(imageData);
 
-            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data", folderName);
-            if (!Directory.Exists(uploadsFolder))
-                Directory.CreateDirectory(uploadsFolder);
+            var uploadsFolder = UploadedMedia.Folder(_env.ContentRootPath, folderName);
+            Directory.CreateDirectory(uploadsFolder);
 
-            var fileName = Guid.NewGuid().ToString() + ".png"; // Optionally, parse MIME type
-            var filePath = Path.Combine(uploadsFolder, fileName);
+            var fileName = Guid.NewGuid().ToString() + ".png";
+            await System.IO.File.WriteAllBytesAsync(Path.Combine(uploadsFolder, fileName), imageBytes);
 
-            await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
-
-            // Return relative path to be saved in DB
-            return Path.Combine(folderName, fileName);
+            return UploadedMedia.MediaRelative(folderName, fileName);
         }
 
         [HttpPost("UpdateBlogDetails")]

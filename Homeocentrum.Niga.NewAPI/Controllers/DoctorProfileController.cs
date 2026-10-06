@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Extensions;
+using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
 
@@ -42,6 +43,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 dto.Kyc = null;
                 dto.ConsultFeeInClinic = null;
                 dto.ConsultFeeTele = null;
+                dto.FollowUpFeeInClinic = null;
+                dto.FollowUpFeeTele = null;
                 dto.QualificationId = null;
                 dto.QualificationName = null;
                 dto.PassingUniversity = null;
@@ -95,6 +98,25 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             if (request.PassingCertNo != null) doctor.PassingCertNo = request.PassingCertNo.Trim();
             if (request.ConsultFeeInClinic.HasValue) doctor.ConsultFeeInClinic = request.ConsultFeeInClinic;
             if (request.ConsultFeeTele.HasValue) doctor.ConsultFeeTele = request.ConsultFeeTele;
+            if (request.TeleDisabled == true)
+            {
+                doctor.ConsultFeeTele = null;
+                doctor.FollowUpFeeTele = null;
+                doctor.FreeFollowUpDaysTele = null;
+            }
+            if (request.FollowUpFeeInClinic.HasValue) doctor.FollowUpFeeInClinic = request.FollowUpFeeInClinic;
+            if (request.FollowUpFeeTele.HasValue && request.TeleDisabled != true) doctor.FollowUpFeeTele = request.FollowUpFeeTele;
+            if (request.FreeFollowUpDaysInClinic.HasValue) doctor.FreeFollowUpDaysInClinic = request.FreeFollowUpDaysInClinic;
+            if (request.FreeFollowUpDaysTele.HasValue && request.TeleDisabled != true) doctor.FreeFollowUpDaysTele = request.FreeFollowUpDaysTele;
+            if (!string.IsNullOrWhiteSpace(request.FeeCurrency))
+            {
+                var currency = request.FeeCurrency.Trim().ToUpperInvariant();
+                if (currency.Length != 3)
+                    return BadRequest(new { success = false, message = "FeeCurrency must be a 3-letter code." });
+                doctor.FeeCurrency = currency;
+            }
+            if (request.GoogleMapsLink != null)
+                doctor.GoogleMapsLink = string.IsNullOrWhiteSpace(request.GoogleMapsLink) ? null : request.GoogleMapsLink.Trim();
             if (request.WorkingHoursNote != null) doctor.WorkingHoursNote = request.WorkingHoursNote.Trim();
             doctor.ChangedDate = DateTime.UtcNow;
 
@@ -129,7 +151,11 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 kyc.BankName = request.Kyc.BankName;
                 kyc.AccountNumber = request.Kyc.AccountNumber;
                 kyc.Ifsc = request.Kyc.Ifsc;
-                kyc.Pan = request.Kyc.Pan;
+                if (request.Kyc.Pan != null) kyc.Pan = request.Kyc.Pan;
+                if (request.Kyc.BranchName != null)
+                    kyc.BranchName = string.IsNullOrWhiteSpace(request.Kyc.BranchName) ? null : request.Kyc.BranchName.Trim();
+                if (request.Kyc.AccountType != null)
+                    kyc.AccountType = string.IsNullOrWhiteSpace(request.Kyc.AccountType) ? null : request.Kyc.AccountType.Trim();
                 kyc.UpdatedAt = DateTime.UtcNow;
             }
 
@@ -146,25 +172,26 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 return deny;
             if (file == null || file.Length == 0)
                 return BadRequest(new { success = false, message = "Photo file is required." });
+            if (!CredentialFileRules.TryGetPhotoType(file.FileName, out var ext, out _))
+                return BadRequest(new { success = false, message = "Photo must be a jpg, jpeg, png or webp image." });
+            if (file.Length > CredentialFileRules.MaxPhotoBytes)
+                return BadRequest(new { success = false, message = "Photo must be 5 MB or smaller." });
 
             var doctor = await ResolveDoctorAsync();
             if (doctor == null)
                 return NotFound(new { success = false, message = "Doctor profile not found." });
 
-            var folder = Path.Combine(_env.ContentRootPath, "Data", "DoctorPhotos");
+            var folder = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.DoctorPhotos);
             Directory.CreateDirectory(folder);
-            var ext = Path.GetExtension(file.FileName);
-            if (string.IsNullOrWhiteSpace(ext) || ext.Length > 8)
-                ext = ".jpg";
             var name = $"doctor_{doctor.DoctorId}_{Guid.NewGuid():N}{ext}";
             var path = Path.Combine(folder, name);
             await using (var stream = System.IO.File.Create(path))
                 await file.CopyToAsync(stream);
 
-            doctor.PhotoPath = Path.Combine("DoctorPhotos", name).Replace("\\", "/");
+            doctor.PhotoPath = UploadedMedia.MediaRelative(UploadedMedia.DoctorPhotos, name);
             doctor.ChangedDate = DateTime.UtcNow;
             await _context.SaveChangesAsync();
-            return Ok(new { success = true, data = new { doctor.PhotoPath } });
+            return Ok(new { success = true, data = new { doctor.PhotoPath, photoUrl = $"/api/Profile/Photo/{doctor.DoctorId}" } });
         }
 
         [HttpGet("Me/Credentials")]
@@ -187,6 +214,10 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     DocumentType = d.DocumentType,
                     FileName = d.FileName,
                     FilePath = d.FilePath,
+                    Degree = d.Degree,
+                    Specialization = d.Specialization,
+                    Institution = d.Institution,
+                    PassingYear = d.PassingYear,
                     EnteredDate = d.EnteredDate
                 })
                 .ToListAsync();
@@ -206,45 +237,38 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
         [HttpPost("Me/CredentialDocuments")]
         [Consumes("multipart/form-data")]
-        public async Task<IActionResult> UploadCredentialDocument(IFormFile file, [FromForm] string documentType = "Other")
+        public async Task<IActionResult> UploadCredentialDocument(
+            IFormFile file,
+            [FromForm] string documentType = "Other",
+            [FromForm] string? degree = null,
+            [FromForm] string? specialization = null,
+            [FromForm] string? institution = null,
+            [FromForm] int? passingYear = null)
         {
             var deny = DoctorOwnership.ForbidIfReception(User);
             if (deny != null)
                 return deny;
             if (file == null || file.Length == 0)
-                return BadRequest(new { success = false, message = "Document file is required." });
+                return Ok(new { success = true, saved = false, message = "No document was uploaded." });
 
-            var type = (documentType ?? "Other").Trim();
-            if (type.Length == 0)
-                type = "Other";
-            if (!type.Equals("Qualification", StringComparison.OrdinalIgnoreCase)
-                && !type.Equals("Registration", StringComparison.OrdinalIgnoreCase)
-                && !type.Equals("Other", StringComparison.OrdinalIgnoreCase))
-            {
-                return BadRequest(new { success = false, message = "documentType must be Qualification, Registration, or Other." });
-            }
-
-            var ext = Path.GetExtension(file.FileName)?.ToLowerInvariant() ?? string.Empty;
-            if (ext is not (".pdf" or ".jpg" or ".jpeg" or ".png"))
-                return BadRequest(new { success = false, message = "Only PDF, JPG, or PNG files are accepted." });
+            var reject = CredentialFileRules.RejectReason(file.FileName, file.Length);
+            if (reject != null)
+                return BadRequest(new { success = false, saved = false, message = reject });
+            CredentialFileRules.TryGetExtension(file.FileName, out var ext);
 
             var doctor = await ResolveDoctorAsync();
             if (doctor == null)
                 return NotFound(new { success = false, message = "Doctor profile not found." });
 
             var verification = await EnsurePendingVerificationAsync(doctor.DoctorId);
-            var folder = Path.Combine(_env.ContentRootPath, "Data", "DoctorCredentials");
+            var folder = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.DoctorCredentials);
             Directory.CreateDirectory(folder);
             var name = $"doc_{doctor.DoctorId}_{Guid.NewGuid():N}{ext}";
             var path = Path.Combine(folder, name);
             await using (var stream = System.IO.File.Create(path))
                 await file.CopyToAsync(stream);
 
-            var canonical = type.Equals("Qualification", StringComparison.OrdinalIgnoreCase)
-                ? "Qualification"
-                : type.Equals("Registration", StringComparison.OrdinalIgnoreCase)
-                    ? "Registration"
-                    : "Other";
+            var canonical = CredentialFileRules.CanonicalType(documentType);
 
             var row = new DoctorCredentialDocument
             {
@@ -252,29 +276,140 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 DoctorVerificationId = verification.DoctorVerificationId,
                 DocumentType = canonical,
                 FileName = Path.GetFileName(file.FileName),
-                FilePath = Path.Combine("DoctorCredentials", name).Replace("\\", "/"),
+                FilePath = UploadedMedia.MediaRelative(UploadedMedia.DoctorCredentials, name),
                 ContentType = file.ContentType,
+                Degree = TrimTo(degree, 50),
+                Specialization = TrimTo(specialization, 150),
+                Institution = TrimTo(institution, 200),
+                PassingYear = passingYear is > 1900 and < 2200 ? passingYear : null,
                 EnteredDate = DateTime.UtcNow,
                 DeleteStatus = false
             };
 
             _context.DoctorCredentialDocuments.Add(row);
             await _context.SaveChangesAsync();
-            return Ok(new
-            {
-                success = true,
-                data = new DoctorCredentialDocumentDto
-                {
-                    DoctorCredentialDocumentId = row.DoctorCredentialDocumentId,
-                    DocumentType = row.DocumentType,
-                    FileName = row.FileName,
-                    FilePath = row.FilePath,
-                    EnteredDate = row.EnteredDate
-                }
-            });
+            return Ok(new { success = true, data = MapCredential(row) });
         }
 
-        /// <summary>Owning doctor or admin opens a credential file stored under Data/DoctorCredentials.</summary>
+        /// <summary>Edit qualification details on an uploaded document, optionally replacing the file.</summary>
+        [HttpPut("Me/CredentialDocuments/{id:int}")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> UpdateCredentialDocument(
+            int id,
+            IFormFile? file,
+            [FromForm] string? degree = null,
+            [FromForm] string? specialization = null,
+            [FromForm] string? institution = null,
+            [FromForm] int? passingYear = null)
+        {
+            var deny = DoctorOwnership.ForbidIfReception(User);
+            if (deny != null)
+                return deny;
+            var doctor = await ResolveDoctorAsync();
+            if (doctor == null)
+                return NotFound(new { success = false, message = "Doctor profile not found." });
+            var row = await _context.DoctorCredentialDocuments
+                .FirstOrDefaultAsync(d => d.DoctorCredentialDocumentId == id && d.DoctorId == doctor.DoctorId && !d.DeleteStatus);
+            if (row == null)
+                return NotFound(new { success = false, message = "Document not found." });
+
+            if (file != null && file.Length > 0)
+            {
+                var reject = CredentialFileRules.RejectReason(file.FileName, file.Length);
+                if (reject != null)
+                    return BadRequest(new { success = false, message = reject });
+                CredentialFileRules.TryGetExtension(file.FileName, out var ext);
+                var folder = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.DoctorCredentials);
+                Directory.CreateDirectory(folder);
+                var name = $"doc_{doctor.DoctorId}_{Guid.NewGuid():N}{ext}";
+                await using (var stream = System.IO.File.Create(Path.Combine(folder, name)))
+                    await file.CopyToAsync(stream);
+                row.FileName = Path.GetFileName(file.FileName);
+                row.FilePath = UploadedMedia.MediaRelative(UploadedMedia.DoctorCredentials, name);
+                row.ContentType = file.ContentType;
+            }
+
+            row.Degree = TrimTo(degree, 50);
+            row.Specialization = TrimTo(specialization, 150);
+            row.Institution = TrimTo(institution, 200);
+            row.PassingYear = passingYear is > 1900 and < 2200 ? passingYear : null;
+            await _context.SaveChangesAsync();
+            return Ok(new { success = true, data = MapCredential(row) });
+        }
+
+        [HttpDelete("Me/CredentialDocuments/{id:int}")]
+        public async Task<IActionResult> DeleteCredentialDocument(int id)
+        {
+            var deny = DoctorOwnership.ForbidIfReception(User);
+            if (deny != null)
+                return deny;
+            var doctor = await ResolveDoctorAsync();
+            if (doctor == null)
+                return NotFound(new { success = false, message = "Doctor profile not found." });
+            var row = await _context.DoctorCredentialDocuments
+                .FirstOrDefaultAsync(d => d.DoctorCredentialDocumentId == id && d.DoctorId == doctor.DoctorId && !d.DeleteStatus);
+            if (row == null)
+                return NotFound(new { success = false, message = "Document not found." });
+            row.DeleteStatus = true;
+            await _context.SaveChangesAsync();
+            return Ok(new { success = true, message = "Document removed." });
+        }
+
+        /// <summary>Doctor photo stored under Data/UploadedMedia/DoctorPhotos. Public: the same photo is shown on the doctor directory.</summary>
+        [AllowAnonymous]
+        [HttpGet("Photo/{doctorId:int}")]
+        public async Task<IActionResult> DoctorPhoto(int doctorId)
+        {
+            var photoPath = await _context.Doctors.AsNoTracking()
+                .Where(d => d.DoctorId == doctorId && !d.DeleteStatus)
+                .Select(d => d.PhotoPath)
+                .FirstOrDefaultAsync();
+            var full = UploadedMedia.MediaRelativeToFull(_env.ContentRootPath, UploadedMedia.DoctorPhotos, photoPath);
+            if (full == null)
+                return NotFound(new { success = false, message = "No photo." });
+            if (!System.IO.File.Exists(full))
+                return NotFound(new { success = false, message = "Photo file is missing on the server." });
+
+            return PhysicalFile(full, CredentialFileRules.PhotoContentType(full));
+        }
+
+        [HttpDelete("Me/Photo")]
+        public async Task<IActionResult> RemovePhoto()
+        {
+            var deny = DoctorOwnership.ForbidIfReception(User);
+            if (deny != null)
+                return deny;
+            var doctor = await ResolveDoctorAsync();
+            if (doctor == null)
+                return NotFound(new { success = false, message = "Doctor profile not found." });
+            doctor.PhotoPath = null;
+            doctor.ChangedDate = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return Ok(new { success = true, message = "Photo removed." });
+        }
+
+        private static DoctorCredentialDocumentDto MapCredential(DoctorCredentialDocument row) => new()
+        {
+            DoctorCredentialDocumentId = row.DoctorCredentialDocumentId,
+            DocumentType = row.DocumentType,
+            FileName = row.FileName,
+            FilePath = row.FilePath,
+            Degree = row.Degree,
+            Specialization = row.Specialization,
+            Institution = row.Institution,
+            PassingYear = row.PassingYear,
+            EnteredDate = row.EnteredDate
+        };
+
+        private static string? TrimTo(string? value, int max)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+            var text = value.Trim();
+            return text.Length > max ? text[..max] : text;
+        }
+
+        /// <summary>Owning doctor or admin opens a credential file stored under Data/UploadedMedia/DoctorCredentials.</summary>
         [HttpGet("CredentialDocuments/{id:int}/File")]
         public async Task<IActionResult> DownloadCredentialDocument(int id)
         {
@@ -293,17 +428,10 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     return Forbid();
             }
 
-            var relative = (row.FilePath ?? "").Replace('\\', '/').TrimStart('/');
-            if (string.IsNullOrWhiteSpace(relative)
-                || relative.Contains("..", StringComparison.Ordinal)
-                || !relative.StartsWith("DoctorCredentials/", StringComparison.OrdinalIgnoreCase))
-            {
+            var full = UploadedMedia.MediaRelativeToFull(_env.ContentRootPath, UploadedMedia.DoctorCredentials, row.FilePath);
+            if (full == null)
                 return BadRequest(new { success = false, message = "Document path is not valid." });
-            }
-
-            var folder = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "Data", "DoctorCredentials"));
-            var full = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "Data", relative.Replace('/', Path.DirectorySeparatorChar)));
-            if (!full.StartsWith(folder, StringComparison.OrdinalIgnoreCase) || !System.IO.File.Exists(full))
+            if (!System.IO.File.Exists(full))
                 return NotFound(new { success = false, message = "Document file is missing on the server." });
 
             var contentType = string.IsNullOrWhiteSpace(row.ContentType) ? "application/octet-stream" : row.ContentType;
@@ -407,6 +535,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 || request.PassingCertNo != null
                 || request.ConsultFeeInClinic.HasValue
                 || request.ConsultFeeTele.HasValue
+                || request.TeleDisabled.HasValue
+                || request.FollowUpFeeInClinic.HasValue
+                || request.FollowUpFeeTele.HasValue
+                || request.FreeFollowUpDaysInClinic.HasValue
+                || request.FreeFollowUpDaysTele.HasValue
+                || request.FeeCurrency != null
+                || request.GoogleMapsLink != null
                 || request.WorkingHoursNote != null
                 || request.Kyc != null;
         }
@@ -481,6 +616,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 ConsultFeeTele = doctor.ConsultFeeTele,
                 PhotoPath = doctor.PhotoPath,
                 WorkingHoursNote = doctor.WorkingHoursNote,
+                FollowUpFeeInClinic = doctor.FollowUpFeeInClinic,
+                FollowUpFeeTele = doctor.FollowUpFeeTele,
+                FreeFollowUpDaysInClinic = doctor.FreeFollowUpDaysInClinic,
+                FreeFollowUpDaysTele = doctor.FreeFollowUpDaysTele,
+                FeeCurrency = doctor.FeeCurrency,
+                GoogleMapsLink = doctor.GoogleMapsLink,
                 IsOnline = doctor.IsOnline,
                 VerificationStatus = doctor.VerificationStatus,
                 DirectoryVisible = doctor.DirectoryVisible,
@@ -490,7 +631,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     BankName = kyc.BankName,
                     AccountNumber = kyc.AccountNumber,
                     Ifsc = kyc.Ifsc,
-                    Pan = kyc.Pan
+                    Pan = kyc.Pan,
+                    BranchName = kyc.BranchName,
+                    AccountType = kyc.AccountType
                 }
             };
         }

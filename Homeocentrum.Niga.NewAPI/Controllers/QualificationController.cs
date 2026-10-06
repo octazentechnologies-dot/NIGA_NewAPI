@@ -6,8 +6,6 @@ using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 
-using Homeocentrum.Niga.NewAPI.Domain.Authorization;
-using Microsoft.AspNetCore.Authorization;
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
     /// <summary>
@@ -15,7 +13,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     /// </summary>
     [Route("api/qualification")]
     [ApiController]
-    [Authorize]
     public class QualificationController : ControllerBase
     {
         private readonly IQualificationService _qualificationService;
@@ -80,7 +77,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         [HttpPost("AddQualification")]
-        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddNewQualification(QualificationModel qualificationMasterDto)
         {
             try
@@ -132,7 +128,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         [HttpPost("UpdateQualificationDetails")]
-        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateQualificationDetails(QualificationModel updateQualificationDto)
         {
             try
@@ -188,7 +183,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         [HttpPost("DeleteQualificationDetails/{Id}")]
-        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteQualificationDetails(int Id)
         {
             var data = await _qualificationService.GetQualificationById(Id);

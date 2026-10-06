@@ -1,0 +1,2 @@
+PayoutId,PayeeType,PayeeId,AccountName,BankAccount,Ifsc,Amount,Currency,Mode
+1,Doctor,27355,,,,500.00,INR,NEFT

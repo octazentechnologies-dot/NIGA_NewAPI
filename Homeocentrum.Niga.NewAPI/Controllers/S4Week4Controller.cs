@@ -165,6 +165,10 @@ public class S4Week4Controller : ControllerBase
     public Task<IActionResult> EarningsSummary([FromQuery] DateTime? from, [FromQuery] DateTime? to)
         => Done(_s4.EarningsSummaryAsync(from, to, Caller()));
 
+    [HttpGet("/api/Account/DoctorEarnings")]
+    public Task<IActionResult> AccountDoctorEarnings([FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? doctorId)
+        => Done(_s4.EarningsSummaryAsync(from, to, Caller(), doctorId));
+
     [HttpGet("/api/Account/Trail")]
     public Task<IActionResult> Trail([FromQuery] int? patientAppId, [FromQuery] long? paymentOrderId, [FromQuery] int? doctorId)
         => Done(_s4.TrailAsync(patientAppId, paymentOrderId, doctorId, Caller()));
@@ -232,13 +236,20 @@ public class S4Week4Controller : ControllerBase
     public Task<IActionResult> RequestRefill([FromBody] RefillCreateRequest request) => Done(_s4.RequestRefillAsync(request, Caller()));
 
     [HttpGet("/api/Erx/Refills")]
-    public Task<IActionResult> Refills() => Done(_s4.ListRefillsAsync(Caller()));
+    [HttpGet("/api/Refill")]
+    public Task<IActionResult> Refills([FromQuery] string? status) => Done(_s4.ListRefillsAsync(Caller(), status));
+
+    [HttpGet("/api/Erx/Refills/{id:int}")]
+    [HttpGet("/api/Refill/{id:int}")]
+    public Task<IActionResult> Refill(int id) => Done(_s4.RefillDetailAsync(id, Caller()));
 
     [HttpPost("/api/Erx/Refills/{id:int}/Approve")]
+    [HttpPost("/api/Refill/{id:int}/Approve")]
     public Task<IActionResult> ApproveRefill(int id) => Done(_s4.DecideRefillAsync(id, true, null, Caller()));
 
     [HttpPost("/api/Erx/Refills/{id:int}/Reject")]
-    public Task<IActionResult> RejectRefill(int id, [FromBody] RefillDecisionRequest request)
+    [HttpPost("/api/Refill/{id:int}/Reject")]
+    public Task<IActionResult> RejectRefill(int id, [FromBody] RefillDecisionRequest? request)
         => Done(_s4.DecideRefillAsync(id, false, request?.Reason, Caller()));
 
     [HttpPost("/api/Pharmacy/Onboard")]
@@ -315,12 +326,28 @@ public class S4Week4Controller : ControllerBase
     [HttpGet("/api/Patient/Timeline")]
     public Task<IActionResult> Timeline([FromQuery] int? patientId) => Done(_s4.TimelineAsync(patientId, Caller()));
 
+    [HttpGet("/api/Patient/Visits")]
+    public Task<IActionResult> Visits([FromQuery] int? patientId) => Done(_s4.PatientVisitsAsync(patientId, Caller()));
+
+    /// <summary>PAT-20.02 — appointment detail for the patient app (doctor, payment, tele, eRx, allowed actions).</summary>
+    [HttpGet("/api/Patient/Visits/{patientAppId:int}")]
+    public Task<IActionResult> VisitDetail(int patientAppId) => Done(_s4.PatientVisitDetailAsync(patientAppId, Caller()));
+
     [HttpGet("/api/Patient/Consultations/{patientAppId:int}/Note")]
     public Task<IActionResult> Note(int patientAppId) => Done(_s4.ConsultationNoteAsync(patientAppId, Caller()));
 
     [HttpPost("/api/Patient/Documents")]
-    [RequestSizeLimit(10_000_000)]
+    [RequestSizeLimit(11_000_000)]
     public Task<IActionResult> Document([FromForm] IFormFile file) => Done(_s4.SavePatientDocumentAsync(file, Caller()));
+
+    [HttpGet("/api/Patient/Documents")]
+    public Task<IActionResult> Documents([FromQuery] int? patientId) => Done(_s4.ListPatientDocumentsAsync(patientId, Caller()));
+
+    [HttpGet("/api/Patient/Documents/{id:long}")]
+    public Task<IActionResult> DocumentFile(long id) => Done(_s4.PatientDocumentFileAsync(id, Caller()));
+
+    [HttpDelete("/api/Patient/Documents/{id:long}")]
+    public Task<IActionResult> DeleteDocument(long id) => Done(_s4.DeletePatientDocumentAsync(id, Caller()));
 
     [HttpPost("/api/Patient/FollowUps")]
     public Task<IActionResult> FollowUp([FromBody] FollowUpCreateRequest request) => Done(_s4.SetFollowUpAsync(request, Caller()));
@@ -349,6 +376,9 @@ public class S4Week4Controller : ControllerBase
     [HttpGet("/api/Patient/Consents")]
     public Task<IActionResult> Consents() => Done(_s4.ListConsentsAsync(Caller()));
 
+    [HttpPost("/api/Patient/Consents/Types/{consentTypeId:int}/Grant")]
+    public Task<IActionResult> GrantConsent(int consentTypeId) => Done(_s4.GrantConsentAsync(consentTypeId, Caller()));
+
     [HttpPost("/api/Patient/Consents/{id:long}/Withdraw")]
     public Task<IActionResult> Withdraw(long id) => Done(_s4.WithdrawConsentAsync(id, Caller()));
 
@@ -366,6 +396,8 @@ public class S4Week4Controller : ControllerBase
         try
         {
             var result = await work;
+            if (result.FileBytes != null)
+                return File(result.FileBytes, result.FileMime ?? "application/octet-stream", result.FileName);
             return StatusCode(result.StatusCode, result.Body);
         }
         catch (Exception ex)

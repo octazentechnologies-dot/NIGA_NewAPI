@@ -193,6 +193,18 @@ builder.Services.AddAuthentication(options =>
 
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["TokenKey"])),
     };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = ctx =>
+        {
+            var jti = ctx.Principal?.FindFirst("jti")?.Value;
+            var denylist = ctx.HttpContext.RequestServices
+                .GetRequiredService<Homeocentrum.Niga.NewAPI.Domain.Services.IJwtDenylistService>();
+            if (denylist.IsDenied(jti))
+                ctx.Fail("This session was signed out.");
+            return Task.CompletedTask;
+        }
+    };
 });
 
 // M02 W0 — Admin Portal policy for clinical masters mutate APIs (apply in W1+)
@@ -211,6 +223,10 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 AppFileLog.Initialize(app.Environment.ContentRootPath, app.Configuration, "NIGA New-API (Niga-Web :5002)");
+// Upload folders live under ContentRootPath/Data/UploadedMedia; a fresh publish may not contain them yet.
+Homeocentrum.Niga.NewAPI.Domain.Helpers.UploadedMedia.EnsureFolders(
+    app.Environment.ContentRootPath,
+    app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("UploadedMedia"));
 AppFileLog.SendDeployNotice("started");
 app.Lifetime.ApplicationStarted.Register(() => AppFileLog.SendDeployNotice("ready"));
 

@@ -253,6 +253,119 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
         }
 
+        private const int RefreshGraceDays = 7;
+
+        /// <summary>
+        /// DMO-11.02 — swap the current token (still valid, or expired less than 7 days ago) for a new 7-day token.
+        /// Body { token } or Authorization: Bearer. The old token is signed out. Same call for web, patient app and doctor app.
+        /// </summary>
+        [HttpPost("RefreshToken")]
+        [AllowAnonymous]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest? request)
+        {
+            var raw = request?.Token;
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                var header = Request.Headers.Authorization.ToString();
+                if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                    raw = header[7..];
+            }
+            if (string.IsNullOrWhiteSpace(raw))
+                return BadRequest(new { success = false, code = "TOKEN_REQUIRED", message = "Send the current token in the body or the Authorization header." });
+
+            System.Security.Claims.ClaimsPrincipal principal;
+            DateTime expiresUtc;
+            try
+            {
+                var handler = new JwtSecurityTokenHandler();
+                principal = handler.ValidateToken(raw.Trim(), new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+                {
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+                    ValidateLifetime = false,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["TokenKey"]!))
+                }, out var validated);
+                expiresUtc = validated.ValidTo;
+            }
+            catch
+            {
+                return Unauthorized(new { success = false, code = "TOKEN_INVALID", message = "This token is not valid. Sign in again." });
+            }
+
+            if (expiresUtc < DateTime.UtcNow.AddDays(-RefreshGraceDays))
+                return Unauthorized(new { success = false, code = "SESSION_EXPIRED", message = "The session expired more than 7 days ago. Sign in again." });
+            var oldJti = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+            if (_jwtDenylist.IsDenied(oldJti))
+                return Unauthorized(new { success = false, code = "SIGNED_OUT", message = "This session was signed out. Sign in again." });
+
+            var role = principal.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+                ?? principal.FindFirst("RoleName")?.Value
+                ?? string.Empty;
+            if (!long.TryParse(principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var subjectId) || subjectId <= 0)
+                return Unauthorized(new { success = false, code = "TOKEN_INVALID", message = "This token has no user. Sign in again." });
+
+            string token;
+            object user;
+            if (role.Equals("Reception", StringComparison.OrdinalIgnoreCase))
+            {
+                var staff = await _context.DoctorReceptionStaffs.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.ReceptionStaffId == subjectId && !s.DeleteStatus && s.IsActive);
+                if (staff == null)
+                    return Unauthorized(new { success = false, code = "ACCOUNT_INACTIVE", message = "This reception login is no longer active." });
+                var doctorUserId = await _context.Doctors.AsNoTracking()
+                    .Where(d => d.DoctorId == staff.DoctorId && !d.DeleteStatus)
+                    .Select(d => d.UserId)
+                    .FirstOrDefaultAsync();
+                token = await _tokenService.CreateReceptionStaffToken(
+                    staff.ReceptionStaffId, staff.UserId, staff.DoctorId, staff.FullName,
+                    7 * 24 * 60, roleId: null, roleName: "Reception", doctorUserId: doctorUserId);
+                user = new { userId = staff.ReceptionStaffId, userName = staff.FullName, role = "Reception", doctorId = staff.DoctorId };
+            }
+            else
+            {
+                var userEntity = await _context.UserMasters.AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.UserId == subjectId && !u.DeleteStatus);
+                if (userEntity == null)
+                    return Unauthorized(new { success = false, code = "ACCOUNT_INACTIVE", message = "This account no longer exists." });
+                if (userEntity.IsUserActivated != true && !userEntity.UserStatus)
+                    return Unauthorized(new { success = false, code = "ACCOUNT_INACTIVE", message = "Account is deactivated. Please contact administrator." });
+                var roleName = await _context.RoleMasters.AsNoTracking()
+                    .Where(r => r.RoleId == userEntity.RoleId && !r.DeleteStatus)
+                    .Select(r => r.RoleName)
+                    .FirstOrDefaultAsync();
+                if (string.IsNullOrWhiteSpace(roleName))
+                    return Unauthorized(new { success = false, code = "ACCOUNT_INACTIVE", message = "User role not found." });
+                var doctorId = await _context.Doctors.AsNoTracking()
+                    .Where(d => d.UserId == userEntity.UserId && !d.DeleteStatus)
+                    .Select(d => (int?)d.DoctorId)
+                    .FirstOrDefaultAsync();
+                token = await _tokenService.CreateToken(userEntity, 7 * 24 * 60, roleName, doctorId);
+                user = new
+                {
+                    userId = userEntity.UserId,
+                    userName = userEntity.UserName,
+                    firstName = userEntity.FirstName,
+                    lastName = userEntity.LastName,
+                    role = roleName,
+                    roleId = userEntity.RoleId,
+                    doctorId
+                };
+            }
+
+            if (!string.IsNullOrEmpty(oldJti))
+                _jwtDenylist.Deny(oldJti, expiresUtc.AddDays(RefreshGraceDays));
+
+            return Ok(new
+            {
+                success = true,
+                message = "Session refreshed.",
+                token,
+                expiresAt = DateTime.Now.AddMinutes(7 * 24 * 60),
+                user
+            });
+        }
+
         /// <summary>Lists every non-deleted login that shares this email or username, so the user can pick a role.</summary>
         [HttpPost("ForgotPasswordAccounts")]
         [AllowAnonymous]
@@ -587,7 +700,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
         }
 
-        /// <summary>PAT-03.02 — Phone + OTP → JWT (web login stays classic password).</summary>
+        /// <summary>Doctor phone + OTP login. Mobile is matched on Doctor only.</summary>
         [HttpPost("LoginWithOtp")]
         [AllowAnonymous]
         public async Task<IActionResult> LoginWithOtp([FromBody] LoginWithOtpRequest request)
@@ -652,15 +765,19 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 challenge.VerifiedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
-                var users = await _context.UserMasters
-                    .Where(u => !u.DeleteStatus && u.MobileNo != null)
-                    .ToListAsync();
-                var userEntity = users.FirstOrDefault(u => PhoneNormalizer.EqualsNormalized(u.MobileNo, mobile));
+                var userEntity = await FindLoginUserByRoleTableAsync(mobile);
                 if (userEntity == null)
-                    return Unauthorized(new { success = false, message = "No account for this mobile number." });
+                {
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "No account for this mobile number.",
+                        isUserAlreadyRegistered = false
+                    });
+                }
 
-                if (userEntity.IsUserActivated != true)
-                    return Unauthorized(new { success = false, message = "Account is deactivated. Please contact administrator." });
+                if (userEntity.IsUserActivated != true && userEntity.UserStatus != true)
+                    return Unauthorized(new { success = false, message = "Account is deactivated. Please contact administrator.", isUserAlreadyRegistered = true });
 
                 var roleEntity = await _context.RoleMasters
                     .FirstOrDefaultAsync(x => x.RoleId == userEntity.RoleId);
@@ -674,24 +791,47 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     doctorId = doctorEntity.DoctorId;
 
                 var token = await _tokenService.CreateToken(userEntity, 7 * 24 * 60, roleEntity.RoleName, doctorId);
-                var userData = new AuthModel
-                {
-                    IsSuperUser = roleEntity.RoleId == 1,
-                    UserId = userEntity.UserId,
-                    UserName = $"{userEntity.FirstName} {userEntity.LastName}".Trim(),
-                    Role = roleEntity.RoleName,
-                    RoleId = userEntity.RoleId,
-                    FirmIds = userEntity.FirmIds,
-                    Token = token,
-                    DoctorId = doctorId
-                };
 
-                return Ok(new { success = true, message = "Login successful", data = userData });
+                return Ok(new
+                {
+                    success = true,
+                    message = "Login successful",
+                    isUserAlreadyRegistered = true,
+                    token,
+                    user = new
+                    {
+                        userId = userEntity.UserId,
+                        userName = userEntity.UserName,
+                        firstName = userEntity.FirstName,
+                        lastName = userEntity.LastName,
+                        email = userEntity.EmailId,
+                        mobileNo = mobile,
+                        role = roleEntity.RoleName,
+                        roleId = userEntity.RoleId,
+                        doctorId,
+                        activated = userEntity.IsUserActivated == true
+                    }
+                });
             }
             catch (Exception ex)
             {
                 return StatusCode(500, new { success = false, message = ex.Message });
             }
+        }
+
+        /// <summary>Doctor OTP login matches Doctor.MobileNo only.</summary>
+        private async Task<UserMaster?> FindLoginUserByRoleTableAsync(string digits)
+        {
+            var doctors = await _context.Doctors.AsNoTracking()
+                .Where(d => !d.DeleteStatus && d.MobileNo != null && d.UserId != null)
+                .Select(d => new { d.UserId, d.MobileNo })
+                .ToListAsync();
+            var doctor = doctors.FirstOrDefault(d => PhoneNormalizer.EqualsNormalized(d.MobileNo, digits));
+            if (doctor?.UserId == null)
+                return null;
+
+            return await _context.UserMasters
+                .FirstOrDefaultAsync(u => u.UserId == doctor.UserId.Value && !u.DeleteStatus);
         }
 
         /// <summary>DMO-02.02 — Confirm entered number matches UserMaster / Doctor profile.</summary>
@@ -947,5 +1087,10 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
             return token.Split('&', '#')[0].Trim();
         }
+    }
+
+    public class RefreshTokenRequest
+    {
+        public string? Token { get; set; }
     }
 }

@@ -118,6 +118,22 @@ public partial class S4Week4Service
         public long? SettlementRunId { get; set; }
     }
 
+    private sealed class PayoutListRow
+    {
+        public long PayoutId { get; set; }
+        public string PayeeType { get; set; } = "";
+        public int PayeeId { get; set; }
+        public string? PayeeName { get; set; }
+        public decimal Amount { get; set; }
+        public string Status { get; set; } = "";
+        public long? SettlementRunId { get; set; }
+        public string? RejectReason { get; set; }
+        public long? DecidedBy { get; set; }
+        public string? DecidedByName { get; set; }
+        public DateTime? DecidedAt { get; set; }
+        public DateTime? CreatedAt { get; set; }
+    }
+
     private sealed class ExceptionRow
     {
         public long PaymentExceptionId { get; set; }
@@ -158,6 +174,41 @@ public partial class S4Week4Service
         public bool ConsentGranted { get; set; }
         public decimal? QuoteAmount { get; set; }
         public string? PayMode { get; set; }
+    }
+
+    private sealed class PatientVisitRow
+    {
+        public int PatientAppId { get; set; }
+        public DateTime? AppointmentDate { get; set; }
+        public string? AppointmentTime { get; set; }
+        public string? Status { get; set; }
+        public string? ConsultMode { get; set; }
+        public bool IsTele { get; set; }
+        public int? DoctorId { get; set; }
+        public string? DoctorName { get; set; }
+        public int? TeleSessionId { get; set; }
+        public string? SessionStatus { get; set; }
+        public int ChatCount { get; set; }
+        public bool HasSummary { get; set; }
+    }
+
+    private sealed class PharmacyQueueRow
+    {
+        public int MedicineOrderId { get; set; }
+        public int ErxSnapshotId { get; set; }
+        public int PatientId { get; set; }
+        public int? PharmacyPartnerId { get; set; }
+        public string? PharmacyName { get; set; }
+        public string Status { get; set; } = "";
+        public bool ConsentGranted { get; set; }
+        public decimal? QuoteAmount { get; set; }
+        public string? PayMode { get; set; }
+        public DateTime? CreatedAt { get; set; }
+        public int ItemCount { get; set; }
+        public DateTime? LastEventAt { get; set; }
+        public string? PatientName { get; set; }
+        public string? PatientMobile { get; set; }
+        public string? PatientAddress { get; set; }
     }
 
     private sealed class OpenLedgerRow

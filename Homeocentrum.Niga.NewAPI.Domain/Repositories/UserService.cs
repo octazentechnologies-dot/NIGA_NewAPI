@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
+using Homeocentrum.Niga.NewAPI.Domain.Logging;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
@@ -122,7 +123,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             });
             _context.SaveChanges();
 
-            TrySendActivationEmail(userEntity, rawToken, smtpSettingsModel);
+            var (mailSent, mailError) = TrySendActivationEmail(userEntity, rawToken, smtpSettingsModel);
+            if (!mailSent)
+            {
+                AppFileLog.Write("errors", "WARN", "RegisterDoctor", "Activation email was not sent. " + (mailError ?? "No SMTP error text."), null);
+                return "Registration saved, but the activation email was not sent. " +
+                    (string.IsNullOrWhiteSpace(mailError) ? "The mail server did not accept the message." : mailError);
+            }
 
             return "Registration successful. Check your email to activate the account. Directory listing stays pending until verification.";
         }
@@ -321,8 +328,20 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             userEntity.ActivationExpiresAt = DateTime.UtcNow.AddHours(48);
             userEntity.ChangedDate = DateTime.Now;
             _context.SaveChanges();
-            TrySendActivationEmail(userEntity, rawToken, smtpSettingsModel);
-            return new { success = true, message = "If the account exists and is not activated, an email was sent." };
+            var (mailSent, mailError) = TrySendActivationEmail(userEntity, rawToken, smtpSettingsModel);
+            if (!mailSent)
+            {
+                AppFileLog.Write("errors", "WARN", "ResendActivation", "Activation email was not sent. " + (mailError ?? "No SMTP error text."), null);
+                return new
+                {
+                    success = true,
+                    mailSent = false,
+                    message = "The account is not activated, and the activation email was not sent. " +
+                        (string.IsNullOrWhiteSpace(mailError) ? "The mail server did not accept the message." : mailError)
+                };
+            }
+
+            return new { success = true, mailSent = true, message = "If the account exists and is not activated, an email was sent." };
         }
 
         public int GetCount(ref ErrorResponseModel errorResponseModel)
@@ -416,7 +435,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             }
         }
 
-        private void TrySendActivationEmail(UserMaster userEntity, string rawToken, SmtpSettingsModel smtpSettingsModel)
+        private (bool sent, string error) TrySendActivationEmail(UserMaster userEntity, string rawToken, SmtpSettingsModel smtpSettingsModel)
         {
             try
             {
@@ -448,11 +467,12 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                     Subject = "Activate your Homeocentrum account"
                 };
 
-                _emailSenderService.SendMail(emailSenderModel, smtpSettingsModel);
+                var sent = _emailSenderService.SendMail(emailSenderModel, smtpSettingsModel);
+                return (sent, sent ? null : _emailSenderService.LastError);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Activation email is best-effort.
+                return (false, ex.GetBaseException().Message);
             }
         }
 

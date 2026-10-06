@@ -174,12 +174,23 @@ public partial class S4Week4Service
     {
         var deny = AccountOnly(caller);
         if (deny != null) return deny;
-        var rows = await _context.Database.SqlQuery<PayoutRow>($@"
-            SELECT PayoutId, PayeeType, PayeeId, Amount, Status, SettlementRunId
-            FROM dbo.Payout
-            ORDER BY PayoutId DESC").ToListAsync();
+        var rows = await _context.Database.SqlQuery<PayoutListRow>($@"
+            SELECT p.PayoutId, p.PayeeType, p.PayeeId, p.Amount, p.Status, p.SettlementRunId,
+                   p.RejectReason, p.DecidedBy, p.DecidedAt, p.CreatedAt,
+                   CASE WHEN d.DoctorID IS NOT NULL
+                        THEN LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName)))
+                        ELSE ph.Name END AS PayeeName,
+                   u.UserName AS DecidedByName
+            FROM dbo.Payout p
+            LEFT JOIN dbo.Doctor d ON p.PayeeType = N'Doctor' AND d.DoctorID = p.PayeeId
+            LEFT JOIN dbo.PharmacyPartner ph ON p.PayeeType = N'Pharmacy' AND ph.PharmacyPartnerId = p.PayeeId
+            LEFT JOIN dbo.UserMaster u ON u.UserId = p.DecidedBy
+            ORDER BY p.PayoutId DESC").ToListAsync();
         return Ok(new { success = true, data = rows });
     }
+
+    private const int PayoutOtpResendSeconds = 30;
+    private const int PayoutOtpTtlMinutes = 10;
 
     public async Task<S4ActionResult> RequestPayoutOtpAsync(long payoutId, S4Caller caller)
     {
@@ -188,9 +199,63 @@ public partial class S4Week4Service
         var payout = await LoadPayoutAsync(payoutId);
         if (payout == null) return Fail(404, "NOT_FOUND", "Payout not found.");
         if (!string.Equals(payout.Status, "PENDING", StringComparison.OrdinalIgnoreCase))
-            return Fail(409, "CONFLICT", "Only a pending payout can be approved.");
-        var code = await IssueOtpAsync("PayoutApprove", "Payout", payoutId.ToString(), caller.UserId);
-        return Ok(new { success = true, message = "OTP created for payout approval.", devCode = code });
+            return Fail(409, "CONFLICT", $"Payout is already {payout.Status}. OTP is only for a pending payout.");
+
+        var entityId = payoutId.ToString();
+        var last = await _context.OtpChallenges.AsNoTracking()
+            .Where(c => c.Action == "PayoutApprove" && c.EntityType == "Payout" && c.EntityId == entityId && c.VerifiedAt == null)
+            .OrderByDescending(c => c.CreatedAt)
+            .FirstOrDefaultAsync();
+        if (last != null)
+        {
+            var wait = PayoutOtpResendSeconds - (int)(DateTime.UtcNow - last.CreatedAt).TotalSeconds;
+            if (wait > 0)
+                return Fail(429, "OTP_COOLDOWN", $"OTP was just sent. Wait {wait} seconds before asking again.");
+            if (last.LockedUntil != null && last.LockedUntil > DateTime.UtcNow)
+                return Fail(429, "OTP_LOCKED", "Too many wrong OTP attempts on this payout. Try again in 15 minutes.");
+        }
+
+        var user = await _context.UserMasters.AsNoTracking()
+            .Where(u => u.UserId == caller.UserId)
+            .Select(u => new { u.EmailId, u.MobileNo })
+            .FirstOrDefaultAsync();
+        var code = await IssueOtpAsync("PayoutApprove", "Payout", entityId, caller.UserId);
+        var amountText = payout.Amount.ToString("0.00", CultureInfo.InvariantCulture);
+        var text = $"Homeocentrum payout #{payoutId} approval code: {code}. Amount INR {amountText}. Valid {PayoutOtpTtlMinutes} minutes. Do not share.";
+
+        var channels = new List<string>();
+        var delivered = false;
+        if (!string.IsNullOrWhiteSpace(user?.EmailId) && user.EmailId.Contains('@'))
+        {
+            var status = TrySendReceipt(user.EmailId.Trim(), $"Payout #{payoutId} approval code", text);
+            delivered = status == "SENT";
+            channels.Add("email " + MaskOtpDestination(user.EmailId));
+        }
+        if (!string.IsNullOrWhiteSpace(user?.MobileNo))
+        {
+            await _outbox.EnqueueAsync("SMS", "PayoutApproveOtp", user.MobileNo.Trim(), text, "QUEUED");
+            channels.Add("SMS " + MaskOtpDestination(user.MobileNo));
+        }
+
+        var sentTo = channels.Count == 0 ? "no email or mobile on your user" : string.Join(" and ", channels);
+        return Ok(new
+        {
+            success = true,
+            message = delivered ? $"OTP sent to {sentTo}." : $"OTP created. Delivery to {sentTo} did not confirm; use the code shown.",
+            delivered,
+            sentTo,
+            expiresInMinutes = PayoutOtpTtlMinutes,
+            resendAfterSeconds = PayoutOtpResendSeconds,
+            devCode = code
+        });
+    }
+
+    private static string MaskOtpDestination(string value)
+    {
+        var d = value.Trim();
+        var at = d.IndexOf('@');
+        if (at > 0) return (at <= 1 ? "***" : d[0] + "***") + d[at..];
+        return d.Length <= 4 ? "****" : new string('*', d.Length - 4) + d[^4..];
     }
 
     public async Task<S4ActionResult> ApprovePayoutAsync(long payoutId, PayoutDecisionRequest request, S4Caller caller)
@@ -404,16 +469,19 @@ public partial class S4Week4Service
     }
 
     /// <summary>DMO-10.02 — doctor (or admin) earnings summary for own clinic.</summary>
-    public async Task<S4ActionResult> EarningsSummaryAsync(DateTime? from, DateTime? to, S4Caller caller)
+    public async Task<S4ActionResult> EarningsSummaryAsync(DateTime? from, DateTime? to, S4Caller caller, int? doctorFilter = null)
     {
         if (!caller.IsDoctor && !caller.IsAdmin && !caller.IsReception && !caller.IsAccount)
             return Fail(403, "FORBIDDEN", "Only clinic or account staff can view earnings summary.");
-        if (!caller.IsAdmin && (!caller.DoctorId.HasValue || caller.DoctorId.Value <= 0))
+        var platformWide = caller.IsAdmin || caller.IsAccount;
+        if (!platformWide && (!caller.DoctorId.HasValue || caller.DoctorId.Value <= 0))
             return Fail(403, "FORBIDDEN", "Doctor context is required.");
 
         var range = DateRange(from, to, out var start, out var end);
         if (range != null) return range;
-        var doctorId = caller.IsAdmin && caller.DoctorId is null or <= 0 ? 0 : (caller.DoctorId ?? 0);
+        var doctorId = platformWide
+            ? (doctorFilter is > 0 ? doctorFilter.Value : 0)
+            : caller.DoctorId!.Value;
 
         var rows = await _context.Database.SqlQuery<OrderRow>($@"
             SELECT PaymentOrderId, Stream, PatientAppId, MedicineOrderId, DoctorId, PatientId, Amount, Currency,
@@ -425,16 +493,42 @@ public partial class S4Week4Service
               AND ({doctorId} = 0 OR DoctorId = {doctorId})
             ORDER BY CreatedAt DESC").ToListAsync();
 
-        var online = rows.Where(r => string.Equals(r.Method, "ONLINE", StringComparison.OrdinalIgnoreCase)).Sum(r => r.Amount);
-        var clinic = rows.Where(r =>
-            r.Status == "COLLECTED" ||
-            r.Method is "CASH" or "UPI_OFFLINE" or "CARD_POS").Sum(r => r.Amount);
+        static bool IsClinic(OrderRow r) => r.Status == "COLLECTED" || r.Method is "CASH" or "UPI_OFFLINE" or "CARD_POS";
+        var clinic = rows.Where(IsClinic).Sum(r => r.Amount);
+        var online = rows.Where(r => !IsClinic(r)).Sum(r => r.Amount);
         var pendingPayouts = await _context.Database.SqlQuery<MoneyRow>($@"
             SELECT CAST(ISNULL(SUM(Amount), 0) AS decimal(18,2)) AS Value
             FROM dbo.Payout
             WHERE Status = N'PENDING'
               AND PayeeType = N'Doctor'
               AND ({doctorId} = 0 OR PayeeId = {doctorId})").FirstAsync();
+
+        object? byDoctor = null;
+        if (platformWide)
+        {
+            var ids = rows.Where(r => r.DoctorId.HasValue).Select(r => r.DoctorId!.Value).Distinct().ToList();
+            var names = await _context.Doctors.AsNoTracking()
+                .Where(d => ids.Contains(d.DoctorId))
+                .Select(d => new { d.DoctorId, d.FirstName, d.LastName })
+                .ToListAsync();
+            byDoctor = rows.Where(r => r.DoctorId.HasValue)
+                .GroupBy(r => r.DoctorId!.Value)
+                .Select(g =>
+                {
+                    var n = names.FirstOrDefault(x => x.DoctorId == g.Key);
+                    return new
+                    {
+                        doctorId = g.Key,
+                        doctorName = n == null ? $"Doctor {g.Key}" : $"Dr. {n.FirstName} {n.LastName}".Trim(),
+                        visitCount = g.Count(),
+                        totalCaptured = g.Sum(r => r.Amount),
+                        onlineCaptured = g.Where(r => !IsClinic(r)).Sum(r => r.Amount),
+                        clinicCollected = g.Where(IsClinic).Sum(r => r.Amount)
+                    };
+                })
+                .OrderByDescending(x => x.totalCaptured)
+                .ToList();
+        }
 
         return Ok(new
         {
@@ -450,6 +544,7 @@ public partial class S4Week4Service
                 clinicCollected = clinic,
                 pendingPayoutAmount = pendingPayouts.Value,
                 currency = rows.FirstOrDefault()?.Currency ?? "INR",
+                byDoctor,
                 recent = rows.Take(20)
             }
         });
