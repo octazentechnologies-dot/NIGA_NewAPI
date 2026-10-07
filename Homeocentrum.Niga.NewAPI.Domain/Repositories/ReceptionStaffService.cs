@@ -62,7 +62,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             var entity = _mapper.Map<DoctorReceptionStaff>(request);
             entity.DoctorId = doctor.DoctorId;
             entity.UserId = request.UserID.Trim();
-            entity.Password = EncodePassword(request.Password);
+            entity.Password = ReceptionStaffPasswordHelper.HashPassword(request.Password);
             entity.FullName = request.FullName.Trim();
             entity.ContactNumber = request.ContactNumber.Trim();
             entity.EmailId = string.IsNullOrWhiteSpace(request.EmailId) ? null : request.EmailId.Trim();
@@ -211,6 +211,18 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 return null;
             }
 
+            if (ReceptionStaffPasswordHelper.NeedsRehash(entity.Password))
+            {
+                entity.Password = ReceptionStaffPasswordHelper.HashPassword(password);
+                _repository.UpdateReceptionStaff(entity);
+                if (!await _repository.SaveAllAsync())
+                {
+                    _logger.LogWarning(
+                        "Reception staff password upgrade to PBKDF2 failed. ReceptionStaffID={ReceptionStaffId}",
+                        entity.ReceptionStaffId);
+                }
+            }
+
             var doctor = await _repository.GetActiveDoctorByDoctorIdAsync(entity.DoctorId);
             var token = await _tokenService.CreateReceptionStaffToken(
                 entity.ReceptionStaffId,
@@ -267,11 +279,5 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
 
             return null;
         }
-
-        private static string EncodePassword(string password)
-        {
-            return CommonMethods.Encoding(password);
-        }
-
     }
 }

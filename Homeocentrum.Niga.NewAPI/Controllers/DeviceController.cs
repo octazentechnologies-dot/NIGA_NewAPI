@@ -47,12 +47,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "DevicePushToken table missing. Run 04_S1_Week1_Mobile_Menus_And_Prefs.sql.",
-                    detail = ex.Message
-                });
+                return this.ServerError(ex);
             }
 
             if (row == null)
@@ -118,12 +113,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "DevicePushToken table missing. Run 04_S1_Week1_Mobile_Menus_And_Prefs.sql.",
-                    detail = ex.Message
-                });
+                return this.ServerError(ex);
             }
 
             if (row == null)
@@ -150,7 +140,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, message = ex.Message });
+                return this.ServerError(ex);
             }
         }
     }

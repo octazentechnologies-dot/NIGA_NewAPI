@@ -18,8 +18,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
 
         public SignedFileUrlService(IConfiguration configuration)
         {
-            var key = configuration["TokenKey"] ?? "NigaHomeoSignedFileFallbackKey";
-            _key = Encoding.UTF8.GetBytes(key);
+            _key = Homeocentrum.Niga.NewAPI.Domain.Security.JwtSettings.SigningKey(configuration).Key;
         }
 
         public string Sign(string root, string relativePath, DateTime expiresAtUtc)

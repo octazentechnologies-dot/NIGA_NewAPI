@@ -421,6 +421,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
 
     public virtual DbSet<ConsentRecord> ConsentRecords { get; set; }
 
+    public virtual DbSet<ConsentNotice> ConsentNotices { get; set; }
+
     public virtual DbSet<OtpChallenge> OtpChallenges { get; set; }
 
     public virtual DbSet<OtpAuditLog> OtpAuditLogs { get; set; }
@@ -3312,6 +3314,39 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_ConsentRecord_ConsentType");
             entity.HasIndex(e => new { e.SubjectType, e.SubjectId });
+            entity.Property(e => e.NoticeVersion).HasMaxLength(20);
+            entity.Property(e => e.NoticeLanguage).HasMaxLength(10);
+            entity.Property(e => e.NoticeSha256).HasMaxLength(64).IsFixedLength().IsUnicode(false);
+            entity.Property(e => e.GuardianName).HasMaxLength(150);
+            entity.Property(e => e.GuardianRelationship).HasMaxLength(50);
+            entity.Property(e => e.GuardianVerificationMethod).HasMaxLength(30);
+            entity.Property(e => e.GuardianVerificationRef).HasMaxLength(100);
+            entity.Property(e => e.GuardianMobileMasked).HasMaxLength(30);
+            entity.HasOne(d => d.ConsentNotice).WithMany()
+                .HasForeignKey(d => d.ConsentNoticeId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ConsentRecord_ConsentNotice");
+        });
+
+        modelBuilder.Entity<ConsentNotice>(entity =>
+        {
+            entity.HasKey(e => e.ConsentNoticeId);
+            entity.ToTable("ConsentNotice", tb =>
+            {
+                tb.HasTrigger("TR_ConsentNotice_NoDelete");
+                tb.HasTrigger("TR_ConsentNotice_TextImmutable");
+            });
+            entity.Property(e => e.Version).HasMaxLength(20);
+            entity.Property(e => e.Language).HasMaxLength(10);
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.BodySha256).HasMaxLength(64).IsFixedLength().IsUnicode(false);
+            entity.Property(e => e.EffectiveFrom).HasColumnType("datetime2(0)");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime2(0)");
+            entity.HasIndex(e => new { e.ConsentTypeId, e.Version, e.Language }).IsUnique();
+            entity.HasOne(d => d.ConsentType).WithMany(p => p.ConsentNotices)
+                .HasForeignKey(d => d.ConsentTypeId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ConsentNotice_ConsentType");
         });
 
         modelBuilder.Entity<OtpChallenge>(entity =>
@@ -3488,7 +3523,34 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
                 }
             }
             OnBeforeSaveChanges(userId);
+            await StampConsentNoticesAsync(cancellationToken);
             return await base.SaveChangesAsync(cancellationToken);
+        }
+
+        /// <summary>Every new consent records the notice it was given against (current English version unless the caller set one).</summary>
+        private async Task StampConsentNoticesAsync(CancellationToken cancellationToken)
+        {
+            var unstamped = ChangeTracker.Entries<ConsentRecord>()
+                .Where(e => e.State == EntityState.Added && e.Entity.ConsentNoticeId == null)
+                .Select(e => e.Entity)
+                .ToList();
+            if (unstamped.Count == 0)
+                return;
+
+            var typeIds = unstamped.Select(r => r.ConsentTypeId).Distinct().ToList();
+            var notices = await ConsentNotices.AsNoTracking()
+                .Where(n => typeIds.Contains(n.ConsentTypeId) && n.IsCurrent && n.Language == "en")
+                .ToListAsync(cancellationToken);
+            foreach (var record in unstamped)
+            {
+                var notice = notices.FirstOrDefault(n => n.ConsentTypeId == record.ConsentTypeId);
+                if (notice == null)
+                    continue;
+                record.ConsentNoticeId = notice.ConsentNoticeId;
+                record.NoticeVersion = notice.Version;
+                record.NoticeLanguage = notice.Language;
+                record.NoticeSha256 = notice.BodySha256;
+            }
         }
 
         private void OnBeforeSaveChanges(int userId)

@@ -1,0 +1,53 @@
+title = "Homeocentrum secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "razorpay-key-id"
+description = "Razorpay API key id"
+regex = '''rzp_(live|test)_[A-Za-z0-9]{10,}'''
+keywords = ["rzp_live_", "rzp_test_"]
+
+[[rules]]
+id = "razorpay-basic-auth-pair"
+description = "Razorpay key id and secret joined for HTTP basic auth"
+regex = '''rzp_(live|test)_[A-Za-z0-9]{10,}:[A-Za-z0-9]{16,}'''
+keywords = ["rzp_live_", "rzp_test_"]
+
+[[rules]]
+id = "jwt-signing-key-setting"
+description = "JWT signing key in configuration (TokenKey / JWT:Secret)"
+regex = '''(?i)"(TokenKey|Secret|SigningKey)"\s*:\s*"([^"]{16,})"'''
+secretGroup = 2
+keywords = ["tokenkey", "secret", "signingkey"]
+
+[[rules]]
+id = "sql-connection-string-password"
+description = "Password inside a SQL Server connection string"
+regex = '''(?i)(password|pwd)\s*=\s*([^;"'\s]{4,})'''
+secretGroup = 2
+keywords = ["password=", "pwd="]
+
+[[rules]]
+id = "smtp-or-mail-password-setting"
+description = "Mail / SMTP password in configuration"
+regex = '''(?i)"(MailPassword|SmtpPassword|EmailPassword|Password)"\s*:\s*"([^"]{4,})"'''
+secretGroup = 2
+keywords = ["password"]
+
+[allowlist]
+description = "Build output, dependencies and test fixtures"
+paths = [
+  '''(^|/)(bin|obj|node_modules|build|dist|packages|\.vs)/''',
+  '''(^|/)package-lock\.json$''',
+  '''\.min\.js$''',
+  '''(^|/)Logs?/''',
+  '''(^|/)__pycache__/''',
+  '''(^|/)[^/]*\.Tests/Security/[^/]+\.cs$''',
+]
+regexTarget = "match"
+regexes = [
+  '''(?i)password\s*=\s*(\{[^}]*\}|\$\{[^}]*\}|<[^>]*>|\*+|xxx+|your[_-]?password|changeme|placeholder|\$env:[A-Za-z_]+|process\.env\.[A-Za-z_]+)''',
+  '''(?i)"(password|secret|tokenkey)"\s*:\s*"(\{[^}]*\}|\$\{[^}]*\}|<[^>]*>|\*+|xxx+|changeme|placeholder|set-in-environment)"''',
+]

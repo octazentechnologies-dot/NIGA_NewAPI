@@ -127,6 +127,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     model.UserId = doctorUserId.Value;
                 }
 
+                if (!isCreate && !await CanAccessPatientByIdAsync(model.PatientID))
+                    return PatientForbidden();
+
                 var userModel = await _patientService.SavePatient(model);
                 if (
                     !string.IsNullOrEmpty(userModel.Message)
@@ -134,7 +137,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 )
                 {
                     await AttachTokenForExistingMobileAsync(userModel);
-                    if (string.IsNullOrEmpty(userModel.Token) && isCreate && isMobile)
+                    if (userModel.IsUserAlreadyRegistered != true && isCreate && isMobile)
                         await CreatePatientLoginAsync(userModel);
                     return Ok(userModel);
                 }
@@ -149,7 +152,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
 
         }
@@ -181,7 +184,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -194,12 +197,14 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [HttpPost]
         [Route("SaveComplaints")]
         [DoctorOnly]
-        public IActionResult SaveComplaints(PatientModel model)
+        public async Task<IActionResult> SaveComplaints(PatientModel model)
         {
             if (model == null || !ModelState.IsValid)
             {
                 return BadRequest("Invalid request, please verify details");
             }
+            if (!await CanAccessPatientByIdAsync(model.PatientID))
+                return PatientForbidden();
             try
             {
                 var errorMessage = new ErrorResponseModel();
@@ -213,7 +218,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
 
         }
@@ -230,9 +235,11 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetPatientDetailsById(long patientId)
+        public async Task<IActionResult> GetPatientDetailsById(long patientId)
         {
             ErrorResponseModel errorResponseModel = null;
+            if (!await CanAccessPatientByIdAsync((int)patientId))
+                return PatientForbidden();
             try
             {
                 var patientModel = _patientService.GetPatientDetailsById(patientId, ref errorResponseModel);
@@ -245,7 +252,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -261,9 +268,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult Deletepatient(int patientId)
+        [DoctorOnly]
+        public async Task<IActionResult> Deletepatient(int patientId)
         {
             ErrorResponseModel errorResponseModel = null;
+            if (!await CanAccessPatientByIdAsync(patientId))
+                return PatientForbidden();
             try
             {
                 var newsModel = _patientService.Deletepatient(patientId, ref errorResponseModel);
@@ -278,7 +288,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -289,9 +299,25 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult SaveCaseDetails(List<CaseDetailsModel> casedetailsModel)
+        public async Task<IActionResult> SaveCaseDetails(List<CaseDetailsModel> casedetailsModel)
         {
             ErrorResponseModel errorResponseModel = null;
+            var caseIds = (casedetailsModel ?? new List<CaseDetailsModel>())
+                .Where(c => c.CaseId.HasValue && c.CaseId.Value > 0)
+                .Select(c => c.CaseId!.Value)
+                .Distinct()
+                .ToList();
+            var cases = await _context.CaseEntryDetails.AsNoTracking()
+                .Where(c => caseIds.Contains(c.CaseId))
+                .Select(c => new { c.CaseId, c.PatientId, c.DoctorId })
+                .ToListAsync();
+            if (cases.Count != caseIds.Count)
+                return PatientForbidden();
+            foreach (var caseRow in cases)
+            {
+                if (!await CanAccessPatientAsync(caseRow.PatientId, caseRow.DoctorId))
+                    return PatientForbidden();
+            }
             try
             {
                 var remedyModel = _patientService.SaveCaseDetails(casedetailsModel, ref errorResponseModel);
@@ -304,7 +330,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -362,6 +388,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         /// <summary>CLN-18.01 — clinical case PDF (doctor copy).</summary>
+        [SecurityAudit(SecurityAuditEvents.PatientDataExport)]
         [HttpGet("ExportCaseToPdf/{patientId}/{caseId}")]
         [DoctorOnly]
         public async Task<IActionResult> ExportCaseToPdf(int patientId, int caseId)
@@ -421,14 +448,20 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         [HttpGet("getAllCases")]
-        public async Task<List<PatientModel>> getAllCases([FromQuery] ParameterParams parameterParams)
+        public async Task<ActionResult<List<PatientModel>>> getAllCases([FromQuery] ParameterParams parameterParams)
         {
+            parameterParams ??= new ParameterParams();
+            if (!parameterParams.UserId.HasValue || parameterParams.UserId.Value <= 0)
+                parameterParams.UserId = DoctorOwnership.GetDoctorUserId(User) ?? User.GetUserId();
+            if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, parameterParams.UserId.Value))
+                return PatientForbidden();
             var sectionList = await _patientService.getAllCases(parameterParams);
             Response.AddPaginationHeader(sectionList.CurrentPage, sectionList.PageSize,
                     sectionList.TotalCount, sectionList.TotalPages);
             return sectionList;
         }
 
+        [SecurityAudit(SecurityAuditEvents.PatientDataExport)]
         [HttpGet("ExportCasesToExcel")]
         [DoctorOnly]
         public async Task<IActionResult> ExportCasesToExcel([FromQuery] ParameterParams parameterParams)
@@ -516,7 +549,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -577,8 +610,25 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
+        }
+
+        private ObjectResult PatientForbidden()
+            => StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
+
+        /// <summary>Owner check when only the patient id is known: resolves the clinic doctor from the case row.</summary>
+        private async Task<bool> CanAccessPatientByIdAsync(int patientId)
+        {
+            if (patientId <= 0)
+                return false;
+            if (DoctorOwnership.IsGlobalAdminPortalUser(User))
+                return true;
+            var doctorId = await _context.CaseEntryDetails.AsNoTracking()
+                .Where(c => c.PatientId == patientId && c.DeleteStatus != true)
+                .Select(c => (int?)c.DoctorId)
+                .FirstOrDefaultAsync();
+            return await CanAccessPatientAsync(patientId, doctorId ?? 0);
         }
 
         private async Task<bool> CanAccessPatientAsync(int patientId, int resourceDoctorId)
@@ -668,25 +718,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             if (user == null || user.IsUserActivated != true)
                 return;
 
-            var roleName = await _context.RoleMasters.AsNoTracking()
-                .Where(r => r.RoleId == user.RoleId && !r.DeleteStatus)
-                .Select(r => r.RoleName)
-                .FirstOrDefaultAsync();
-            if (string.IsNullOrWhiteSpace(roleName))
-                return;
-
-            int? doctorId = await _context.Doctors.AsNoTracking()
-                .Where(d => d.UserId == user.UserId && !d.DeleteStatus)
-                .Select(d => (int?)d.DoctorId)
-                .FirstOrDefaultAsync();
-
-            model.Token = await _tokenService.CreateToken(user, 7 * 24 * 60, roleName, doctorId);
+            // Knowing a mobile number is not proof of owning it: the caller signs in by OTP instead.
             model.IsUserAlreadyRegistered = true;
         }
 
         /// <summary>
         /// Mobile create with no existing login: add a Patient login for this mobile, link it to the new
-        /// patient as primary, and return its token. Password is random; the app signs in again by OTP.
+        /// patient as primary. No token is returned; the app signs in by OTP. Password is random.
         /// </summary>
         private async Task CreatePatientLoginAsync(PatientModel model)
         {
@@ -741,7 +779,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             await _context.SaveChangesAsync();
 
             model.UserId = (int)user.UserId;
-            model.Token = await _tokenService.CreateToken(user, 7 * 24 * 60, "Patient", null);
             model.IsUserAlreadyRegistered = false;
         }
 

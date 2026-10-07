@@ -33,8 +33,11 @@ builder.WebHost.ConfigureKestrel(options =>
     options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(30);
 });
 
+// Nothing goes to the console. Logs are written by AppFileLoggerProvider under Logs/ (redacted).
+builder.Logging.ClearProviders();
 builder.Logging.AddFilter<AppFileLoggerProvider>(null, LogLevel.Debug);
 builder.Logging.AddProvider(new AppFileLoggerProvider());
+builder.Services.Configure<ConsoleLifetimeOptions>(options => options.SuppressStatusMessages = true);
 
 ConfigurationManager configuration = builder.Configuration;
 IWebHostEnvironment environment = builder.Environment;
@@ -71,7 +74,11 @@ builder.Services.Configure<GzipCompressionProviderOptions>(options =>
     options.Level = CompressionLevel.Fastest;
 });
 
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+    {
+        options.Filters.Add<SafeServerErrorResultFilter>();
+        options.Filters.AddService<Homeocentrum.Niga.NewAPI.Domain.Security.Uploads.UploadSecurityFilter>();
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new FlexibleTimeOnlyJsonConverter());
@@ -161,7 +168,7 @@ opt.AddSecurityRequirement(new OpenApiSecurityRequirement
 });
 
 builder.Services.AddApplicationServices(configuration) 
-    .AddCorsPolicy(builder.Environment);   
+    .AddCorsPolicy(builder.Environment, builder.Configuration);   
 
 var defaultConnection = configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found in appsettings.json.");
@@ -181,18 +188,7 @@ builder.Services.AddAuthentication(options =>
 {
     options.SaveToken = true;
     options.RequireHttpsMetadata = false;
-    options.TokenValidationParameters = new TokenValidationParameters()
-    {
-        ValidateIssuer = false,
-
-        ValidateAudience = false,
-
-        ValidateLifetime = true,
-
-        ValidateIssuerSigningKey = true,
-
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["TokenKey"])),
-    };
+    options.TokenValidationParameters = JwtSettings.Validation(configuration);
     options.Events = new JwtBearerEvents
     {
         OnTokenValidated = ctx =>
@@ -219,9 +215,14 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AdminAuthorizationPolicies.AccountOrAdmin, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx => AdminAuthorizationPolicies.IsAccountOrAdminUser(ctx.User)));
+    options.AddPolicy(AdminAuthorizationPolicies.ClinicStaff, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx => AdminAuthorizationPolicies.IsClinicStaffUser(ctx.User)));
 });
 
 var app = builder.Build();
+AdminAuthorizationPolicies.DevPrivilegedDoctorEnabled =
+    app.Environment.IsDevelopment() && app.Configuration.GetValue("Security:DevPrivilegedDoctor", true);
 AppFileLog.Initialize(app.Environment.ContentRootPath, app.Configuration, "NIGA New-API (Niga-Web :5002)");
 // Upload folders live under ContentRootPath/Data/UploadedMedia; a fresh publish may not contain them yet.
 Homeocentrum.Niga.NewAPI.Domain.Helpers.UploadedMedia.EnsureFolders(
@@ -229,6 +230,43 @@ Homeocentrum.Niga.NewAPI.Domain.Helpers.UploadedMedia.EnsureFolders(
     app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("UploadedMedia"));
 AppFileLog.SendDeployNotice("started");
 app.Lifetime.ApplicationStarted.Register(() => AppFileLog.SendDeployNotice("ready"));
+app.Lifetime.ApplicationStopping.Register(AppFileLog.SendStopNotice);
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    var ex = e.ExceptionObject as Exception;
+    AppFileLog.Write("errors", "CRITICAL", "Process", "Unhandled exception; process terminating=" + e.IsTerminating, ex, sendAlert: false);
+    AppFileLog.SendOpsAlert("crash", "API crashed", new Dictionary<string, string>
+    {
+        ["Exception"] = ex?.GetType().FullName ?? "unknown",
+        ["Message"] = ex?.Message ?? "",
+        ["Terminating"] = e.IsTerminating.ToString(),
+    }, cooldownMinutes: 0, wait: true);
+};
+
+// IIS reverse-proxies to Kestrel on this machine. X-Forwarded-For is trusted only from loopback proxies (the default KnownNetworks),
+// so rate limits, the failed-login throttle and the audit trail see the real client address.
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+});
+
+// Outermost catch-all: no stack trace or developer exception page ever reaches a client, in any environment.
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex) when (!context.Response.HasStarted)
+    {
+        var body = SafeError.Capture(ex, context, "Unhandled");
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(body,
+            new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
+    }
+});
 
 app.Use(async (context, next) =>
 {

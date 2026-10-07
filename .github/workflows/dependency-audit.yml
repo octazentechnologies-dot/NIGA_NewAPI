@@ -1,0 +1,37 @@
+name: Dependency audit
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  # Advisories accepted after review, space separated. Remove an entry once the package is upgraded.
+  # GHSA-rvv3-g6hj-g44x: AutoMapper < 15.1.1 recursion DoS. Fix needs AutoMapper 15+/16 (commercial licence);
+  # request JSON depth is capped at 64, so deep object graphs cannot reach the mapper from clients.
+  ACCEPTED_ADVISORIES: "GHSA-rvv3-g6hj-g44x"
+
+jobs:
+  nuget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore Homeocentrum.Niga.NewAPI/Homeocentrum.Niga.NewAPI.csproj
+      - name: Vulnerable packages (fails on High/Critical not in ACCEPTED_ADVISORIES)
+        run: |
+          dotnet list Homeocentrum.Niga.NewAPI/Homeocentrum.Niga.NewAPI.csproj package --vulnerable --include-transitive | tee vuln.txt
+          bad=$(grep -E '\b(High|Critical)\b' vuln.txt | grep -oE 'GHSA-[a-z0-9-]+' | sort -u)
+          for a in $ACCEPTED_ADVISORIES; do bad=$(echo "$bad" | grep -v "^$a\$" || true); done
+          if [ -n "$bad" ]; then echo "::error::Unaccepted High/Critical advisories: $bad"; exit 1; fi
+      - name: Outdated packages (report only)
+        run: dotnet list Homeocentrum.Niga.NewAPI/Homeocentrum.Niga.NewAPI.csproj package --outdated || true

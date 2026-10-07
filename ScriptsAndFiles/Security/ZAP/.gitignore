@@ -1,0 +1,2 @@
+# Scan output holds request headers (bearer tokens) and the API surface. Never commit it.
+run-*/

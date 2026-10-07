@@ -50,16 +50,31 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
             {
                 sw.Stop();
                 var path = context.Request.Path.Value ?? "";
+                var errorId = Errors.SafeError.NewErrorId();
+                var details = RequestDetails(context, 500, sw.ElapsedMilliseconds);
+                details["ErrorId"] = errorId;
                 AppFileLog.Write("errors", "ERROR", "Http",
-                    $"UNHANDLED {context.Request.Method} {path}{context.Request.QueryString} {sw.ElapsedMilliseconds}ms trace={context.TraceIdentifier}",
+                    $"UNHANDLED errorId={errorId} {context.Request.Method} {path}{context.Request.QueryString} {sw.ElapsedMilliseconds}ms trace={context.TraceIdentifier}",
                     ex,
-                    RequestDetails(context, 500, sw.ElapsedMilliseconds));
-                await ApiProblem.WriteAsync(context, 500, "Something went wrong. Please try again.");
+                    details);
+                await WriteSafeErrorAsync(context, errorId);
             }
             finally
             {
                 AppFileLog.ClearRequestSnapshot();
             }
+        }
+
+        private static async Task WriteSafeErrorAsync(HttpContext context, string errorId)
+        {
+            if (context.Response.HasStarted)
+                return;
+            context.Response.Clear();
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+            var body = new Errors.SafeErrorBody { ErrorId = errorId, TraceId = context.TraceIdentifier };
+            await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(body,
+                new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
         }
 
         private static void ApplyCorrelation(HttpContext context)

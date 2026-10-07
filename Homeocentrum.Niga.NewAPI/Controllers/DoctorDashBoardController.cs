@@ -59,7 +59,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -109,7 +109,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -145,7 +145,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -193,13 +193,14 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
         /// <summary>
         /// Export patient case details for Today or All scope in PDF, Excel, or CSV format.
         /// </summary>
+        [SecurityAudit(SecurityAuditEvents.PatientDataExport)]
         [HttpGet("ExportPatients")]
         [ProducesResponseType(typeof(FileContentResult), 200)]
         [ProducesResponseType(typeof(string), 400)]
@@ -267,7 +268,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 

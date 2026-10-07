@@ -7,17 +7,38 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
+using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Security.Audit;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.Services
 {
     public class TokenService:ITokenService
     {
         private readonly SymmetricSecurityKey _key;
+        private readonly string _issuer;
+        private readonly string _audience;
         private readonly UserManager<AppUser> _userManager;
-        public TokenService(IConfiguration config, UserManager<AppUser> userManager)
+        private readonly ISecurityAuditLog? _audit;
+        private readonly IHttpContextAccessor? _httpContextAccessor;
+
+        public TokenService(IConfiguration config, UserManager<AppUser> userManager,
+            ISecurityAuditLog? audit = null, IHttpContextAccessor? httpContextAccessor = null)
         {
             _userManager = userManager;
-            _key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["TokenKey"]));
+            _key = JwtSettings.SigningKey(config);
+            _issuer = JwtSettings.Issuer(config);
+            _audience = JwtSettings.Audience(config);
+            _audit = audit;
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        private Task AuditIssuedAsync(long userId, string? role, SecurityTokenDescriptor descriptor, IEnumerable<Claim> claims)
+        {
+            if (_audit == null) return Task.CompletedTask;
+            var jti = claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Jti)?.Value;
+            return _audit.WriteAsync(SecurityAuditEvents.TokenIssued, _httpContextAccessor?.HttpContext, "SUCCESS",
+                actorUserId: userId, actorRole: role,
+                detail: $"jti={jti}; expiresUtc={descriptor.Expires?.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}; iss={_issuer}");
         }
 
         public async Task<string> CreateToken(UserMaster user, int expiryMin = 0, string roleName = null, int? doctorId = null)
@@ -52,16 +73,19 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
                 Subject = new ClaimsIdentity(claims),
                 Expires = DateTime.Now.AddMinutes(expiryMin == 0 ? TokenConstants.accessTokenTimeInMins : expiryMin),
                 SigningCredentials = creds,
+                Issuer = _issuer,
+                Audience = _audience,
             };
 
             var tokenHandler = new JwtSecurityTokenHandler();
 
             var token = tokenHandler.CreateToken(tokenDescriptor);
-
-            return tokenHandler.WriteToken(token);
+            var written = tokenHandler.WriteToken(token);
+            await AuditIssuedAsync(user.UserId, roleName, tokenDescriptor, claims);
+            return written;
         }
 
-        public Task<string> CreateReceptionStaffToken(
+        public async Task<string> CreateReceptionStaffToken(
             int receptionStaffId,
             string userId,
             int doctorId,
@@ -98,12 +122,15 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
                 Subject = new ClaimsIdentity(claims),
                 Expires = DateTime.Now.AddMinutes(expiryMin == 0 ? TokenConstants.accessTokenTimeInMins : expiryMin),
                 SigningCredentials = creds,
+                Issuer = _issuer,
+                Audience = _audience,
             };
 
             var tokenHandler = new JwtSecurityTokenHandler();
             var token = tokenHandler.CreateToken(tokenDescriptor);
-
-            return Task.FromResult(tokenHandler.WriteToken(token));
+            var written = tokenHandler.WriteToken(token);
+            await AuditIssuedAsync(receptionStaffId, effectiveRole, tokenDescriptor, claims);
+            return written;
         }
     }
 }

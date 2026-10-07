@@ -1225,7 +1225,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             }
             catch (Exception ex)
             {
-                message = ex.Message;
+                var safe = Homeocentrum.Niga.NewAPI.Domain.Errors.SafeError.Capture(ex, null, "SubSection.Import");
+                message = "Import failed. Error id: " + safe.ErrorId;
                 return (false, message, totalRows, successRows, failedRows);
             }
         }

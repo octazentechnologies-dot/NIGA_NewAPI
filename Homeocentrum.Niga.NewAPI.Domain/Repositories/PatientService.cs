@@ -167,8 +167,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 }
                 catch (DbUpdateException ex)
                 {
-                    patientModel.Message =
-                        ex.InnerException?.Message ?? ex.Message;
+                    var safe = Homeocentrum.Niga.NewAPI.Domain.Errors.SafeError.Capture(ex, null, "PatientService.Update");
+                    patientModel.Message = "The patient could not be saved. Error id: " + safe.ErrorId;
                 }
             }
             return patientModel;

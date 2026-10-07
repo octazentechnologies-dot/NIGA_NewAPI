@@ -96,6 +96,7 @@ public class S4Week4Controller : ControllerBase
     public Task<IActionResult> Ledger([FromQuery] string? stream, [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? doctorId, [FromQuery] int page = 1)
         => Done(_s4.LedgerAsync(stream, from, to, doctorId, page, Caller()));
 
+    [SecurityAudit(SecurityAuditEvents.FinanceExport)]
     [HttpGet("/api/Account/Ledger/Export")]
     public Task<IActionResult> LedgerExport([FromQuery] string? stream, [FromQuery] DateTime? from, [FromQuery] DateTime? to)
         => Done(_s4.LedgerExportAsync(stream, from, to, Caller()));
@@ -120,9 +121,11 @@ public class S4Week4Controller : ControllerBase
     [HttpGet("/api/Account/Payouts")]
     public Task<IActionResult> Payouts() => Done(_s4.ListPayoutsAsync(Caller()));
 
+    [SecurityAudit(SecurityAuditEvents.PayoutOtpRequested)]
     [HttpPost("/api/Account/Payouts/{id:long}/Otp")]
     public Task<IActionResult> PayoutOtp(long id) => Done(_s4.RequestPayoutOtpAsync(id, Caller()));
 
+    [SecurityAudit(SecurityAuditEvents.PayoutOtpVerify)]
     [HttpPost("/api/Account/Payouts/{id:long}/Approve")]
     public Task<IActionResult> ApprovePayout(long id, [FromBody] PayoutDecisionRequest request) => Done(_s4.ApprovePayoutAsync(id, request, Caller()));
 
@@ -144,6 +147,7 @@ public class S4Week4Controller : ControllerBase
     [HttpGet("/api/Account/Tax")]
     public Task<IActionResult> Tax([FromQuery] DateTime? from, [FromQuery] DateTime? to) => Done(_s4.TaxReportAsync(from, to, Caller()));
 
+    [SecurityAudit(SecurityAuditEvents.FinanceExport)]
     [HttpGet("/api/Account/Tax/Export")]
     public Task<IActionResult> TaxExport([FromQuery] DateTime? from, [FromQuery] DateTime? to) => Done(_s4.TaxExportAsync(from, to, Caller()));
 
@@ -153,6 +157,7 @@ public class S4Week4Controller : ControllerBase
     [HttpPut("/api/Account/Payees/{id:int}")]
     public Task<IActionResult> UpdatePayee(int id, [FromBody] PayeeUpdateRequest request) => Done(_s4.UpdatePayeeAsync(id, request, Caller()));
 
+    [SecurityAudit(SecurityAuditEvents.PayeeBankOtpRequested)]
     [HttpPost("/api/Account/Payees/{id:int}/BankOtp")]
     public Task<IActionResult> BankOtp(int id) => Done(_s4.RequestPayeeBankOtpAsync(id, Caller()));
 

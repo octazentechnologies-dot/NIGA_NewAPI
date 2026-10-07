@@ -1,6 +1,8 @@
 using API.Extensions;
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
@@ -61,7 +63,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return new { Status = 500, Message = ex.Message };
+                return SafeError.Capture(ex, HttpContext);
             }
         }
 
@@ -85,6 +87,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         [HttpPost("AddBlog")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddNewBlog(BlogDetailModel1 blogDetail)
         {
             try
@@ -106,7 +109,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return new { Status = 500, Message = ex.Message };
+                return SafeError.Capture(ex, HttpContext);
             }
         }
 
@@ -126,6 +129,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         [HttpPost("UpdateBlogDetails")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> UpdateBlogDetails(
             [FromBody] BlogDetailModel1 updateBlogDto
         )
@@ -172,11 +176,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { Status = 500, Message = ex.Message });
+                return this.ServerError(ex);
             }
         }
 
         [HttpPost("DeleteBlogDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteBlogDetails(int Id)
         {
             var data = await _blogService.GetBlogById(Id);
@@ -194,8 +199,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                var result = new { Status = 500, Message = ex.Message };
-                return BadRequest(result);
+                return this.ServerError(ex);
             }
         }
     }

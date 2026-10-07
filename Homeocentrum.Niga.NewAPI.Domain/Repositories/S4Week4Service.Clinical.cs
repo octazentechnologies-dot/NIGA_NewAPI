@@ -9,6 +9,7 @@ using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
+using Homeocentrum.Niga.NewAPI.Domain.Privacy;
 using Homeocentrum.Niga.NewAPI.Domain.Services;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.Repositories;
@@ -1285,11 +1286,21 @@ public partial class S4Week4Service
         var records = await PatientConsentRecords(_context.ConsentRecords.AsNoTracking(), caller)
             .OrderByDescending(c => c.GrantedAt)
             .ToListAsync();
+        var notices = await _context.ConsentNotices.AsNoTracking()
+            .Where(n => n.Language == "en" && (n.IsCurrent || n.RequiresReconsent))
+            .ToListAsync();
+        var minor = await PatientIsMinorAsync(caller.PatientId.Value);
+        var now = DateTime.UtcNow;
         var rows = types.Select(t =>
         {
             var active = records.FirstOrDefault(r => r.ConsentTypeId == t.ConsentTypeId && r.WithdrawnAt == null);
             var latest = active ?? records.FirstOrDefault(r => r.ConsentTypeId == t.ConsentTypeId);
             var text = PatientConsentText.TryGetValue(t.Code, out var known) ? known : (t.Name, t.Description ?? "");
+            var current = notices.FirstOrDefault(n => n.ConsentTypeId == t.ConsentTypeId && n.IsCurrent);
+            var reconsentDates = notices.Where(n => n.ConsentTypeId == t.ConsentTypeId && n.RequiresReconsent).Select(n => n.EffectiveFrom);
+            var state = active == null
+                ? ConsentState.None
+                : ConsentRules.Evaluate(true, active.GrantedAt, null, active.GrantedForMinor, minor, reconsentDates, now);
             return new
             {
                 consentTypeId = t.ConsentTypeId,
@@ -1297,13 +1308,29 @@ public partial class S4Week4Service
                 title = text.Item1,
                 description = text.Item2,
                 consentRecordId = active?.ConsentRecordId,
-                granted = active != null,
+                granted = state == ConsentState.Valid,
+                status = state.ToString(),
                 grantedAt = active?.GrantedAt,
                 withdrawnAt = active == null ? latest?.WithdrawnAt : null,
+                grantedNoticeVersion = active?.NoticeVersion,
+                currentNoticeVersion = current?.Version,
+                noticeText = current?.Body,
+                grantedForMinor = active?.GrantedForMinor ?? false,
+                guardianName = active?.GuardianName,
+                guardianRequired = minor == true && state != ConsentState.Valid,
                 manageLink = string.Equals(t.Code, "Caregiver", StringComparison.OrdinalIgnoreCase) ? "/caregiver" : null
             };
         });
-        return Ok(new { success = true, data = rows });
+        return Ok(new { success = true, isMinor = minor == true, data = rows });
+    }
+
+    private async Task<bool?> PatientIsMinorAsync(int patientId)
+    {
+        var p = await _context.Patients.AsNoTracking()
+            .Where(x => x.PatientId == patientId)
+            .Select(x => new { x.DateOfBirth, x.Age })
+            .FirstOrDefaultAsync();
+        return p == null ? null : ConsentRules.IsMinor(p.DateOfBirth, p.Age, DateTime.Today);
     }
 
     public async Task<S4ActionResult> GrantConsentAsync(int consentTypeId, S4Caller caller)
@@ -1314,11 +1341,20 @@ public partial class S4Week4Service
         if (type == null) return Fail(404, "NOT_FOUND", "Consent type not found.");
         if (string.Equals(type.Code, "Caregiver", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "Caregiver access is granted from the Caregiver page.");
+        var minor = await PatientIsMinorAsync(caller.PatientId.Value);
+        if (minor == true)
+            return Fail(403, "GUARDIAN_CONSENT_REQUIRED",
+                "This patient is under 18. A parent or guardian must give consent from their family account or at the clinic.");
         var existing = await PatientConsentRecords(_context.ConsentRecords.AsNoTracking(), caller)
             .Where(c => c.ConsentTypeId == consentTypeId && c.WithdrawnAt == null)
             .OrderByDescending(c => c.GrantedAt)
             .FirstOrDefaultAsync();
-        if (existing != null)
+        var reconsentDates = await _context.ConsentNotices.AsNoTracking()
+            .Where(n => n.ConsentTypeId == consentTypeId && n.RequiresReconsent)
+            .Select(n => n.EffectiveFrom)
+            .ToListAsync();
+        if (existing != null
+            && ConsentRules.Evaluate(true, existing.GrantedAt, null, existing.GrantedForMinor, minor, reconsentDates, DateTime.UtcNow) == ConsentState.Valid)
             return Ok(new { success = true, alreadyGranted = true, data = new { consentRecordId = existing.ConsentRecordId, grantedAt = existing.GrantedAt } });
         var record = new ConsentRecord
         {

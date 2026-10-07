@@ -14,7 +14,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers;
 /// </summary>
 [Route("api/WhatsApp")]
 [ApiController]
-[Authorize]
+[Authorize(Policy = Homeocentrum.Niga.NewAPI.Domain.Authorization.AdminAuthorizationPolicies.ClinicStaff)]
 public class WhatsAppController : ControllerBase
 {
     private readonly IWhatsAppService _whatsAppService;
@@ -83,7 +83,7 @@ public class WhatsAppController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetMessageHistory failed.");
-            return ThreeDBodyPartApiResponseHelper.PaginatedError(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.PaginatedError(ex);
         }
     }
 
@@ -109,7 +109,7 @@ public class WhatsAppController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetMessageById failed for ID={Id}", id);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -135,7 +135,7 @@ public class WhatsAppController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetCampaignHistory failed.");
-            return ThreeDBodyPartApiResponseHelper.PaginatedError(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.PaginatedError(ex);
         }
     }
 
@@ -161,7 +161,7 @@ public class WhatsAppController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetCampaignDetails failed for CampaignID={CampaignId}", campaignId);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -190,7 +190,7 @@ public class WhatsAppController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetTemplates failed.");
-            return ThreeDBodyPartApiResponseHelper.PaginatedError(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.PaginatedError(ex);
         }
     }
 
@@ -219,7 +219,7 @@ public class WhatsAppController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetTemplateById failed for ID={Id}", id);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -248,7 +248,7 @@ public class WhatsAppController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AddTemplate failed for TemplateName={TemplateName}", request.TemplateName);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -277,7 +277,7 @@ public class WhatsAppController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "UpdateTemplate failed for TemplateID={TemplateId}", request.TemplateID);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -298,7 +298,7 @@ public class WhatsAppController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetDashboard failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -324,7 +324,7 @@ public class WhatsAppController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "WhatsApp send failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 

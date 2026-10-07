@@ -26,6 +26,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             if (request == null || string.IsNullOrWhiteSpace(request.Root) || string.IsNullOrWhiteSpace(request.Path))
                 return BadRequest(new { success = false, message = "Root and Path are required." });
+            if (!RootAllowed(request.Root))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this file." });
 
             if (!_signer.TryResolvePhysicalPath(_env.ContentRootPath, request.Root, request.Path, out _, out var error))
                 return BadRequest(new { success = false, message = error });
@@ -43,6 +45,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [Authorize]
         public IActionResult GetAuthorised(string root, string path)
         {
+            if (!RootAllowed(root))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this file." });
             if (!_signer.TryResolvePhysicalPath(_env.ContentRootPath, root, path, out var fullPath, out var error))
                 return BadRequest(new { success = false, message = error });
             if (!System.IO.File.Exists(fullPath))
@@ -63,6 +67,11 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 return NotFound(new { success = false, message = "File not found." });
             return PhysicalFile(fullPath, GuessMime(fullPath), Path.GetFileName(fullPath));
         }
+
+        /// <summary>Clinical attachments carry no owner metadata, so only clinic staff may read or sign them.</summary>
+        private bool RootAllowed(string? root)
+            => string.Equals(root?.Trim(), "Blogs", StringComparison.OrdinalIgnoreCase)
+               || AdminAuthorizationPolicies.IsClinicStaffUser(User);
 
         private static string GuessMime(string fullPath)
         {

@@ -19,12 +19,15 @@ public class S5Week5Controller : ControllerBase
     private readonly IS5Week5Service _s5;
     private readonly NIGACentrumContext _context;
     private readonly ILogger<S5Week5Controller> _logger;
+    private readonly IConfiguration _configuration;
 
-    public S5Week5Controller(IS5Week5Service s5, NIGACentrumContext context, ILogger<S5Week5Controller> logger)
+    public S5Week5Controller(IS5Week5Service s5, NIGACentrumContext context, ILogger<S5Week5Controller> logger,
+        IConfiguration configuration)
     {
         _s5 = s5;
         _context = context;
         _logger = logger;
+        _configuration = configuration;
     }
 
     [HttpGet("/api/Sms/Templates")]
@@ -50,9 +53,44 @@ public class S5Week5Controller : ControllerBase
     public Task<IActionResult> RegisterDevice([FromBody] DeviceRegisterRequest request)
         => Done(_s5.RegisterDeviceAsync(request, Caller()));
 
+    /// <summary>
+    /// Meta delivery receipt. Signed with X-Hub-Signature-256 = HMAC-SHA256(raw body, WhatsAppMeta:AppSecret).
+    /// Unsigned receipts are never accepted; without an AppSecret the webhook is closed (503).
+    /// </summary>
     [AllowAnonymous]
     [HttpPost("/api/WhatsApp/Receipts")]
-    public Task<IActionResult> Receipt([FromBody] WhatsAppReceiptRequest request) => Done(_s5.WhatsAppReceiptAsync(request));
+    public async Task<IActionResult> Receipt()
+    {
+        string raw;
+        using (var reader = new StreamReader(Request.Body, System.Text.Encoding.UTF8))
+            raw = await reader.ReadToEndAsync();
+
+        var secret = _configuration["WhatsAppMeta:AppSecret"];
+        if (string.IsNullOrWhiteSpace(secret))
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { success = false, code = "WEBHOOK_NOT_CONFIGURED", message = "Receipt webhook is not configured." });
+        if (!MetaSignatureValid(raw, Request.Headers["X-Hub-Signature-256"].ToString(), secret))
+        {
+            return Unauthorized(new { success = false, message = "Invalid signature." });
+        }
+
+        WhatsAppReceiptRequest? request;
+        try { request = System.Text.Json.JsonSerializer.Deserialize<WhatsAppReceiptRequest>(raw, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)); }
+        catch (System.Text.Json.JsonException) { request = null; }
+        if (request == null)
+            return BadRequest(new { success = false, message = "Invalid receipt body." });
+        return await Done(_s5.WhatsAppReceiptAsync(request));
+    }
+
+    private static bool MetaSignatureValid(string raw, string header, string secret)
+    {
+        const string prefix = "sha256=";
+        if (string.IsNullOrWhiteSpace(header) || !header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return false;
+        var expected = Convert.ToHexString(System.Security.Cryptography.HMACSHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(secret), System.Text.Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.ASCII.GetBytes(expected), System.Text.Encoding.ASCII.GetBytes(header[prefix.Length..].Trim().ToLowerInvariant()));
+    }
 
     [HttpGet("/api/WhatsApp/Bulk")]
     public Task<IActionResult> Bulk() => Done(_s5.WhatsAppBulkAsync(Caller()));
@@ -92,12 +130,15 @@ public class S5Week5Controller : ControllerBase
     public Task<IActionResult> Performance([FromQuery] DateTime? from, [FromQuery] DateTime? to)
         => Done(_s5.ClinicPerformanceAsync(from, to, Caller()));
 
+    [SecurityAudit(SecurityAuditEvents.FinanceExport)]
     [HttpGet("/api/Reports/Reconciliation/Export")]
     public Task<IActionResult> ReconExport() => Done(_s5.ExportReconciliationAsync(Caller()));
 
+    [SecurityAudit(SecurityAuditEvents.FinanceExport)]
     [HttpGet("/api/Reports/Settlements/Export")]
     public Task<IActionResult> SettlementExport() => Done(_s5.ExportSettlementsAsync(Caller()));
 
+    [SecurityAudit(SecurityAuditEvents.FinanceExport)]
     [HttpGet("/api/Reports/Payouts/Export")]
     public Task<IActionResult> PayoutExport() => Done(_s5.ExportPayoutsAsync(Caller()));
 
@@ -108,6 +149,7 @@ public class S5Week5Controller : ControllerBase
     public Task<IActionResult> Buckets([FromQuery] DateTime? from, [FromQuery] DateTime? to)
         => Done(_s5.EarningsBucketsAsync(from, to, Caller()));
 
+    [SecurityAudit(SecurityAuditEvents.PatientDataExport)]
     [HttpGet("/api/Admin/Users/Export")]
     public Task<IActionResult> UsersExport() => Done(_s5.ExportUsersAsync(Caller()));
 

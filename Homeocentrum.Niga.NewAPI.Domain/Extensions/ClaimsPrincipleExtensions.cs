@@ -70,11 +70,6 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Extensions
                     aesAlgorithm.Key = Convert.FromBase64String(keyBase64);
                     aesAlgorithm.IV = Convert.FromBase64String(vectorBase64);
 
-                    Console.WriteLine($"Aes Cipher Mode : {aesAlgorithm.Mode}");
-                    Console.WriteLine($"Aes Padding Mode: {aesAlgorithm.Padding}");
-                    Console.WriteLine($"Aes Key Size : {aesAlgorithm.KeySize}");
-                    Console.WriteLine($"Aes Block Size : {aesAlgorithm.BlockSize}");
-
 
                     ICryptoTransform decryptor = aesAlgorithm.CreateDecryptor();
 

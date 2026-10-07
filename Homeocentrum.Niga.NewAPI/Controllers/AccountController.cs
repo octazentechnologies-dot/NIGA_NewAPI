@@ -57,6 +57,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             _env = env;
         }
 
+        [SecurityAudit(SecurityAuditEvents.Login)]
+        [LoginThrottle(Order = 10)]
         [HttpPost("Login")]
         [AllowAnonymous]
         public async Task<IActionResult> Login([FromBody] LoginModel model)
@@ -76,11 +78,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 {
                     if (UserPasswordHasher.IsCorruptHash(userEntity.UserPassword))
                     {
-                        return Unauthorized(new
-                        {
-                            message = "Invalid username or password",
-                            detail = "Password hash in database is corrupted/truncated. Reset UserPassword to plaintext (known password) after ensuring column is NVARCHAR(500), then login again so the API can re-hash it. Do not paste manual encryption."
-                        });
+                        Homeocentrum.Niga.NewAPI.Domain.Logging.AppFileLog.Write("errors", "WARN", "Account.Login",
+                            "Stored password hash is corrupted or truncated for UserId " + userEntity.UserId + ". Reset it after the column is NVARCHAR(500).", null, null, sendAlert: false);
+                        return Unauthorized(new { message = "Invalid username or password" });
                     }
 
                     if (!UserPasswordHasher.Verify(model.Password, userEntity.UserPassword))
@@ -90,7 +90,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     string? passwordHashWarning = null;
                     if (!UserPasswordHasher.IsHashed(userEntity.UserPassword))
                     {
-                        passwordHashWarning = await PersistUserPasswordHashAsync(userEntity, model.Password);
+                        var hashProblem = await PersistUserPasswordHashAsync(userEntity, model.Password);
+                        if (hashProblem != null)
+                        {
+                            Homeocentrum.Niga.NewAPI.Domain.Logging.AppFileLog.Write("errors", "WARN", "Account.Login",
+                                "Password hash upgrade failed for UserId " + userEntity.UserId + ": " + hashProblem, null, null, sendAlert: false);
+                            passwordHashWarning = "Password upgrade was not saved. Please contact support.";
+                        }
                     }
 
                     if (userEntity.IsUserActivated != true)
@@ -197,6 +203,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         /// <summary>SEC-03.01 — Persist UserLoginStatus.OutTime; denylist jti in memory.</summary>
+        [SecurityAudit(SecurityAuditEvents.Logout)]
         [HttpPost("Logout")]
         [Authorize]
         public async Task<IActionResult> Logout()
@@ -259,6 +266,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         /// DMO-11.02 — swap the current token (still valid, or expired less than 7 days ago) for a new 7-day token.
         /// Body { token } or Authorization: Bearer. The old token is signed out. Same call for web, patient app and doctor app.
         /// </summary>
+        [SecurityAudit(SecurityAuditEvents.TokenRefreshed)]
         [HttpPost("RefreshToken")]
         [AllowAnonymous]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest? request)
@@ -278,14 +286,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             try
             {
                 var handler = new JwtSecurityTokenHandler();
-                principal = handler.ValidateToken(raw.Trim(), new Microsoft.IdentityModel.Tokens.TokenValidationParameters
-                {
-                    ValidateIssuer = false,
-                    ValidateAudience = false,
-                    ValidateLifetime = false,
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["TokenKey"]!))
-                }, out var validated);
+                principal = handler.ValidateToken(raw.Trim(),
+                    Homeocentrum.Niga.NewAPI.Domain.Security.JwtSettings.Validation(_configuration, validateLifetime: false),
+                    out var validated);
                 expiresUtc = validated.ValidTo;
             }
             catch
@@ -367,6 +370,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         /// <summary>Lists every non-deleted login that shares this email or username, so the user can pick a role.</summary>
+        [SecurityAudit(SecurityAuditEvents.PasswordReset)]
         [HttpPost("ForgotPasswordAccounts")]
         [AllowAnonymous]
         public async Task<IActionResult> ForgotPasswordAccounts([FromBody] ForgotPasswordRequest request)
@@ -380,6 +384,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         /// <summary>SEC-02.02 — Creates PasswordResetToken; emails reset LINK (never plaintext password).</summary>
+        [SecurityAudit(SecurityAuditEvents.PasswordReset)]
         [HttpPost("ForgotPassword")]
         [AllowAnonymous]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
@@ -491,6 +496,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
         }
 
+        [SecurityAudit(SecurityAuditEvents.PasswordReset)]
         [HttpPost("ResetPassword")]
         [AllowAnonymous]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
@@ -537,6 +543,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
         }
 
+        [SecurityAudit(SecurityAuditEvents.PasswordChange)]
         [HttpPost("ChangePassword")]
         [Authorize]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
@@ -635,12 +642,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Migration failed. Ensure UserPassword column is widened (NVARCHAR(500)).",
-                    detail = ex.Message
-                });
+                return this.ServerError(ex);
             }
         }
 
@@ -648,6 +650,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         /// Ops recovery: set a user's password correctly (hashed). Use when DB has corrupt/manual hash.
         /// Requires AdminPortal. Always run SQL widen first.
         /// </summary>
+        [SecurityAudit(SecurityAuditEvents.AdminPasswordSet)]
         [HttpPost("SetUserPassword")]
         [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<IActionResult> SetUserPassword([FromBody] SetUserPasswordRequest request)
@@ -696,11 +699,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, message = ex.Message });
+                return this.ServerError(ex);
             }
         }
 
         /// <summary>Doctor phone + OTP login. Mobile is matched on Doctor only.</summary>
+        [SecurityAudit(SecurityAuditEvents.Login)]
         [HttpPost("LoginWithOtp")]
         [AllowAnonymous]
         public async Task<IActionResult> LoginWithOtp([FromBody] LoginWithOtpRequest request)
@@ -815,7 +819,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, message = ex.Message });
+                return this.ServerError(ex);
             }
         }
 

@@ -10,6 +10,7 @@ using Homeocentrum.Niga.NewAPI.Controllers;
 using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Microsoft.EntityFrameworkCore;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
@@ -25,18 +26,26 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         IPatientLabOrderServices _patientLabOrderServices;
         IPatientLabEntryServices _patientLabEntryServices;
         ILabTestMasterServices _labTestMasterServices;
+        private readonly IPatientAccessGuard _patientAccess;
+        private readonly Homeocentrum.Niga.NewAPI.Domain.Data.NIGACentrumContext _context;
         /// <summary>
         /// Used to initialize controller and inject master service
         /// </summary>
         /// <param name="patientLabOrderServices"></param>
         /// <param name="patientLabEntryServices"></param>
         /// <param name="labTestMasterServices"></param>
-        public PatientLabController(IPatientLabOrderServices patientLabOrderServices, IPatientLabEntryServices patientLabEntryServices,ILabTestMasterServices labTestMasterServices)
+        public PatientLabController(IPatientLabOrderServices patientLabOrderServices, IPatientLabEntryServices patientLabEntryServices,ILabTestMasterServices labTestMasterServices,
+            IPatientAccessGuard patientAccess, Homeocentrum.Niga.NewAPI.Domain.Data.NIGACentrumContext context)
         {
             _patientLabOrderServices = patientLabOrderServices;
             _patientLabEntryServices = patientLabEntryServices;
             _labTestMasterServices = labTestMasterServices;
+            _patientAccess = patientAccess;
+            _context = context;
         }
+
+        private ObjectResult PatientForbidden()
+            => StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
 
         /// <summary>
         /// To get all lab orders
@@ -63,7 +72,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -78,22 +87,23 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetPatientLabOrder()
+        public async Task<IActionResult> GetPatientLabOrder()
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
+                var visible = await _patientAccess.VisiblePatientIdsAsync(User);
                 var patientLabOrderModel = _patientLabOrderServices.GetAllPatinetLabOrder(ref errorResponseModel);
 
                 if (patientLabOrderModel != null)
                 {
-                    return Ok(patientLabOrderModel);
+                    return Ok(visible == null ? patientLabOrderModel : patientLabOrderModel.Where(x => visible.Contains(x.PatientId)).ToList());
                 }
                 return ReturnErrorResponse(errorResponseModel);
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -109,9 +119,11 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetPatientLabOrder(int patientId)
+        public async Task<IActionResult> GetPatientLabOrder(int patientId)
         {
             ErrorResponseModel errorResponseModel = null;
+            if (!await _patientAccess.CanAccessPatientAsync(User, patientId))
+                return PatientForbidden();
             try
             {
                 var patientLabOrderModel = _patientLabOrderServices.GetPatinetLabOrder(patientId, ref errorResponseModel);
@@ -124,7 +136,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -138,22 +150,23 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetPatientLabEntry()
+        public async Task<IActionResult> GetPatientLabEntry()
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
+                var visible = await _patientAccess.VisiblePatientIdsAsync(User);
                 var patientLabEntryModel = _patientLabEntryServices.GetAllPatientLabEntry(ref errorResponseModel);
 
                 if (patientLabEntryModel != null)
                 {
-                    return Ok(patientLabEntryModel);
+                    return Ok(visible == null ? patientLabEntryModel : patientLabEntryModel.Where(x => visible.Contains(x.PatientId)).ToList());
                 }
                 return ReturnErrorResponse(errorResponseModel);
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -167,9 +180,11 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetPatientLabEntry(int patientId)
+        public async Task<IActionResult> GetPatientLabEntry(int patientId)
         {
             ErrorResponseModel errorResponseModel = null;
+            if (!await _patientAccess.CanAccessPatientAsync(User, patientId))
+                return PatientForbidden();
             try
             {
                 var patientLabEntryModel = _patientLabEntryServices.GetPatientLabEntry(patientId,ref errorResponseModel);
@@ -182,7 +197,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -196,12 +211,23 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult SavePatientLabOrder(PatientLabOrderModel patientLabOrderModel)
+        public async Task<IActionResult> SavePatientLabOrder(PatientLabOrderModel patientLabOrderModel)
         {
             ErrorResponseModel errorResponseModel = null;
+            if (patientLabOrderModel == null || !await _patientAccess.CanAccessPatientAsync(User, patientLabOrderModel.PatientId))
+                return PatientForbidden();
+            if (patientLabOrderModel.PatientOrderedTestId != 0)
+            {
+                var existingPatientId = await _context.PatientLabOrders.AsNoTracking()
+                    .Where(x => x.PatientOrderedTestId == patientLabOrderModel.PatientOrderedTestId)
+                    .Select(x => (int?)x.PatientId)
+                    .FirstOrDefaultAsync();
+                if (existingPatientId.HasValue && !await _patientAccess.CanAccessPatientAsync(User, existingPatientId.Value))
+                    return PatientForbidden();
+            }
             try
             {
-                var response = _patientLabOrderServices.SavePatinetLabOrder(patientLabOrderModel);
+                var response = await _patientLabOrderServices.SavePatinetLabOrder(patientLabOrderModel);
 
                 if (response != null)
                 {
@@ -211,7 +237,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -225,12 +251,23 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult SavePatientLabEntry(PatientLabEntryModel patientLabEntryModel)
+        public async Task<IActionResult> SavePatientLabEntry(PatientLabEntryModel patientLabEntryModel)
         {
             ErrorResponseModel errorResponseModel = null;
+            if (patientLabEntryModel == null || !await _patientAccess.CanAccessPatientAsync(User, patientLabEntryModel.PatientId))
+                return PatientForbidden();
+            if (patientLabEntryModel.PatientLabId != 0)
+            {
+                var existingPatientId = await _context.PatientLabEntries.AsNoTracking()
+                    .Where(x => x.PatientLabId == patientLabEntryModel.PatientLabId)
+                    .Select(x => (int?)x.PatientId)
+                    .FirstOrDefaultAsync();
+                if (existingPatientId.HasValue && !await _patientAccess.CanAccessPatientAsync(User, existingPatientId.Value))
+                    return PatientForbidden();
+            }
             try
             {
-                var response = _patientLabEntryServices.SavePatientLabEntry(patientLabEntryModel);
+                var response = await _patientLabEntryServices.SavePatientLabEntry(patientLabEntryModel);
 
                 if (response != null)
                 {
@@ -240,7 +277,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
     }

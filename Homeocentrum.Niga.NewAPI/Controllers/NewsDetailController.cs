@@ -91,7 +91,7 @@
 //             }
 //             catch (Exception ex)
 //             {
-//                 return new { Status = 500, Message = ex.Message };
+//                 return SafeError.Capture(ex, HttpContext);
 //             }
 //         }
 
@@ -148,7 +148,7 @@
 //             }
 //             catch (Exception ex)
 //             {
-//                 return new { Status = 500, Message = ex.Message };
+//                 return SafeError.Capture(ex, HttpContext);
 //             }
 //         }
 //     }

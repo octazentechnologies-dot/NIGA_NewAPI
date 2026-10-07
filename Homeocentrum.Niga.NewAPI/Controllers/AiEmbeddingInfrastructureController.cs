@@ -58,7 +58,7 @@ public class AiEmbeddingInfrastructureController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Get embedding infrastructure status failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -82,7 +82,7 @@ public class AiEmbeddingInfrastructureController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Enterprise rubric embedding build failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -99,7 +99,7 @@ public class AiEmbeddingInfrastructureController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Get incremental sync state failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -123,7 +123,7 @@ public class AiEmbeddingInfrastructureController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Incremental embedding refresh failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -146,7 +146,7 @@ public class AiEmbeddingInfrastructureController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Incremental change detection failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -170,7 +170,7 @@ public class AiEmbeddingInfrastructureController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Incremental queue processing failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -194,7 +194,7 @@ public class AiEmbeddingInfrastructureController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Enterprise concept embedding build failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -216,7 +216,7 @@ public class AiEmbeddingInfrastructureController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Enterprise semantic search failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -258,7 +258,7 @@ public class AiEmbeddingInfrastructureController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Rubric candidate discovery failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -286,7 +286,7 @@ public class AiEmbeddingInfrastructureController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Get rubric evidence chains failed for session {SessionId}", sessionId);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 }

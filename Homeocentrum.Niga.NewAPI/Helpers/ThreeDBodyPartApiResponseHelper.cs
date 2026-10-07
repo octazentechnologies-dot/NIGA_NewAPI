@@ -24,6 +24,18 @@ namespace Homeocentrum.Niga.NewAPI.Helpers
         public static PaginatedApiFailureResponse Error(string message)
             => PaginatedApiFailureResponse.Create(message);
 
+        public static PaginatedApiFailureResponse Error(Exception ex)
+            => PaginatedApiFailureResponse.Create(SafeMessage(ex));
+
+        public static PaginatedApiFailureResponse PaginatedError(Exception ex)
+            => PaginatedApiFailureResponse.Create(SafeMessage(ex));
+
+        private static string SafeMessage(Exception ex)
+        {
+            var body = Homeocentrum.Niga.NewAPI.Domain.Errors.SafeError.Capture(ex, null, "ThreeDBodyPart");
+            return body.Message + " Error id: " + body.ErrorId;
+        }
+
         public static PrescriptionDetailsPaginatedApiResponse PrescriptionPaginatedSuccess(
             PrescriptionDetailsPaginatedResult result,
             string? message = null)

@@ -65,7 +65,7 @@ public class AudioCaseIntelligenceAdminController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Get metaphors failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -158,7 +158,7 @@ public class AudioCaseIntelligenceAdminController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Get aliases failed.");
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 

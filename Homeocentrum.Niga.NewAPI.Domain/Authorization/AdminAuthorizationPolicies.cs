@@ -65,8 +65,16 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Authorization
         /// </summary>
         public const int TufanDoctorUserId = 10032;
 
+        /// <summary>
+        /// Set once at startup: true only when the host environment is Development and
+        /// Security:DevPrivilegedDoctor is not false. Always false in Staging/Production.
+        /// </summary>
+        public static bool DevPrivilegedDoctorEnabled { get; set; }
+
         public static bool IsDevPrivilegedDoctor(ClaimsPrincipal? user)
         {
+            if (!DevPrivilegedDoctorEnabled)
+                return false;
             if (user?.Identity?.IsAuthenticated != true)
                 return false;
 
@@ -194,5 +202,19 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Authorization
 
         public static bool IsAccountOrAdminUser(ClaimsPrincipal? user)
             => IsAccountPortalUser(user) || IsAdminPortalUser(user);
+
+        /// <summary>Admin portal, Doctor or Reception. Patients and money-only roles are excluded.</summary>
+        public const string ClinicStaff = "ClinicStaff";
+
+        public static bool IsClinicStaffUser(ClaimsPrincipal? user)
+        {
+            if (user?.Identity?.IsAuthenticated != true)
+                return false;
+            if (IsAdminPortalUser(user))
+                return true;
+            var role = GetRoleName(user)?.Trim();
+            return string.Equals(role, "Doctor", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(role, "Reception", StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

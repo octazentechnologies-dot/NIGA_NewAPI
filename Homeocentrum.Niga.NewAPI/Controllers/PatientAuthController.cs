@@ -27,6 +27,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             _tokenService = tokenService;
         }
 
+        [SecurityAudit(SecurityAuditEvents.OtpRequested)]
         [HttpPost("RequestOtp")]
         public async Task<IActionResult> RequestOtp([FromBody] PatientAuthRequestOtpModel request)
         {
@@ -88,6 +89,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             return Ok(payload);
         }
 
+        [SecurityAudit(SecurityAuditEvents.Login)]
         [HttpPost("VerifyOtp")]
         public async Task<IActionResult> VerifyOtp([FromBody] PatientAuthVerifyOtpModel request)
         {

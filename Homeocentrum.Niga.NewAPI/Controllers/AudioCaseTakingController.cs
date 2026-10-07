@@ -9,6 +9,7 @@ using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Extensions;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Microsoft.EntityFrameworkCore;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers;
 
@@ -23,14 +24,51 @@ public class AudioCaseTakingController : ControllerBase
     private readonly IDoctorFeedbackLearningEngine _feedbackLearningEngine;
     private readonly ILogger<AudioCaseTakingController> _logger;
 
+    private readonly Homeocentrum.Niga.NewAPI.Domain.Security.IPatientAccessGuard _patientAccess;
+    private readonly Homeocentrum.Niga.NewAPI.Domain.Data.NIGACentrumContext _context;
+
     public AudioCaseTakingController(
         IAudioCaseTakingService audioCaseTakingService,
         IDoctorFeedbackLearningEngine feedbackLearningEngine,
-        ILogger<AudioCaseTakingController> logger)
+        ILogger<AudioCaseTakingController> logger,
+        Homeocentrum.Niga.NewAPI.Domain.Security.IPatientAccessGuard patientAccess,
+        Homeocentrum.Niga.NewAPI.Domain.Data.NIGACentrumContext context)
     {
         _audioCaseTakingService = audioCaseTakingService;
         _feedbackLearningEngine = feedbackLearningEngine;
         _logger = logger;
+        _patientAccess = patientAccess;
+        _context = context;
+    }
+
+    /// <summary>Patient, case and appointment ids on an upload must all belong to a patient the caller may access.</summary>
+    private async Task<bool> UploadTargetsAllowedAsync(AudioCaseUploadRequestModel request)
+    {
+        if (request.PatientId > 0 && !await _patientAccess.CanAccessPatientAsync(User, (int)request.PatientId))
+            return false;
+        if (request.CaseId is > 0)
+        {
+            var caseRow = await _context.CaseEntryDetails.AsNoTracking()
+                .Where(c => c.CaseId == request.CaseId.Value)
+                .Select(c => new { c.PatientId, c.DoctorId })
+                .FirstOrDefaultAsync();
+            if (caseRow == null
+                || (request.PatientId > 0 && caseRow.PatientId != request.PatientId)
+                || !await _patientAccess.CanAccessPatientAsync(User, caseRow.PatientId, caseRow.DoctorId))
+                return false;
+        }
+        if (request.PatientAppId is > 0)
+        {
+            var appointment = await _context.PatientAppointments.AsNoTracking()
+                .Where(a => a.PatientAppId == request.PatientAppId.Value)
+                .Select(a => new { a.PatientId, a.DoctorId })
+                .FirstOrDefaultAsync();
+            if (appointment == null
+                || (request.PatientId > 0 && appointment.PatientId != request.PatientId)
+                || !Homeocentrum.Niga.NewAPI.Domain.Security.DoctorOwnership.EnsureDoctorOwns(User, appointment.DoctorId))
+                return false;
+        }
+        return true;
     }
 
     [HttpPost("upload")]
@@ -44,6 +82,10 @@ public class AudioCaseTakingController : ControllerBase
             if (!ModelState.IsValid)
             {
                 return ThreeDBodyPartApiResponseHelper.Failure(GetValidationMessage());
+            }
+            if (!await UploadTargetsAllowedAsync(request))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this patient." });
             }
 
             var userId = User.GetUserId();
@@ -66,7 +108,7 @@ public class AudioCaseTakingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AudioCaseTaking upload failed for UserId={UserId}", User.GetUserId());
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -88,7 +130,7 @@ public class AudioCaseTakingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AudioCaseTaking status failed for SessionId={SessionId}", sessionId);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -110,7 +152,7 @@ public class AudioCaseTakingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AudioCaseTaking result failed for SessionId={SessionId}", sessionId);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -143,7 +185,7 @@ public class AudioCaseTakingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AudioCaseTaking re-analyze failed for SessionId={SessionId}", sessionId);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -176,7 +218,7 @@ public class AudioCaseTakingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AudioCaseTaking doctor action failed for SessionId={SessionId}", sessionId);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -202,7 +244,7 @@ public class AudioCaseTakingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AudioCaseTaking latest session failed for PatientId={PatientId}", patientId);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -232,7 +274,7 @@ public class AudioCaseTakingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AudioCaseTaking sessions failed for PatientId={PatientId}", patientId);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -254,7 +296,7 @@ public class AudioCaseTakingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AudioCaseTaking concepts failed for SessionId={SessionId}", sessionId);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -287,7 +329,7 @@ public class AudioCaseTakingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AudioCaseTaking rubric feedback failed for SessionId={SessionId}", sessionId);
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -309,7 +351,7 @@ public class AudioCaseTakingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "AudioCaseTaking download failed for SessionId={SessionId}", sessionId);
-            return BadRequest(new { success = false, message = ex.Message });
+            return this.ServerError(ex);
         }
     }
 

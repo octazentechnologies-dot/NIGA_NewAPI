@@ -76,7 +76,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
                 LastError = ex.GetBaseException().Message;
                 emailSenderModel.sentStatus = false;
                 emailSenderModel.LastError = LastError;
-                Console.Error.WriteLine("SMTP send failed: " + LastError);
+                Homeocentrum.Niga.NewAPI.Domain.Logging.AppFileLog.Write("errors", "WARN", "Smtp",
+                    "SMTP send failed: " + LastError, null, null, sendAlert: false);
             }
 
             return emailSenderModel.sentStatus;

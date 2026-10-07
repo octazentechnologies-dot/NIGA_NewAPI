@@ -58,6 +58,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Extensions
             services.AddScoped<ITokenService, TokenService>();
             services.AddSingleton<IJwtDenylistService, JwtDenylistService>();
             services.AddScoped<IAuditEventWriter, AuditEventWriter>();
+            services.AddSingleton<Security.Audit.SecurityAuditLog>();
+            services.AddSingleton<Security.Audit.ISecurityAuditLog>(sp => sp.GetRequiredService<Security.Audit.SecurityAuditLog>());
+            services.AddSingleton<Security.Uploads.IAntivirusScanner, Security.Uploads.DefenderAntivirusScanner>();
+            services.AddScoped<Security.Uploads.UploadSecurityFilter>();
+            services.AddScoped<Security.IPatientAccessGuard, Security.PatientAccessGuard>();
+            services.AddHttpClient(RazorpayPaymentVerifier.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
+            services.AddSingleton<IRazorpayPaymentVerifier, RazorpayPaymentVerifier>();
             services.AddSingleton<ISignedFileUrlService, SignedFileUrlService>();
             // PRE-03 — Sms:Provider = Stub | Msg91 | Twilio (keys empty → stub log). OTP + appointment notices use ISmsSender.
             services.Configure<SmsOptions>(config.GetSection(SmsOptions.SectionName));
@@ -257,6 +264,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Extensions
             services.AddSingleton<IAudioCaseTakingQueue>(sp => sp.GetRequiredService<AudioCaseTakingQueue>());
             services.AddHostedService<AudioCaseTakingBackgroundService>();
             services.AddHostedService<AudioCaseRetentionBackgroundService>();
+            services.AddHostedService<ReceptionPasswordMigrationBackgroundService>();
+            services.AddHostedService<Security.Audit.SecurityAuditChainMonitor>();
             services.AddHostedService<AudioCaseZombieSessionSweeperBackgroundService>();
             services.AddHostedService<RubricEmbeddingIndexerBackgroundService>();
 

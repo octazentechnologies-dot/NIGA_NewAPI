@@ -20,11 +20,32 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     {
         private readonly NIGACentrumContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly IPatientAccessGuard _patientAccess;
 
-        public SecureDocumentController(NIGACentrumContext context, IWebHostEnvironment env)
+        public SecureDocumentController(NIGACentrumContext context, IWebHostEnvironment env, IPatientAccessGuard patientAccess)
         {
             _context = context;
             _env = env;
+            _patientAccess = patientAccess;
+        }
+
+        /// <summary>User owner = the caller; Doctor owner = caller's clinic; Patient owner = patient the caller may access.</summary>
+        private async Task<bool> OwnerAllowedAsync(string ownerType, long ownerId)
+        {
+            if (DoctorOwnership.IsGlobalAdminPortalUser(User))
+                return true;
+            switch (ownerType.Trim().ToLowerInvariant())
+            {
+                case "user":
+                    try { return User.GetUserId() == ownerId; }
+                    catch { return false; }
+                case "doctor":
+                    return ownerId <= int.MaxValue && DoctorOwnership.EnsureDoctorOwns(User, (int)ownerId);
+                case "patient":
+                    return ownerId <= int.MaxValue && await _patientAccess.CanAccessPatientAsync(User, (int)ownerId);
+                default:
+                    return false;
+            }
         }
 
         [HttpPost("Upload")]
@@ -38,12 +59,14 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 return BadRequest(new { success = false, message = "File is required." });
             if (string.IsNullOrWhiteSpace(ownerType) || ownerId <= 0)
                 return BadRequest(new { success = false, message = "ownerType and ownerId are required." });
+            if (!await OwnerAllowedAsync(ownerType, ownerId))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this owner." });
 
             var root = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.SecureDocuments);
             Directory.CreateDirectory(root);
 
             var safeName = Path.GetFileName(file.FileName);
-            var storedName = $"{Guid.NewGuid():N}_{safeName}";
+            var storedName = Homeocentrum.Niga.NewAPI.Domain.Security.Uploads.UploadGuard.RandomStoredName(safeName);
             var relativePath = UploadedMedia.ContentRelative(UploadedMedia.SecureDocuments, storedName);
             var fullPath = Path.Combine(root, storedName);
 

@@ -1495,12 +1495,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             catch (Exception ex)
             {
                 try { context.ChangeTracker.AutoDetectChangesEnabled = true; } catch { /* ignore */ }
+                var safe = Homeocentrum.Niga.NewAPI.Domain.Errors.SafeError.Capture(ex, null, "RubricRemedy.Import");
                 return new ImportResultModel
                 {
                     TotalRows = result.TotalRows,
                     FailureCount = result.TotalRows,
-                    Message = "Error during import: " + ex.Message,
-                    Errors = new List<string> { ex.Message },
+                    Message = "Error during import. Error id: " + safe.ErrorId,
+                    Errors = new List<string> { "Error id: " + safe.ErrorId },
                 };
             }
         }
@@ -1606,7 +1607,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Skip file write error: " + ex.Message);
+                Homeocentrum.Niga.NewAPI.Domain.Logging.AppFileLog.Write("errors", "WARN", "RubricRemedyImport",
+                    "Skip file write failed.", ex, null, sendAlert: false);
                 return null;
             }
         }

@@ -1,6 +1,8 @@
 using API.Extensions;
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
@@ -55,11 +57,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return new
-                {
-                    Status = 500,
-                    Message = ex.Message
-                };
+                return SafeError.Capture(ex, HttpContext);
             }
         }
 
@@ -77,6 +75,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         }
 
         [HttpPost("AddQualification")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> AddNewQualification(QualificationModel qualificationMasterDto)
         {
             try
@@ -119,15 +118,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return new
-                {
-                    Status = 500,
-                    Message = ex.Message
-                };
+                return SafeError.Capture(ex, HttpContext);
             }
         }
 
         [HttpPost("UpdateQualificationDetails")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> UpdateQualificationDetails(QualificationModel updateQualificationDto)
         {
             try
@@ -173,16 +169,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                var result = new
-                {
-                    Status = 500,
-                    Message = ex.Message
-                };
-                return Ok(result);
+                return Ok(SafeError.Capture(ex, HttpContext));
             }
         }
 
         [HttpPost("DeleteQualificationDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public async Task<object> DeleteQualificationDetails(int Id)
         {
             var data = await _qualificationService.GetQualificationById(Id);
@@ -208,12 +200,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                var result = new
-                {
-                    Status = 500,
-                    Message = ex.Message
-                };
-                return BadRequest(result);
+                return this.ServerError(ex);
             }
         }
 
@@ -238,7 +225,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 

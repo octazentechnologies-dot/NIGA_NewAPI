@@ -65,8 +65,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    new { success = false, message = ex.InnerException?.Message ?? ex.Message });
+                return this.ServerError(ex);
             }
         }
 

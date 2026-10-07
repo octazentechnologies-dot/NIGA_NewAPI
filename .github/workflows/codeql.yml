@@ -1,0 +1,43 @@
+name: Static analysis (CodeQL)
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          build-mode: manual
+          queries: security-extended
+
+      - name: Build
+        run: dotnet build Homeocentrum.Niga.NewAPI/Homeocentrum.Niga.NewAPI.csproj -c Release -nologo
+
+      - name: Unit tests
+        run: dotnet test Homeocentrum.Niga.NewAPI.Domain.Tests/Homeocentrum.Niga.NewAPI.Domain.Tests.csproj -c Release -nologo --filter "FullyQualifiedName~Domain.Tests.Security"
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp"

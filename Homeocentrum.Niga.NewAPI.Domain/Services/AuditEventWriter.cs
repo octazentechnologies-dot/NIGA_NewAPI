@@ -44,10 +44,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
             {
                 ActorUserId = actorUserId,
                 Role = role,
-                Action = action,
+                Action = Logging.LogRedactor.Redact(action),
                 Entity = entity,
-                OldJson = oldJson,
-                NewJson = newJson,
+                OldJson = oldJson == null ? null : Logging.LogRedactor.Redact(oldJson),
+                NewJson = newJson == null ? null : Logging.LogRedactor.Redact(newJson),
                 At = DateTime.UtcNow,
                 CorrelationId = correlationId
             });

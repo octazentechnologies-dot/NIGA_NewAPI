@@ -1,0 +1,61 @@
+# OWASP ZAP Automation Framework plan for one Homeocentrum API on STAGING.
+# Run through Run-ZapStaging.ps1, which fills the ${...} variables and the bearer token
+# (ZAP_AUTH_HEADER_VALUE). Never point this at production: the active scan sends attack payloads.
+env:
+  contexts:
+    - name: niga-api
+      urls:
+        - "${TARGET_URL}"
+      includePaths:
+        - "${TARGET_URL}.*"
+      excludePaths:
+        # Destructive or outward-facing calls: keep the scan from deleting data or messaging real people.
+        - ".*(?i)delete.*"
+        - ".*(?i)/Otp/.*"
+        - ".*(?i)/Sms/.*"
+        - ".*(?i)/WhatsApp/(Send|Bulk).*"
+        - ".*(?i)/Notifications/Send.*"
+        - ".*(?i)/Email/.*"
+        - ".*(?i)/Payout.*"
+        - ".*(?i)/Account/Logout.*"
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+
+jobs:
+  - type: passiveScan-config
+    parameters:
+      maxAlertsPerRule: 10
+      scanOnlyInScope: true
+
+  - type: openapi
+    parameters:
+      apiFile: "${OPENAPI_FILE}"
+      targetUrl: "${TARGET_URL}"
+      context: niga-api
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 10
+
+  - type: activeScan
+    parameters:
+      context: niga-api
+      maxRuleDurationInMins: 5
+      maxScanDurationInMins: 90
+      threadPerHost: 2
+      delayInMs: 50
+
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: /zap/wrk/reports
+      reportFile: "${REPORT_NAME}.html"
+      reportTitle: "Homeocentrum ${REPORT_NAME} - ZAP staging scan"
+
+  - type: report
+    parameters:
+      template: sarif-json
+      reportDir: /zap/wrk/reports
+      reportFile: "${REPORT_NAME}.sarif"

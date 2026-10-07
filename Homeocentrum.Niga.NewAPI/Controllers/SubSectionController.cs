@@ -149,11 +149,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return new
-                {
-                    Status = 500,
-                    Message = ex.Message
-                };
+                return SafeError.Capture(ex, HttpContext);
             }
         }
 
@@ -210,12 +206,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                var result = new
-                {
-                    Status = 500,
-                    Message = ex.Message
-                };
-                return Ok(result);
+                return Ok(SafeError.Capture(ex, HttpContext));
 
             }
         }
@@ -248,12 +239,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                var result = new
-                {
-                    Status = 500,
-                    Message = ex.Message
-                };
-                return BadRequest(result);
+                return this.ServerError(ex);
 
             }
 
@@ -287,12 +273,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                var result = new
-                {
-                    Status = 500,
-                    Message = ex.Message
-                };
-                return BadRequest(result);
+                return this.ServerError(ex);
 
             }
 
@@ -326,12 +307,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                var result = new
-                {
-                    Status = 500,
-                    Message = ex.Message
-                };
-                return BadRequest(result);
+                return this.ServerError(ex);
 
             }
 
@@ -346,6 +322,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             ErrorResponseModel errorResponseModel = null;
             try
             {
+                if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied." });
+
                 var subsectionModelList = _subSectionService.GetSubSectionsByDate(userId, ref errorResponseModel);
 
                 if (subsectionModelList != null)
@@ -356,7 +335,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -385,7 +364,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -417,7 +396,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -515,7 +494,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
     }

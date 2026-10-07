@@ -61,7 +61,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "AddReceptionStaff failed for DoctorUserID={DoctorUserId}", request.DoctorUserID);
-                return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+                return ThreeDBodyPartApiResponseHelper.Error(ex);
             }
         }
 
@@ -96,7 +96,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "UpdateReceptionStaff failed for ReceptionStaffID={ReceptionStaffId}", request.ReceptionStaffID);
-                return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+                return ThreeDBodyPartApiResponseHelper.Error(ex);
             }
         }
 
@@ -131,7 +131,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "DeleteReceptionStaff failed for ReceptionStaffID={ReceptionStaffId}", request.ReceptionStaffID);
-                return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+                return ThreeDBodyPartApiResponseHelper.Error(ex);
             }
         }
 
@@ -167,7 +167,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "GetReceptionStaffById failed for ReceptionStaffID={ReceptionStaffId}", receptionStaffID);
-                return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+                return ThreeDBodyPartApiResponseHelper.Error(ex);
             }
         }
 
@@ -200,7 +200,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "GetReceptionStaffList failed for DoctorUserID={DoctorUserId}", request.DoctorUserID);
-                return ThreeDBodyPartApiResponseHelper.PaginatedError(ex.Message);
+                return ThreeDBodyPartApiResponseHelper.PaginatedError(ex);
             }
         }
 

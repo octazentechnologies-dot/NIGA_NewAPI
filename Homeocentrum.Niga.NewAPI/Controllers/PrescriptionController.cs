@@ -104,7 +104,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     ex,
                     "GetPrescriptionDetailsByAppointmentId failed for AppointmentId={AppointmentId}",
                     request.AppointmentId);
-                return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+                return ThreeDBodyPartApiResponseHelper.Error(ex);
             }
         }
 

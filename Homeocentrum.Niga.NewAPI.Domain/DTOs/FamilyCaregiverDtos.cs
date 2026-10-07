@@ -53,6 +53,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string? PatientName { get; set; }
         public string? MobileNo { get; set; }
         public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public int? Age { get; set; }
+        /// <summary>Under 18 (DPDP s.9): consent must come from a parent or guardian. Null when age is unknown.</summary>
+        public bool? IsMinor { get; set; }
     }
 
     public class FamilyRelationDto

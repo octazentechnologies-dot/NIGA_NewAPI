@@ -12,6 +12,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
@@ -88,7 +89,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -236,7 +237,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -281,6 +282,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 {
                     return BadRequest("Invalid data");
                 }
+                if (!DoctorOwnership.EnsureCallerIsUserOrAdmin(User, userId))
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this user." });
 
                 var userModel = _userService.GetUserById(userId, ref errorResponseModel);
                 if (userModel != null)
@@ -292,7 +295,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -300,7 +303,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         /// Admin create / update user (creates Doctor row when RoleId is 3).
         /// </summary>
         [HttpPost]
-        [AllowAnonymous]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public IActionResult Post([FromBody] UserModel model)
         {
             if (model == null || !ModelState.IsValid)
@@ -321,7 +324,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -347,7 +350,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -368,7 +371,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -387,7 +390,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -403,12 +406,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
         [HttpGet]
-        [Authorize]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         [ProducesResponseType(typeof(NewUserModel), 200)]
         public IActionResult GetAllUser()
         {
@@ -425,12 +428,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
         [HttpPost("DeleteUser")]
-        [Authorize]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
         public IActionResult DeleteUser([FromBody] UserModel userModel)
         {
             ErrorResponseModel errorResponseModel = null;
@@ -446,7 +449,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -479,7 +482,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 

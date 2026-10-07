@@ -9,6 +9,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Extensions;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
+using Homeocentrum.Niga.NewAPI.Domain.Privacy;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
@@ -60,8 +61,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    new { success = false, message = ex.InnerException?.Message ?? ex.Message });
+                return this.ServerError(ex);
             }
         }
 
@@ -168,8 +168,13 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                             Relation = f.Relation,
                             PatientName = p.PatientName,
                             MobileNo = p.MobileNo,
-                            Email = p.Email
+                            Email = p.Email,
+                            DateOfBirth = p.DateOfBirth,
+                            Age = p.Age
                         }).ToListAsync();
+                var today = DateTime.Today;
+                foreach (var r in rows)
+                    r.IsMinor = ConsentRules.IsMinor(r.DateOfBirth, r.Age, today);
 
                 return Ok(new
                 {
@@ -182,8 +187,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    new { success = false, message = ex.InnerException?.Message ?? ex.Message });
+                return this.ServerError(ex);
             }
         }
 
@@ -222,6 +226,10 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             int memberPatientId;
             if (request.ExistingMemberPatientId.HasValue && request.ExistingMemberPatientId.Value > 0)
             {
+                // Linking an existing patient record would hand this account guardian rights over a stranger's file.
+                if (!AdminAuthorizationPolicies.IsAdminPortalUser(User))
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { success = false, message = "Only the clinic admin can link an existing patient record as a family member." });
                 memberPatientId = request.ExistingMemberPatientId.Value;
                 var exists = await _context.Patients.AnyAsync(p =>
                     p.PatientId == memberPatientId && p.DeleteStatus != true);
@@ -276,7 +284,10 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     Relation = row.Relation,
                     PatientName = request.PatientName,
                     MobileNo = request.MobileNo,
-                    Email = request.Email
+                    Email = request.Email,
+                    DateOfBirth = request.DateOfBirth,
+                    Age = request.Age,
+                    IsMinor = ConsentRules.IsMinor(request.DateOfBirth, request.Age, DateTime.Today)
                 }
             });
         }

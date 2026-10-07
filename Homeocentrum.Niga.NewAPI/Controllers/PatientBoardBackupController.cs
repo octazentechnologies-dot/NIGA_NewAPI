@@ -60,7 +60,7 @@ public class PatientBoardBackupController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Save PatientBoardBackup failed for UserId={UserId}", User.GetUserId());
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -82,7 +82,7 @@ public class PatientBoardBackupController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Summary PatientBoardBackup failed for UserId={UserId}", User.GetUserId());
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -104,7 +104,7 @@ public class PatientBoardBackupController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Latest PatientBoardBackup failed for UserId={UserId}", User.GetUserId());
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 
@@ -126,7 +126,7 @@ public class PatientBoardBackupController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Delete PatientBoardBackup failed for UserId={UserId}", User.GetUserId());
-            return ThreeDBodyPartApiResponseHelper.Error(ex.Message);
+            return ThreeDBodyPartApiResponseHelper.Error(ex);
         }
     }
 

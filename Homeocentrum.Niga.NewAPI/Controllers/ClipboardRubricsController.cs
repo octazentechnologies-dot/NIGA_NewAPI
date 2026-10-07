@@ -22,9 +22,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         /// Used to initialize controller and inject clinical questions
         /// </summary>
         /// <param name="clinicalquestionsService"></param>
-        public ClipboardRubricsController(IClipboardRubricsService clipboardRubricsService)
+        private readonly IPatientAccessGuard _patientAccessGuard;
+
+        public ClipboardRubricsController(IClipboardRubricsService clipboardRubricsService, IPatientAccessGuard patientAccessGuard)
         {
             _clipboardRubricsService = clipboardRubricsService;
+            _patientAccessGuard = patientAccessGuard;
         }
 
         /// <summary>
@@ -52,7 +55,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -81,7 +84,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -96,11 +99,14 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetClipboardRubricsPatientId(int PatientId)
+        public async Task<IActionResult> GetClipboardRubricsPatientId(int PatientId)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
+                if (!await _patientAccessGuard.CanAccessPatientAsync(User, PatientId))
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this patient." });
+
                 var clipboardRubricsModelList = _clipboardRubricsService.GetClipboardRubricsPatientId(PatientId, ref errorResponseModel);
 
                 if (clipboardRubricsModelList != null)
@@ -111,7 +117,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
         /// <summary>
@@ -140,7 +146,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -167,7 +173,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -193,7 +199,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -218,7 +224,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -254,7 +260,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         //    }
         //    catch (Exception ex)
         //    {
-        //        return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+        //        return this.ServerError(ex);
         //    }
         //}
 
@@ -281,7 +287,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 
@@ -306,7 +312,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+                return this.ServerError(ex);
             }
         }
 

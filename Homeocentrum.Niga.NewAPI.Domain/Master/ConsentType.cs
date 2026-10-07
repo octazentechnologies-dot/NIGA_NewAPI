@@ -17,4 +17,6 @@ public partial class ConsentType
     public bool IsActive { get; set; } = true;
 
     public virtual ICollection<ConsentRecord> ConsentRecords { get; set; } = new List<ConsentRecord>();
+
+    public virtual ICollection<ConsentNotice> ConsentNotices { get; set; } = new List<ConsentNotice>();
 }

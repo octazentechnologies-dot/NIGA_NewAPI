@@ -41,6 +41,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             _mailSettings = mailSettings;
         }
 
+        [SecurityAudit(SecurityAuditEvents.OtpRequested)]
         [HttpPost("RequestOtp")]
         [AllowAnonymous]
         public async Task<IActionResult> RequestOtp([FromBody] RequestOtpModel request)
@@ -148,6 +149,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             return Ok(new { success = true, data = payload });
         }
 
+        [SecurityAudit(SecurityAuditEvents.Login)]
         [HttpPost("VerifyOtp")]
         [AllowAnonymous]
         public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpModel request)

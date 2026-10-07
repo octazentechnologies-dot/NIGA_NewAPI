@@ -1,0 +1,65 @@
+name: Secret scan (gitleaks)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 2 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks (checksum verified)
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          file="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$file" "$base/$file"
+          curl -sSfL -o sums.txt "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " ${file}\$" sums.txt | sha256sum -c -
+          tar -xzf "$file" gitleaks
+
+      - name: Pick commit range
+        id: range
+        run: |
+          zero="0000000000000000000000000000000000000000"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "opts=${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "$zero" ]; then
+            echo "opts=${{ github.event.before }}..${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            echo "opts=-1 ${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "opts=" >> "$GITHUB_OUTPUT"
+            echo "full=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # New commits must not add secrets: this step fails the build.
+      - name: Scan new commits
+        if: steps.range.outputs.full != 'true'
+        run: ./gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts="${{ steps.range.outputs.opts }}" --report-format sarif --report-path gitleaks.sarif
+
+      # Weekly / manual: whole history, reported to code scanning (history already holds rotated-but-unpurged secrets).
+      - name: Scan full history
+        if: steps.range.outputs.full == 'true'
+        continue-on-error: true
+        run: ./gitleaks git . --config .gitleaks.toml --redact --no-banner --report-format sarif --report-path gitleaks.sarif
+
+      - name: Upload results
+        if: always() && hashFiles('gitleaks.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
