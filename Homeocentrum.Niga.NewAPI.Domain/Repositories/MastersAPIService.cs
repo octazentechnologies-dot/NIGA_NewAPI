@@ -333,12 +333,17 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
         {
             errorResponseModel = new ErrorResponseModel();
             var subsectionModelList = (
-                from ss in context.SubSectionMasters
+                from ss in context.SubSectionMasters.AsNoTracking()
+                join parent in context.SubSectionMasters.AsNoTracking()
+                    on ss.ParentSubSectionId equals (int?)parent.SubSectionId into parentJoin
+                from parent in parentJoin.DefaultIfEmpty()
                 select new SubSectionModel
                 {
                     SubSectionId = ss.SubSectionId,
                     SectionId = ss.SectionId,
+                    SectionName = ss.Section != null ? ss.Section.SectionName : null,
                     ParentSubSectionId = ss.ParentSubSectionId,
+                    ParentSubSectionName = parent != null ? parent.SubSectionName : string.Empty,
                     SubSectionName = ss.SubSectionName,
                     SubSectionNameAlias = ss.SubSectionNameAlias,
                     Description = ss.Description,
@@ -371,13 +376,18 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             var subsectionModelList = new List<SubSectionModel>();
             errorResponseModel = new ErrorResponseModel();
             var subsectionEntityList = (
-                from ss in context.SubSectionMasters
+                from ss in context.SubSectionMasters.AsNoTracking()
                 where ss.SectionId == sectionId && ss.DeleteStatus == false
+                join parent in context.SubSectionMasters.AsNoTracking()
+                    on ss.ParentSubSectionId equals (int?)parent.SubSectionId into parentJoin
+                from parent in parentJoin.DefaultIfEmpty()
                 select new SubSectionModel
                 {
                     SubSectionId = ss.SubSectionId,
                     SectionId = ss.SectionId,
+                    SectionName = ss.Section != null ? ss.Section.SectionName : null,
                     ParentSubSectionId = ss.ParentSubSectionId,
+                    ParentSubSectionName = parent != null ? parent.SubSectionName : string.Empty,
                     SubSectionName = ss.SubSectionName,
                     SubSectionNameAlias = ss.SubSectionNameAlias,
                     Description = ss.Description,
@@ -692,6 +702,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 FirstName = d.FirstName,
                 MiddleName = d.MiddleName,
                 LastName = d.LastName,
+                DoctorName = d.FirstName + " " + d.LastName,
                 CasePaperValidity = d.CasePaperValidity,
                 City = d.City,
                 DoctorID = d.DoctorId,
@@ -967,6 +978,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 .AsNoTracking()
                 .Where(x => x.RoleId == roleId && x.IsView)
                 .Include(x => x.Menu)
+                    .ThenInclude(m => m.Module)
                 .Where(x => x.Menu != null && !x.Menu.DeleteStatus && x.Menu.ShowInMainMenu)
                 .OrderBy(x => x.Menu.SeqNo)
                 .ToList();
@@ -996,6 +1008,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 .AsNoTracking()
                 .Where(x => x.UserId == userId && x.IsView == true)
                 .Include(x => x.Menu)
+                    .ThenInclude(m => m.Module)
                 .ToList()
                 .Select(x => x.Menu)
                 .Where(m => m != null && !m.DeleteStatus && m.ShowInMainMenu)
@@ -1016,6 +1029,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             {
                 MenuId = menu.MenuId,
                 ModuleId = menu.ModuleId,
+                ModuleName = menu.Module?.ModuleName,
                 MenuName = menu.MenuName,
                 MenuNameMarathi = menu.MenuNameMarathi,
                 MenuType = menu.MenuType,

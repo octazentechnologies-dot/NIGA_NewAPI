@@ -42,21 +42,51 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             dto.CaregiverCount = await _context.CaregiverAuthorizations.CountAsync(c =>
                 c.PatientId == owner.PatientId && !c.DeleteStatus && c.RevokedAt == null);
 
-            var upcoming = await _context.PatientAppointments.AsNoTracking()
-                .Where(a => a.PatientId == owner.PatientId && a.DeleteStatus != true && a.AppointmentDate >= DateTime.Today)
-                .OrderBy(a => a.AppointmentDate)
-                .ThenBy(a => a.AppointmentTime)
-                .Take(5)
-                .Select(a => new PatientAppointmentModel
+            var upcoming = await (
+                from a in _context.PatientAppointments.AsNoTracking()
+                join p in _context.Patients.AsNoTracking() on a.PatientId equals p.PatientId
+                join d in _context.Doctors.AsNoTracking() on a.DoctorId equals d.DoctorId into doctors
+                from d in doctors.DefaultIfEmpty()
+                where a.PatientId == owner.PatientId && a.DeleteStatus != true && a.AppointmentDate >= DateTime.Today
+                orderby a.AppointmentDate, a.AppointmentTime
+                select new PatientAppointmentModel
                 {
                     PatientAppId = a.PatientAppId,
                     PatientId = a.PatientId,
+                    PatientName = p.PatientName,
+                    MobileNo = p.MobileNo,
+                    Email = p.Email,
                     AppointmentDate = a.AppointmentDate,
                     AppointmentTime = a.AppointmentTime,
                     Status = a.Status ?? string.Empty,
+                    DeleteStatus = a.DeleteStatus,
                     DoctorId = a.DoctorId,
-                    UserId = a.UserId
+                    DoctorName = d != null ? ((d.FirstName ?? "") + " " + (d.LastName ?? "")).Trim() : null,
+                    UserId = a.UserId,
+                    CaseId = _context.CaseEntryDetails
+                        .Where(c => c.PatientId == a.PatientId && c.DeleteStatus != true)
+                        .OrderByDescending(c => c.CaseId)
+                        .Select(c => c.CaseId)
+                        .FirstOrDefault(),
+                    Address = p.AddressLine1 ?? p.Address,
+                    Age = p.Age,
+                    Gender = p.Gender,
+                    DateOfBirth = p.DateOfBirth,
+                    IsWhatsAppOptIn = p.IsWhatsAppOptIn,
+                    WhatsAppOptInDate = p.WhatsAppOptInDate,
+                    VisitType = a.VisitType,
+                    ConsultMode = a.ConsultMode,
+                    PaymentStatus = a.PaymentStatus,
+                    IsTele = a.IsTele,
+                    BookingToken = a.BookingToken,
+                    BookingChannel = a.BookingChannel,
+                    PaymentMethod = a.PaymentMethod,
+                    PayAtClinicAllowed = a.PayAtClinicAllowed,
+                    CancelReasonCode = a.CancelReasonCode,
+                    CalledAt = a.CalledAt,
+                    QueuePosition = a.QueuePosition
                 })
+                .Take(5)
                 .ToListAsync();
             dto.UpcomingAppointments = upcoming.Count;
             dto.NextAppointments = upcoming;

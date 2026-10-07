@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -154,27 +155,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 var ownerPatientId = owner?.PatientId ?? 0;
                 var rows = ownerPatientId <= 0
                     ? new List<FamilyMemberDto>()
-                    : await (
-                        from f in _context.PatientFamilyMembers
-                        join p in _context.Patients on f.MemberPatientId equals p.PatientId
-                        where f.OwnerPatientId == ownerPatientId && !f.DeleteStatus && p.DeleteStatus != true
-                        orderby f.FamilyMemberId
-                        select new FamilyMemberDto
-                        {
-                            FamilyMemberId = f.FamilyMemberId,
-                            OwnerPatientId = f.OwnerPatientId,
-                            MemberPatientId = f.MemberPatientId,
-                            RelationId = f.RelationId,
-                            Relation = f.Relation,
-                            PatientName = p.PatientName,
-                            MobileNo = p.MobileNo,
-                            Email = p.Email,
-                            DateOfBirth = p.DateOfBirth,
-                            Age = p.Age
-                        }).ToListAsync();
-                var today = DateTime.Today;
-                foreach (var r in rows)
-                    r.IsMinor = ConsentRules.IsMinor(r.DateOfBirth, r.Age, today);
+                    : await LoadMemberDtosAsync(f => f.OwnerPatientId == ownerPatientId);
 
                 return Ok(new
                 {
@@ -196,6 +177,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             if (request == null)
                 return BadRequest(new { success = false, message = "Body is required." });
+            if (request.Gender.HasValue && (request.Gender.Value < 0 || request.Gender.Value > 2))
+                return BadRequest(new { success = false, message = "Gender must be 0 (Male), 1 (Female) or 2 (Other)." });
 
             var userId = (long)User.GetUserId();
             if (userId <= 0)
@@ -272,29 +255,31 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             _context.PatientFamilyMembers.Add(row);
             await _context.SaveChangesAsync();
 
+            var created = (await LoadMemberDtosAsync(f => f.FamilyMemberId == row.FamilyMemberId)).FirstOrDefault();
             return Ok(new
             {
                 success = true,
-                data = new FamilyMemberDto
-                {
-                    FamilyMemberId = row.FamilyMemberId,
-                    OwnerPatientId = row.OwnerPatientId,
-                    MemberPatientId = row.MemberPatientId,
-                    RelationId = row.RelationId,
-                    Relation = row.Relation,
-                    PatientName = request.PatientName,
-                    MobileNo = request.MobileNo,
-                    Email = request.Email,
-                    DateOfBirth = request.DateOfBirth,
-                    Age = request.Age,
-                    IsMinor = ConsentRules.IsMinor(request.DateOfBirth, request.Age, DateTime.Today)
-                }
+                data = created
             });
         }
 
+        /// <summary>
+        /// Edit a family member. PUT and PATCH behave the same: only fields sent (non-null) are changed;
+        /// send "" to clear MobileNo / Email. Returns the saved member.
+        /// </summary>
         [HttpPut("{id:long}")]
+        [HttpPatch("{id:long}")]
         public async Task<IActionResult> Update(long id, [FromBody] FamilyMemberUpdateRequest request)
         {
+            if (request == null)
+                return BadRequest(new { success = false, message = "Body is required." });
+            if (request.DateOfBirth.HasValue && request.DateOfBirth.Value.Date > DateTime.Today)
+                return BadRequest(new { success = false, message = "Date of birth cannot be in the future." });
+            if (request.Age.HasValue && (request.Age.Value < 0 || request.Age.Value > 130))
+                return BadRequest(new { success = false, message = "Age must be between 0 and 130." });
+            if (request.Gender.HasValue && (request.Gender.Value < 0 || request.Gender.Value > 2))
+                return BadRequest(new { success = false, message = "Gender must be 0 (Male), 1 (Female) or 2 (Other)." });
+
             var userId = (long)User.GetUserId();
             var row = await _context.PatientFamilyMembers
                 .FirstOrDefaultAsync(f => f.FamilyMemberId == id && !f.DeleteStatus);
@@ -305,36 +290,123 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 return StatusCode(StatusCodes.Status403Forbidden,
                     new { success = false, message = "Access denied." });
 
-            var relation = await ResolveRelationAsync(request?.RelationId, request?.Relation, userId);
+            var relation = await ResolveRelationAsync(request.RelationId, request.Relation, userId);
             if (relation != null)
             {
                 row.RelationId = relation.Value.RelationId;
                 row.Relation = relation.Value.RelationName;
             }
 
-            var patient = await _context.Patients.FirstOrDefaultAsync(p => p.PatientId == row.MemberPatientId);
-            if (patient != null && request != null)
-            {
-                if (!string.IsNullOrWhiteSpace(request.PatientName))
-                    patient.PatientName = request.PatientName.Trim();
-                if (request.MobileNo != null)
-                    patient.MobileNo = request.MobileNo;
-                if (request.Email != null)
-                    patient.Email = request.Email;
-                if (request.DateOfBirth.HasValue)
-                    patient.DateOfBirth = request.DateOfBirth;
-                if (request.Gender.HasValue)
-                    patient.Gender = request.Gender;
-                if (request.Age.HasValue)
-                    patient.Age = request.Age;
-                patient.ChangedBy = userId.ToString();
-                patient.ChangedDate = DateTime.UtcNow;
-            }
+            var patient = await _context.Patients
+                .FirstOrDefaultAsync(p => p.PatientId == row.MemberPatientId && p.DeleteStatus != true);
+            if (patient == null)
+                return NotFound(new { success = false, message = "Family member patient record not found." });
+
+            if (!string.IsNullOrWhiteSpace(request.PatientName))
+                patient.PatientName = request.PatientName.Trim();
+            if (request.MobileNo != null)
+                patient.MobileNo = request.MobileNo.Trim();
+            if (request.Email != null)
+                patient.Email = request.Email.Trim();
+            if (request.DateOfBirth.HasValue)
+                patient.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth.Value.Date, DateTimeKind.Unspecified);
+            if (request.Gender.HasValue)
+                patient.Gender = request.Gender;
+            if (request.Age.HasValue)
+                patient.Age = request.Age;
+            else if (request.DateOfBirth.HasValue)
+                patient.Age = AgeOn(patient.DateOfBirth!.Value, DateTime.Today);
+            patient.ChangedBy = userId.ToString();
+            patient.ChangedDate = DateTime.UtcNow;
 
             row.ChangedBy = userId.ToString();
             row.ChangedDate = DateTime.UtcNow;
             await _context.SaveChangesAsync();
-            return Ok(new { success = true, message = "Updated." });
+
+            return Ok(new
+            {
+                success = true,
+                message = "Updated.",
+                data = (await LoadMemberDtosAsync(f => f.FamilyMemberId == row.FamilyMemberId)).FirstOrDefault()
+            });
+        }
+
+        /// <summary>
+        /// One projection for list, get, create and update. Gaps are filled from real data only:
+        /// RelationId from the relation master by name, Age from DateOfBirth, and contact details from the
+        /// member's phone or the family owner's patient record. DateOfBirth, Gender and IsMinor stay null when
+        /// never recorded, because consent rules must not guess whether someone is a minor.
+        /// </summary>
+        private async Task<List<FamilyMemberDto>> LoadMemberDtosAsync(Expression<Func<PatientFamilyMember, bool>> filter)
+        {
+            var rows = await (
+                from f in _context.PatientFamilyMembers.AsNoTracking().Where(filter)
+                join p in _context.Patients.AsNoTracking() on f.MemberPatientId equals p.PatientId
+                join o in _context.Patients.AsNoTracking() on f.OwnerPatientId equals o.PatientId into owners
+                from o in owners.DefaultIfEmpty()
+                where !f.DeleteStatus && p.DeleteStatus != true
+                orderby f.FamilyMemberId
+                select new
+                {
+                    f.FamilyMemberId,
+                    f.OwnerPatientId,
+                    f.MemberPatientId,
+                    RelationId = f.RelationId ?? _context.FamilyRelationMasters
+                        .Where(r => !r.DeleteStatus && r.RelationName == f.Relation)
+                        .Select(r => (int?)r.RelationId)
+                        .FirstOrDefault(),
+                    f.Relation,
+                    p.PatientName,
+                    p.MobileNo,
+                    p.PhoneNo,
+                    p.Email,
+                    p.DateOfBirth,
+                    p.Gender,
+                    p.Age,
+                    OwnerMobileNo = o != null ? o.MobileNo : null,
+                    OwnerEmail = o != null ? o.Email : null
+                }).ToListAsync();
+
+            var today = DateTime.Today;
+            return rows.Select(r =>
+            {
+                var age = r.DateOfBirth.HasValue ? AgeOn(r.DateOfBirth.Value, today) : r.Age;
+                return new FamilyMemberDto
+                {
+                    FamilyMemberId = r.FamilyMemberId,
+                    OwnerPatientId = r.OwnerPatientId,
+                    MemberPatientId = r.MemberPatientId,
+                    RelationId = r.RelationId,
+                    Relation = r.Relation ?? string.Empty,
+                    PatientName = r.PatientName ?? string.Empty,
+                    MobileNo = FirstText(r.MobileNo, r.PhoneNo, r.OwnerMobileNo),
+                    Email = FirstText(r.Email, r.OwnerEmail),
+                    DateOfBirth = r.DateOfBirth,
+                    Gender = r.Gender,
+                    GenderName = GenderName(r.Gender),
+                    Age = age,
+                    IsMinor = ConsentRules.IsMinor(r.DateOfBirth, age, today)
+                };
+            }).ToList();
+        }
+
+        private static string FirstText(params string?[] values)
+            => values.Select(v => v?.Trim()).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? string.Empty;
+
+        private static string GenderName(int? gender) => gender switch
+        {
+            0 => "Male",
+            1 => "Female",
+            2 => "Other",
+            _ => "Not specified"
+        };
+
+        private static int AgeOn(DateTime dob, DateTime today)
+        {
+            var age = today.Year - dob.Year;
+            if (dob.Date > today.AddYears(-age))
+                age--;
+            return Math.Max(0, age);
         }
 
         [HttpDelete("{id:long}")]
@@ -361,33 +433,19 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         public async Task<IActionResult> GetById(long id)
         {
             var userId = (long)User.GetUserId();
-            var row = await (
-                from f in _context.PatientFamilyMembers
-                join p in _context.Patients on f.MemberPatientId equals p.PatientId
-                where f.FamilyMemberId == id && !f.DeleteStatus && p.DeleteStatus != true
-                select new { f, p }).FirstOrDefaultAsync();
+            var row = await _context.PatientFamilyMembers.AsNoTracking()
+                .FirstOrDefaultAsync(f => f.FamilyMemberId == id && !f.DeleteStatus);
             if (row == null)
                 return NotFound(new { success = false, message = "Family member not found." });
 
-            if (!await CanManageFamilyMemberAsync(userId, row.f))
+            if (!await CanManageFamilyMemberAsync(userId, row))
                 return StatusCode(StatusCodes.Status403Forbidden,
                     new { success = false, message = "Access denied." });
 
-            return Ok(new
-            {
-                success = true,
-                data = new FamilyMemberDto
-                {
-                    FamilyMemberId = row.f.FamilyMemberId,
-                    OwnerPatientId = row.f.OwnerPatientId,
-                    MemberPatientId = row.f.MemberPatientId,
-                    RelationId = row.f.RelationId,
-                    Relation = row.f.Relation,
-                    PatientName = row.p.PatientName,
-                    MobileNo = row.p.MobileNo,
-                    Email = row.p.Email
-                }
-            });
+            var member = (await LoadMemberDtosAsync(f => f.FamilyMemberId == id)).FirstOrDefault();
+            if (member == null)
+                return NotFound(new { success = false, message = "Family member not found." });
+            return Ok(new { success = true, data = member });
         }
 
         /// <summary>

@@ -14,6 +14,7 @@ using System.Threading.RateLimiting;
 using System.Security.Claims;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using API.Entities;
+using Homeocentrum.Niga.NewAPI.Domain.Configuration;
 using Homeocentrum.Niga.NewAPI.Domain.Configuration.CorsPolicyConfig;
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Logging;
@@ -46,6 +47,7 @@ IWebHostEnvironment environment = builder.Environment;
 configuration.Sources.Clear();
 configuration.SetBasePath(environment.ContentRootPath);
 configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: false);
+var featureFlags = FeatureFlags.Load(configuration);
 
 // Keep API alive if a background embedding job throws after a long run.
 builder.Services.Configure<HostOptions>(options =>
@@ -64,15 +66,18 @@ builder.Host.UseDefaultServiceProvider(options =>
 // Add services to the container.
 
 builder.Services.AddMemoryCache();
-builder.Services.AddResponseCompression(options =>
+if (featureFlags.EnableResponseCompression)
 {
-    options.EnableForHttps = true;
-    options.Providers.Add<GzipCompressionProvider>();
-});
-builder.Services.Configure<GzipCompressionProviderOptions>(options =>
-{
-    options.Level = CompressionLevel.Fastest;
-});
+    builder.Services.AddResponseCompression(options =>
+    {
+        options.EnableForHttps = true;
+        options.Providers.Add<GzipCompressionProvider>();
+    });
+    builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+    {
+        options.Level = CompressionLevel.Fastest;
+    });
+}
 
 builder.Services.AddControllers(options =>
     {
@@ -97,7 +102,7 @@ builder.Services.AddRequestTimeouts(options =>
         TimeoutStatusCode = StatusCodes.Status408RequestTimeout
     };
 });
-var rateLimitEnabled = builder.Configuration.GetValue("RateLimit:Enabled", true);
+var rateLimitEnabled = featureFlags.EnableRateLimiting;
 if (rateLimitEnabled)
 {
     builder.Services.AddRateLimiter(options =>
@@ -135,6 +140,8 @@ if (rateLimitEnabled)
     });
 }
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+if (featureFlags.EnableSwagger)
+{
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opt =>
 {
@@ -166,13 +173,30 @@ opt.AddSecurityRequirement(new OpenApiSecurityRequirement
 });
 
 });
+}
 
-builder.Services.AddApplicationServices(configuration) 
-    .AddCorsPolicy(builder.Environment, builder.Configuration);   
+builder.Services.AddApplicationServices(configuration);
+if (featureFlags.EnableCors)
+    builder.Services.AddCorsPolicy(builder.Environment, builder.Configuration);
+if (!featureFlags.EnableBackgroundJobs)
+{
+    // Only the app's own jobs; the framework's hosted services (the web server itself) must stay.
+    var appJobs = builder.Services
+        .Where(d => d.ServiceType == typeof(IHostedService)
+            && d.ImplementationType?.Namespace?.StartsWith("Homeocentrum", StringComparison.Ordinal) == true)
+        .ToList();
+    foreach (var job in appJobs)
+        builder.Services.Remove(job);
+}
 
 var defaultConnection = configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found in appsettings.json.");
-builder.Services.AddDbContext<NIGACentrumContext>(options => options.UseSqlServer(defaultConnection));
+builder.Services.AddDbContext<NIGACentrumContext>(options =>
+{
+    options.UseSqlServer(defaultConnection);
+    if (featureFlags.EnableSensitiveDataLogging)
+        options.EnableSensitiveDataLogging().EnableDetailedErrors();
+});
 builder.Services.AddScoped<NIGACentrumContext>();
 
 builder.Services.AddIdentity<AppUser, AppRole>()
@@ -268,21 +292,47 @@ app.Use(async (context, next) =>
     }
 });
 
-app.Use(async (context, next) =>
+if (featureFlags.EnableCors)
+    app.UseCorsPolicy();
+
+if (featureFlags.EnableMaintenanceMode)
 {
-    if (HttpMethods.IsGet(context.Request.Method)
-        && (context.Request.Path == "/" || context.Request.Path == PathString.Empty))
+    app.Use(async (context, next) =>
     {
-        context.Response.Redirect("/swagger");
-        return;
-    }
-    await next();
-});
+        if (context.Request.Path.StartsWithSegments("/health"))
+        {
+            await next();
+            return;
+        }
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers["Retry-After"] = "300";
+            return Task.CompletedTask;
+        });
+        await ApiProblem.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, featureFlags.MaintenanceMessage);
+    });
+}
+
+if (featureFlags.EnableSwagger)
+{
+    app.Use(async (context, next) =>
+    {
+        if (HttpMethods.IsGet(context.Request.Method)
+            && (context.Request.Path == "/" || context.Request.Path == PathString.Empty))
+        {
+            context.Response.Redirect("/swagger");
+            return;
+        }
+        await next();
+    });
+}
 
 // Same favicon as the SPA website tab (also overrides Swagger UI's default icons).
 app.UseHomeocentrumFavicon();
 app.UseStaticFiles();
 
+if (featureFlags.EnableSwagger)
+{
 // Swagger is behind SwaggerAuth. The sign-in page fills the docs URL from this browser host.
 app.UseMiddleware<SwaggerGateMiddleware>("Homeocentrum New API");
 app.UseSwagger();
@@ -298,9 +348,10 @@ app.UseSwaggerUI(c =>
         "var l=document.createElement('link');l.rel='icon';l.type='image/png';l.href='/favicon.png?v=hc';document.head.appendChild(l);" +
         "});</script>";
 });
+}
 
-app.UseCorsPolicy();
-app.UseResponseCompression();
+if (featureFlags.EnableResponseCompression)
+    app.UseResponseCompression();
 app.UseMiddleware<HostPipelineMiddleware>();
 var listenUrls = app.Configuration["ASPNETCORE_URLS"] ?? Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "";
 var httpsPort = app.Configuration["HTTPS_PORT"] ?? Environment.GetEnvironmentVariable("HTTPS_PORT");
@@ -313,7 +364,8 @@ if (rateLimitEnabled)
     app.UseRateLimiter();
 app.UseAuthorization();
 app.UseRequestTimeouts();
-app.UseMiddleware<Homeocentrum.Niga.NewAPI.Domain.Services.MutatingAuditMiddleware>();
+if (featureFlags.EnableAuditLogging)
+    app.UseMiddleware<Homeocentrum.Niga.NewAPI.Domain.Services.MutatingAuditMiddleware>();
 app.UseResponseCaching()
     .UseDefaultFiles()
     .UseStaticFiles();

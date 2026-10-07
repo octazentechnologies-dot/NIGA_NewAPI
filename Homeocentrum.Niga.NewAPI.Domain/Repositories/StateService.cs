@@ -38,6 +38,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "State not found";
+                return null;
             }
             return new StateModel
             {
@@ -48,6 +49,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 ChangedBy = stateEntity.ChangedBy,
                 ChangedDate = stateEntity.ChangedDate,
                 DeleteStatus = stateEntity.DeleteStatus,
+                CountryId = stateEntity.CountryId,
             };
         }
 

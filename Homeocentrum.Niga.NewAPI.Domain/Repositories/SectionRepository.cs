@@ -155,6 +155,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                                            SectionName = s.SectionName,
                                            SectionAlias = s.SectionAlias,
                                            Description = s.Description,
+                                           BodyPartSectionId = s.BodyPartSectionId,
                                            DeleteStatus = s.DeleteStatus
                                        })
                                      .FirstOrDefaultAsync();
@@ -170,6 +171,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                                                SectionName = x.SectionName,
                                                SectionAlias = x.SectionAlias,
                                                Description = x.Description,
+                                               BodyPartSectionId = x.BodyPartSectionId,
                                                DeleteStatus = x.DeleteStatus,
                                            }).ToListAsync();
             if (!string.IsNullOrEmpty(Search))

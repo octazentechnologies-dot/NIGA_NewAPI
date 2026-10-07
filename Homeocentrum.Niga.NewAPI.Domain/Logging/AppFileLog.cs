@@ -780,7 +780,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
             if (logLevel == LogLevel.None) return false;
             var microsoft = _category.StartsWith("Microsoft.", StringComparison.Ordinal)
                 || _category.StartsWith("System.", StringComparison.Ordinal);
-            if (microsoft && logLevel < LogLevel.Warning) return false;
+            var frameworkMinimum = Configuration.FeatureFlags.Current.EnableDetailedLogging ? LogLevel.Information : LogLevel.Warning;
+            if (microsoft && logLevel < frameworkMinimum) return false;
             if (AppFileLog.IsFileEnabled && logLevel >= LogLevel.Debug) return true;
             if (AppFileLog.IsAlertEnabled && logLevel >= LogLevel.Error) return true;
             return false;

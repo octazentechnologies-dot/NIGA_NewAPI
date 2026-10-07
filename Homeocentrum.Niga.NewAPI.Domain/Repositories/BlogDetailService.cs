@@ -45,6 +45,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                                       BlogDetails1 = x.BlogDetails,
                                       BlogImage1 = x.BlogImage1,
                                       BlogImage2 = x.BlogImage2,
+                                      IsActive = x.IsActive,
                                   }).AsQueryable();
             if (!string.IsNullOrEmpty(parameter.search))
             {
@@ -93,6 +94,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                                          BlogDetails1 = s.BlogDetails,
                                          BlogImage1 = s.BlogImage1,
                                          BlogImage2 = s.BlogImage2,
+                                         IsActive = s.IsActive,
                                      })
                                      .FirstOrDefaultAsync();
             return blogDetails;

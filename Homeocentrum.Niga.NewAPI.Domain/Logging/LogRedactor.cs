@@ -31,6 +31,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Logging
                 value = SecretPair.Replace(value, m => m.Groups["k"].Value + m.Groups["sep"].Value + m.Groups["q"].Value + "[redacted]");
                 value = OtpPath.Replace(value, m => m.Groups["p"].Value + "[otp]");
                 value = OtpPhrase.Replace(value, m => m.Groups["p"].Value + "[otp]");
+                if (Configuration.FeatureFlags.Current.EnableSensitiveDataLogging)
+                    return value;
                 value = Mobile.Replace(value, m => MaskDigits(m.Value));
                 value = Email.Replace(value, m => m.Groups["u"].Value + "***@" + m.Groups["d"].Value);
                 return value;

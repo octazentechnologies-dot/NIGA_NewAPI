@@ -54,6 +54,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string? MobileNo { get; set; }
         public string? Email { get; set; }
         public DateTime? DateOfBirth { get; set; }
+        public int? Gender { get; set; }
+        /// <summary>Male, Female, Other, or "Not specified" when Gender is not recorded.</summary>
+        public string GenderName { get; set; } = "Not specified";
         public int? Age { get; set; }
         /// <summary>Under 18 (DPDP s.9): consent must come from a parent or guardian. Null when age is unknown.</summary>
         public bool? IsMinor { get; set; }

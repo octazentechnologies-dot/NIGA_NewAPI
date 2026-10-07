@@ -50,8 +50,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
         [HttpPost("Upload")]
         [RequestSizeLimit(20_000_000)]
+        [Consumes("multipart/form-data")]
         public async Task<IActionResult> Upload(
-            [FromForm] IFormFile file,
+            IFormFile file,
             [FromForm] string ownerType,
             [FromForm] long ownerId)
         {

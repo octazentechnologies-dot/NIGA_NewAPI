@@ -40,6 +40,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             if (patientModel.PatientID == 0)
             {
                 // Save new patient
+                ScrubPlaceholders(patientModel, null, null);
                 var patientEntity = new Patient();
                 patientEntity.PatientName = patientModel.PatientName;
                 ApplyAddressFields(patientEntity, patientModel);
@@ -105,6 +106,14 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     patientModel.Message = "Patient not found for update";
                     return patientModel;
                 }
+
+                var currentRefBy = patientModel.CaseId > 0
+                    ? await context.CaseEntryDetails
+                        .Where(x => x.PatientId == patientModel.PatientID && x.CaseId == patientModel.CaseId)
+                        .Select(x => x.RefBy)
+                        .FirstOrDefaultAsync()
+                    : null;
+                ScrubPlaceholders(patientModel, patientEntity, currentRefBy);
 
                 patientEntity.PatientName = patientModel.PatientName;
                 ApplyAddressFields(patientEntity, patientModel);
@@ -174,8 +183,54 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             return patientModel;
         }
 
+        private static bool IsPlaceholder(string? value)
+            => string.Equals(value?.Trim(), "string", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Clients (Swagger samples and older UI builds) send the literal "string" for fields they did not fill.
+        /// A new patient gets no value; an existing patient keeps what is already saved.
+        /// </summary>
+        private static void ScrubPlaceholders(PatientModel model, Patient? current, string? currentRefBy)
+        {
+            string? Keep(string? incoming, string? saved) => IsPlaceholder(incoming) ? saved : incoming;
+
+            model.PatientName = Keep(model.PatientName, current?.PatientName);
+            model.MobileNo = Keep(model.MobileNo, current?.MobileNo);
+            model.PhoneNo = Keep(model.PhoneNo, current?.PhoneNo);
+            model.Email = Keep(model.Email, current?.Email);
+            model.RefBy = Keep(model.RefBy, currentRefBy);
+            model.AddressLine1 = Keep(model.AddressLine1, current?.AddressLine1);
+            model.AddressLine2 = Keep(model.AddressLine2, current?.AddressLine2);
+            model.Landmark = Keep(model.Landmark, current?.Landmark);
+            if (IsPlaceholder(model.Address))
+            {
+                model.Address = null;
+                if (current != null && model.AddressLine1 == null && model.AddressLine2 == null && model.Landmark == null)
+                {
+                    model.AddressLine1 = current.AddressLine1;
+                    model.AddressLine2 = current.AddressLine2;
+                    model.Landmark = current.Landmark;
+                    model.Address = current.AddressLine1 == null ? current.Address : null;
+                }
+            }
+            if (IsPlaceholder(model.Message))
+                model.Message = null;
+        }
+
         /// <summary>Treats 0 as null for optional FK columns (State, Country).</summary>
         private static int? ToNullableFkId(int? value) => value is > 0 ? value : null;
+
+        private static int? AgeFromDateOfBirth(DateTime? dateOfBirth)
+        {
+            if (!dateOfBirth.HasValue)
+                return null;
+            var today = DateTime.Today;
+            var dob = dateOfBirth.Value.Date;
+            var years = today.Year - dob.Year;
+            if (dob > today.AddYears(-years))
+                years--;
+            return Math.Max(0, years);
+        }
 
         private static string? TrimOrNull(string? value)
         {
@@ -267,8 +322,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     PatientName = p.PatientName,
                     MobileNo = p.MobileNo,
                     Email = p.Email,
+                    PhoneNo = p.PhoneNo,
                     UserId = (int)c.UserId,
                     DateodFirstVisit = c.DateodFirstVisit,
+                    RefBy = c.RefBy,
                     Gender = p.Gender,
                     Address = p.AddressLine1 ?? p.Address,
                     AddressLine1 = p.AddressLine1,
@@ -281,6 +338,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     PinCodeId = p.PinCodeId,
                     DateOfBirth = p.DateOfBirth,
                     CaseId = c.CaseId,
+                    DeleteStatus = c.DeleteStatus,
                     EnteredDate = c.EnteredDate,
                     Age = p.Age,
                     IsWhatsAppOptIn = p.IsWhatsAppOptIn,
@@ -332,8 +390,11 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             //     parameter.PageSize
             // );
 
-            return await PagedList<PatientModel>.CreateAsync(patientModelList.AsNoTracking(), parameter.PageNumber,
+            var page = await PagedList<PatientModel>.CreateAsync(patientModelList.AsNoTracking(), parameter.PageNumber,
                 parameter.PageSize);
+            foreach (var row in page)
+                row.Age ??= AgeFromDateOfBirth(row.DateOfBirth);
+            return page;
 
         }
 
@@ -383,6 +444,12 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     DeleteStatus = p.DeleteStatus,
                     IsWhatsAppOptIn = p.IsWhatsAppOptIn,
                     WhatsAppOptInDate = p.WhatsAppOptInDate,
+                    DateodFirstVisit = c.DateodFirstVisit,
+                    RefBy = c.RefBy,
+                    Age = p.Age,
+                    LastVisitAt = context.PatientAppointments
+                        .Where(a => a.PatientId == p.PatientId && a.DeleteStatus != true)
+                        .Max(a => (DateTime?)a.AppointmentDate),
                 }
             ).FirstOrDefault();
             //context.Patient.Where(x => x.PatientId == PatientID).FirstOrDefault();
@@ -392,6 +459,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 errorResponseModel.Message = "patient not found";
                 return null;
             }
+            patientEntity.Age ??= AgeFromDateOfBirth(patientEntity.DateOfBirth);
             return patientEntity;
         }
 
@@ -508,8 +576,11 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     PatientID = caseEntry.PatientId,
                     PatientName = patient.PatientName,
                     MobileNo = patient.MobileNo,
+                    Email = patient.Email,
+                    PhoneNo = patient.PhoneNo,
                     UserId = (int)caseEntry.UserId,
                     DateodFirstVisit = caseEntry.DateodFirstVisit,
+                    RefBy = caseEntry.RefBy,
                     Gender = patient.Gender,
                     Address = patient.AddressLine1 ?? patient.Address,
                     AddressLine1 = patient.AddressLine1,
@@ -521,7 +592,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     CityId = patient.CityId,
                     PinCodeId = patient.PinCodeId,
                     DateOfBirth = patient.DateOfBirth,
+                    Age = patient.Age,
                     CaseId = caseEntry.CaseId,
+                    DeleteStatus = caseEntry.DeleteStatus,
                     EnteredDate = caseEntry.EnteredDate,
                     IsWhatsAppOptIn = patient.IsWhatsAppOptIn,
                     WhatsAppOptInDate = patient.WhatsAppOptInDate,
@@ -553,11 +626,14 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Not found";
             }
-            return await PagedList<PatientModel>.CreateAsync(
+            var page = await PagedList<PatientModel>.CreateAsync(
                 patientModelQuery.AsNoTracking(),
                 parameterParams.PageNumber,
                 parameterParams.PageSize
             );
+            foreach (var row in page)
+                row.Age ??= AgeFromDateOfBirth(row.DateOfBirth);
+            return page;
         }
 
         public async Task<List<PatientModel>> getAllCasesForExport(ParameterParams parameterParams)
@@ -711,6 +787,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 join patient in context.Patients on patientAppointment.PatientId equals patient.PatientId
                 join caseEntryDetail in context.CaseEntryDetails
                     on patientAppointment.PatientId equals caseEntryDetail.PatientId
+                join doctor in context.Doctors
+                    on patientAppointment.DoctorId equals doctor.DoctorId
+                    into doctorGroup
+                from doctor in doctorGroup.DefaultIfEmpty()
                 join AHN in context.AppointmentHistoryNotes
                     on patientAppointment.PatientAppId equals AHN.AppointmentId
                     into AHNGroup
@@ -720,12 +800,18 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 {
                     PatientAppId = patientAppointment.PatientAppId,
                     PatientId = patientAppointment.PatientId,
+                    PatientName = patient.PatientName,
+                    MobileNo = patient.MobileNo,
+                    DoctorName = doctor != null
+                        ? ((doctor.FirstName ?? "") + " " + (doctor.LastName ?? "")).Trim()
+                        : null,
                     AppointmentDate = patientAppointment.AppointmentDate,
                     AppointmentTime = patientAppointment.AppointmentTime.Value.ToTimeSpan(),
                     Status = patientAppointment.Status,
                     UserId = patientAppointment.UserId,
                     DoctorId = patientAppointment.DoctorId,
                     CaseId = caseEntryDetail.CaseId,
+                    DeleteStatus = patientAppointment.DeleteStatus,
                     HistoryNoteId = AHN != null ? AHN.HistoryId : 0,
                     IsWhatsAppOptIn = patient.IsWhatsAppOptIn,
                     WhatsAppOptInDate = patient.WhatsAppOptInDate,

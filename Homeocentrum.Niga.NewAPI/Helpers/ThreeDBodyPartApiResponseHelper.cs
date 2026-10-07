@@ -33,7 +33,10 @@ namespace Homeocentrum.Niga.NewAPI.Helpers
         private static string SafeMessage(Exception ex)
         {
             var body = Homeocentrum.Niga.NewAPI.Domain.Errors.SafeError.Capture(ex, null, "ThreeDBodyPart");
-            return body.Message + " Error id: " + body.ErrorId;
+            var message = body.Message + " Error id: " + body.ErrorId;
+            if (body.Exception != null)
+                message += " Exception: " + body.Exception.Type + ": " + body.Exception.Message;
+            return message;
         }
 
         public static PrescriptionDetailsPaginatedApiResponse PrescriptionPaginatedSuccess(

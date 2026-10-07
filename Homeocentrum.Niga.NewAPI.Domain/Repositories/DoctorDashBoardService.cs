@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using API.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
@@ -41,6 +41,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 join pa in context.Patients on p.PatientId equals pa.PatientId
                 join c in context.CaseEntryDetails on p.PatientId equals c.PatientId
                 join u in context.UserMasters on p.UserId equals u.UserId
+                join d in context.Doctors on p.DoctorId equals d.DoctorId into doctorGroup
+                from d in doctorGroup.DefaultIfEmpty()
                 where p.UserId == parameter.UserId
                     && p.AppointmentDate != null
                     && p.AppointmentDate.Value.Date == day
@@ -72,6 +74,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     PaymentStatus = p.PaymentStatus,
                     IsTele = p.IsTele,
                     BookingToken = p.BookingToken,
+                    BookingChannel = p.BookingChannel,
+                    PaymentMethod = p.PaymentMethod,
+                    PayAtClinicAllowed = p.PayAtClinicAllowed,
+                    QueuePosition = p.QueuePosition,
+                    DoctorName = d != null
+                        ? ((d.FirstName ?? "") + " " + (d.LastName ?? "")).Trim()
+                        : null,
                 }
             ).AsQueryable();
             if (patientAppEntityList == null)
@@ -86,19 +95,19 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 patientAppEntityList = patientAppEntityList.Where(x =>
                     (
                         !string.IsNullOrEmpty(x.PatientName)
-                        && x.PatientName.Contains(search, StringComparison.OrdinalIgnoreCase)
+                        && x.PatientName.Contains(search)
                     )
                     || (
                         !string.IsNullOrEmpty(x.MobileNo)
-                        && x.MobileNo.Contains(search, StringComparison.OrdinalIgnoreCase)
+                        && x.MobileNo.Contains(search)
                     )
                     || (
                         !string.IsNullOrEmpty(x.Email)
-                        && x.Email.Contains(search, StringComparison.OrdinalIgnoreCase)
+                        && x.Email.Contains(search)
                     )
                     || (
                         !string.IsNullOrEmpty(x.Status)
-                        && x.Status.Contains(search, StringComparison.OrdinalIgnoreCase)
+                        && x.Status.Contains(search)
                     )
         
                 );
@@ -280,8 +289,19 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     : 0,
                 patientAppEConsult = totalAppointments > 0
                     ? appointmentStats.Count(x => x.Status == PatientsStatus.E_Consult.GetDisplayName()) * 100 / totalAppointments
-                    : 0
+                    : 0,
+                UserId = userId
             };
+
+            var doctor = await context.Doctors.AsNoTracking()
+                .Where(d => d.UserId == userId)
+                .Select(d => new { d.DoctorId, d.IsOnline })
+                .FirstOrDefaultAsync();
+            if (doctor != null)
+            {
+                model.DoctorId = doctor.DoctorId;
+                model.IsOnline = doctor.IsOnline;
+            }
 
             if (totalAppointments == 0 && errorResponseModel != null)
             {

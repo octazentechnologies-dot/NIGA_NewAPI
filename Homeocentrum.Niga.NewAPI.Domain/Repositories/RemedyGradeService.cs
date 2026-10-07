@@ -61,6 +61,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
                                            GradeId = x.GradeId,
                                            GradeNo = x.GradeNo,
                                            Description = x.Description!=null ?x.Description:"NA",
+                                           FontName = x.FontName,
+                                           FontStyle = x.FontStyle,
+                                           FontColor = x.FontColor,
                                            EnteredBy = x.EnteredBy,
                                            EnteredDate = x.EnteredDate,
                                            ChangedBy = x.ChangedBy,
@@ -125,6 +128,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
                                               GradeId = r.GradeId,
                                               GradeNo = r.GradeNo,
                                               Description = r.Description,
+                                              FontName = r.FontName,
+                                              FontStyle = r.FontStyle,
+                                              FontColor = r.FontColor,
+                                              EnteredBy = r.EnteredBy,
+                                              EnteredDate = r.EnteredDate,
+                                              ChangedBy = r.ChangedBy,
+                                              ChangedDate = r.ChangedDate,
                                               DeleteStatus = r.DeleteStatus
                                           })
                                         .FirstOrDefaultAsync();

@@ -346,7 +346,8 @@ public class S4Week4Controller : ControllerBase
 
     [HttpPost("/api/Patient/Documents")]
     [RequestSizeLimit(11_000_000)]
-    public Task<IActionResult> Document([FromForm] IFormFile file) => Done(_s4.SavePatientDocumentAsync(file, Caller()));
+    [Consumes("multipart/form-data")]
+    public Task<IActionResult> Document(IFormFile file) => Done(_s4.SavePatientDocumentAsync(file, Caller()));
 
     [HttpGet("/api/Patient/Documents")]
     public Task<IActionResult> Documents([FromQuery] int? patientId) => Done(_s4.ListPatientDocumentsAsync(patientId, Caller()));

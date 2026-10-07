@@ -1,3 +1,5 @@
+using Homeocentrum.Niga.NewAPI.Domain.Configuration;
+using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using Homeocentrum.Niga.NewAPI.Domain.Logging;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
 
@@ -19,16 +21,20 @@ public sealed class HostPipelineMiddleware
     {
         var path = context.Request.Path.Value ?? "";
         var swagger = path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase);
+        var securityHeaders = FeatureFlags.Current.EnableSecurityHeaders;
         context.Response.OnStarting(() =>
         {
             var headers = context.Response.Headers;
-            headers["X-Content-Type-Options"] = "nosniff";
-            headers["X-Frame-Options"] = "DENY";
-            headers["Referrer-Policy"] = "no-referrer";
-            headers["X-Permitted-Cross-Domain-Policies"] = "none";
+            if (securityHeaders)
+            {
+                headers["X-Content-Type-Options"] = "nosniff";
+                headers["X-Frame-Options"] = "DENY";
+                headers["Referrer-Policy"] = "no-referrer";
+                headers["X-Permitted-Cross-Domain-Policies"] = "none";
+                if (!swagger)
+                    headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
+            }
             headers["X-Trace-Id"] = context.TraceIdentifier;
-            if (!swagger)
-                headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
             headers.Remove("Server");
             return Task.CompletedTask;
         });
@@ -51,16 +57,14 @@ public sealed class HostPipelineMiddleware
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!context.Response.HasStarted)
         {
-            AppFileLog.Write("errors", "ERROR", "Unhandled", ex.Message, ex, new Dictionary<string, string>
-            {
-                ["TraceId"] = context.TraceIdentifier,
-                ["Path"] = path,
-                ["Method"] = context.Request.Method
-            });
-            await ApiProblem.WriteAsync(context, StatusCodes.Status500InternalServerError,
-                "The request could not be completed.");
+            var body = SafeError.Capture(ex, context, "Unhandled");
+            context.Response.Clear();
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(body,
+                new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
         }
         finally
         {

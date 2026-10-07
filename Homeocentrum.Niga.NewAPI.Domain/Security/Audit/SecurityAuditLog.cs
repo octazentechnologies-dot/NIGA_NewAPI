@@ -59,6 +59,8 @@ public sealed class SecurityAuditLog : ISecurityAuditLog
     public async Task WriteAsync(string eventType, HttpContext? context, string outcome = "SUCCESS", long? actorUserId = null,
         string? actorRole = null, string? subject = null, string? detail = null)
     {
+        if (!Configuration.FeatureFlags.Current.EnableAuditLogging)
+            return;
         try
         {
             var user = context?.User;

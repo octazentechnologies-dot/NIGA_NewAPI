@@ -43,6 +43,16 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                     DrugGroupName = drugGroup.DrugGroupName,
                     DrugSystemId = drugSystem.DrugSystemId,
                     DrugSystemName = drugSystem.DrugSystemName,
+                    DeleteStatus = allopathicDrug.DeleteStatus,
+                    TotalAdverseReactions = _context.AdverseReactionMasters.Count(a =>
+                        a.AllopathicDrugId == allopathicDrug.AllopathicDrugId && a.DeleteStatus == false
+                    ),
+                    TotalOtherSideEffects = _context.OtherSideEffectMasters.Count(o =>
+                        o.AllopathicDrugId == allopathicDrug.AllopathicDrugId && o.DeleteStatus == false
+                    ),
+                    TotalSeriousSideEffects = _context.SeriousSideEffectMasters.Count(s =>
+                        s.AllopathicDrugId == allopathicDrug.AllopathicDrugId && s.DeleteStatus == false
+                    ),
                 }
             ).FirstOrDefault();
             if (allopathicDrugEntity == null)
@@ -71,9 +81,20 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 {
                     DrugGroupId = drug.DrugGroupId,
                     DrugGroupName = drug.DrugGroup.DrugGroupName,
+                    DrugSystemId = drug.DrugGroup.DrugSystemId,
+                    DrugSystemName = drug.DrugGroup.DrugSystem.DrugSystemName,
                     AllopathicDrugId = drug.AllopathicDrugId,
                     AllopathicDrugName = drug.AllopathicDrugName,
                     DeleteStatus = drug.DeleteStatus,
+                    TotalAdverseReactions = _context.AdverseReactionMasters.Count(a =>
+                        a.AllopathicDrugId == drug.AllopathicDrugId && a.DeleteStatus == false
+                    ),
+                    TotalOtherSideEffects = _context.OtherSideEffectMasters.Count(o =>
+                        o.AllopathicDrugId == drug.AllopathicDrugId && o.DeleteStatus == false
+                    ),
+                    TotalSeriousSideEffects = _context.SeriousSideEffectMasters.Count(s =>
+                        s.AllopathicDrugId == drug.AllopathicDrugId && s.DeleteStatus == false
+                    ),
                     AdverseReactionModelList = (
                         from a in _context.AdverseReactionMasters
                         where a.AllopathicDrugId == drug.AllopathicDrugId && a.DeleteStatus == false
@@ -435,6 +456,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
         {
             var drug = await _context
                 .AllopathicDrugMasters.Include(x => x.DrugGroup)
+                .ThenInclude(g => g.DrugSystem)
                 .FirstOrDefaultAsync(x =>
                     x.AllopathicDrugName == allopathicDrugName && x.DeleteStatus == false
                 );
@@ -448,6 +470,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 AllopathicDrugName = drug.AllopathicDrugName,
                 DrugGroupId = drug.DrugGroupId,
                 DrugGroupName = drug.DrugGroup?.DrugGroupName,
+                DrugSystemId = drug.DrugGroup?.DrugSystemId ?? 0,
+                DrugSystemName = drug.DrugGroup?.DrugSystem?.DrugSystemName,
                 DeleteStatus = drug.DeleteStatus,
                 AdverseReactionModelList = await _context
                     .AdverseReactionMasters.Where(a =>
@@ -489,6 +513,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                     })
                     .ToListAsync(),
             };
+            model.TotalAdverseReactions = model.AdverseReactionModelList.Count;
+            model.TotalOtherSideEffects = model.OtherSideEffectModelList.Count;
+            model.TotalSeriousSideEffects = model.SeriousSideEffectModelList.Count;
             return model;
         }
 
@@ -598,6 +625,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 allopathicDrugEntity.AdverseReactionModelList = adverseReactionEntity;
                 allopathicDrugEntity.OtherSideEffectModelList = otherSideEffectEntity;
                 allopathicDrugEntity.SeriousSideEffectModelList = seriousSideEffectEntity;
+                allopathicDrugEntity.TotalAdverseReactions = adverseReactionEntity.Count;
+                allopathicDrugEntity.TotalOtherSideEffects = otherSideEffectEntity.Count;
+                allopathicDrugEntity.TotalSeriousSideEffects = seriousSideEffectEntity.Count;
             }
             else
             {

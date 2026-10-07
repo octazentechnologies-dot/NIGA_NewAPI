@@ -271,6 +271,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest? request)
         {
+            if (!Homeocentrum.Niga.NewAPI.Domain.Configuration.FeatureFlags.Current.EnableRefreshToken)
+                return NotFound(new { success = false, code = "REFRESH_DISABLED", message = "Token refresh is turned off. Please sign in again." });
             var raw = request?.Token;
             if (string.IsNullOrWhiteSpace(raw))
             {

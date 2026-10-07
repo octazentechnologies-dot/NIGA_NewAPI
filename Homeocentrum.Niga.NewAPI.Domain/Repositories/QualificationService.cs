@@ -117,7 +117,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                                               {
                                                   QualificationId = q.QualificationId,
                                                   QualificationName = q.QualificationName,
+                                                  QualificationAlias = q.QualificationAlias,
                                                   Description = q.Description,
+                                                  DegreeLevel = q.DegreeLevel,
+                                                  EnteredBy = q.EnteredBy,
+                                                  EnteredDate = q.EnteredDate,
+                                                  ChangedBy = q.ChangedBy,
+                                                  ChangedDate = q.ChangedDate,
                                                   DeleteStatus = q.DeleteStatus
                                               })
                                           .FirstOrDefaultAsync();

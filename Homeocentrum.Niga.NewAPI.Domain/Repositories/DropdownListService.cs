@@ -74,6 +74,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                     AuthorId = item.AuthorId,
                     AuthorName = item.AuthorName,
                     AuthorAlias = item.AuthorAlias,
+                    Description = item.Description,
+                    IsDeleted = item.IsDeleted,
+                    IsForRepertory = item.IsForRepertory,
                 });
             });
             if (!string.IsNullOrEmpty(Desc))

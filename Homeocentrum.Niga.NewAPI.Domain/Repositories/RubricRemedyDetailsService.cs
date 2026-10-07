@@ -251,6 +251,11 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             }
             remedyCountModel.SubSectionId = subSectionId;
             remedyCountModel.RemedyCount = remedyCount;
+            remedyCountModel.SubSectionName = context
+                .SubSectionMasters.AsNoTracking()
+                .Where(s => s.SubSectionId == subSectionId)
+                .Select(s => s.SubSectionName)
+                .FirstOrDefault();
             return remedyCountModel;
         }
 
@@ -279,44 +284,48 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 errorResponseModel.Message = "SectionId is required.";
                 return runricModelList;
             }
-            var rubricRemedyGroup = context
-                .RubricRemedyDetails.Include(x => x.SubSection)
-                .Include(x => x.Grade)
-                .Include(x => x.Remedy)
+            var sectionName = context
+                .SectionMasters.Where(s => s.SectionId == SectionId)
+                .Select(s => s.SectionName)
+                .FirstOrDefault();
+
+            var rubricPage = context
+                .RubricRemedyDetails.AsNoTracking()
                 .Where(x =>
-                    x.SubSection.DeleteStatus.Equals(false) && x.SubSection.SectionId == SectionId
+                    x.SubSectionId != null
+                    && x.SubSection.DeleteStatus == false
+                    && x.SubSection.SectionId == SectionId
                 )
-                .GroupBy(x => new { x.SubSectionId, x.GradeId })
+                .GroupBy(x => new { SubSectionId = x.SubSectionId!.Value, x.SubSection.SubSectionName })
+                .Select(g => new
+                {
+                    g.Key.SubSectionId,
+                    g.Key.SubSectionName,
+                    GradeId = g.Min(item => item.GradeId),
+                    RubricRemedyId = g.Max(item => item.RubricRemedyId),
+                })
+                .OrderBy(g => g.SubSectionName)
+                .ThenBy(g => g.SubSectionId)
                 .Skip((nigaParameters.PageNumber - 1) * nigaParameters.PageSize)
                 .Take(nigaParameters.PageSize)
                 .ToList();
 
-            if (rubricRemedyGroup.Count == 0)
+            if (rubricPage.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Remedy not found";
             }
-            var list = rubricRemedyGroup
+            return rubricPage
                 .Select(x => new RubricModel
                 {
-                    RubricRemedyId = x.Max(item => item.RubricRemedyId),
-                    SubSectionId = Convert.ToInt32(x.Key.SubSectionId),
-                    Grade = Convert.ToInt32(x.Key.GradeId),
-                    SectionId = x.Select(subsection => subsection.SubSection.SectionId)
-                        .FirstOrDefault(),
-                    SectionName = context
-                        .SectionMasters.Where(s => s.SectionId == SectionId)
-                        .Select(s => s.SectionName)
-                        .FirstOrDefault(),
-                    //SectionName=x.Select(section=>section.Section.SectionName).FirstOrDefault(),
-                    SubSectionName = x.Select(subsection => subsection.SubSection.SubSectionName)
-                        .FirstOrDefault(),
+                    RubricRemedyId = x.RubricRemedyId,
+                    SubSectionId = x.SubSectionId,
+                    Grade = x.GradeId ?? 0,
+                    SectionId = SectionId,
+                    SectionName = sectionName,
+                    SubSectionName = x.SubSectionName,
                 })
-                .Where(x => x.SectionId == SectionId)
-                .GroupBy(x => new { x.SubSectionId })
-                .Select(g => g.First())
                 .ToList();
-            return list.OrderBy(x => x.SubSectionName).ToList();
         }
 
         /// <summary>
@@ -938,7 +947,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
         {
             errorResponseModel = new ErrorResponseModel();
 
-            var cacheKey = $"RubricDetails:v9:{subSectionId}";
+            var cacheKey = $"RubricDetails:v10:{subSectionId}";
             if (_cache.TryGetValue(cacheKey, out RubricDetailModel cached))
             {
                 return cached;
@@ -956,6 +965,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     SubSectionNameAlias = subSection.SubSectionNameAlias,
                     SubSectionName = subSection.SubSectionName,
                     SectionId = subSection.SectionId,
+                    SectionName =
+                        subSection.Section != null ? subSection.Section.SectionName : string.Empty,
                     ParentSubSectionId = subSection.ParentSubSectionId,
                 })
                 .FirstOrDefault();

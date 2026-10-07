@@ -24,10 +24,16 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string? MobileNo { get; set; }
         public string? Email { get; set; }
 
+        /// <summary>Request-only alias of Email (older UI and app builds post "mail"). Never written in responses.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Mail
         {
-            get => Email;
-            set => Email = value;
+            get => null;
+            set
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                    Email = value;
+            }
         }
 
         public string? PhoneNo { get; set; }

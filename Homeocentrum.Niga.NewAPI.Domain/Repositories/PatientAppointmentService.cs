@@ -221,19 +221,47 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 .ToList()
                 .ToDictionary(x => x.PatientId, x => x.Last);
 
+            var today = DateTime.Today;
             caseEntityList.ForEach(item =>
             {
+                var p = item.Patient;
+                var age = p.Age;
+                if (!age.HasValue && p.DateOfBirth.HasValue)
+                {
+                    var dob = p.DateOfBirth.Value.Date;
+                    var years = today.Year - dob.Year;
+                    if (dob > today.AddYears(-years))
+                        years--;
+                    age = Math.Max(0, years);
+                }
+
                 PatientModelList.Add(new PatientModel
                 {
                     CaseId = item.CaseId,
+                    DoctorID = item.DoctorId,
+                    UserId = item.UserId,
+                    DateodFirstVisit = item.DateodFirstVisit,
+                    RefBy = item.RefBy,
+                    DeleteStatus = p.DeleteStatus,
                     PatientID = item.PatientId,
-                    PatientName = item.Patient.PatientName,
-                    MobileNo = item.Patient.MobileNo,
-                    Gender = item.Patient.Gender,
-                    Address = item.Patient.AddressLine1 ?? item.Patient.Address,
-                    DateOfBirth = item.Patient.DateOfBirth,
-                    IsWhatsAppOptIn = item.Patient.IsWhatsAppOptIn,
-                    WhatsAppOptInDate = item.Patient.WhatsAppOptInDate,
+                    PatientName = p.PatientName,
+                    MobileNo = p.MobileNo,
+                    PhoneNo = p.PhoneNo,
+                    Email = p.Email,
+                    Gender = p.Gender,
+                    Address = p.AddressLine1 ?? p.Address,
+                    AddressLine1 = p.AddressLine1,
+                    AddressLine2 = p.AddressLine2,
+                    Landmark = p.Landmark,
+                    CountryId = p.CountryId,
+                    StateId = p.StateId,
+                    DistrictId = p.DistrictId,
+                    CityId = p.CityId,
+                    PinCodeId = p.PinCodeId,
+                    DateOfBirth = p.DateOfBirth,
+                    Age = age,
+                    IsWhatsAppOptIn = p.IsWhatsAppOptIn,
+                    WhatsAppOptInDate = p.WhatsAppOptInDate,
                     LastVisitAt = lastVisits.TryGetValue(item.PatientId, out var last) ? last : null,
                 });
             });

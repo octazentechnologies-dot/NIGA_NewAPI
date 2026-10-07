@@ -208,14 +208,19 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
         {
             var query = (from sub in _context.SubSectionMasters
                          where sub.DeleteStatus == false
+                         join parent in _context.SubSectionMasters
+                             on sub.ParentSubSectionId equals (int?)parent.SubSectionId into parentJoin
+                         from parent in parentJoin.DefaultIfEmpty()
                          select new SubSectionList
                          {
                              SubSectionId = sub.SubSectionId,
                              SectionId = sub.SectionId,
+                             SectionName = sub.Section != null ? sub.Section.SectionName : null,
                              SubSectionName = sub.SubSectionName,
                              SubSectionNameAlias = sub.SubSectionNameAlias,
+                             Description = sub.Description,
                              ParentSubSectionId = sub.ParentSubSectionId,
-                             ParentSubSectionName = sub.ParentSubSectionId != null ? _context.SubSectionMasters.Where(s => s.SubSectionId == sub.ParentSubSectionId).FirstOrDefault().SubSectionName : null
+                             ParentSubSectionName = parent != null ? parent.SubSectionName : null
                          }).OrderByDescending(c => c.SubSectionId).AsQueryable();
             if (parameter.search != null)
             {
@@ -625,6 +630,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                              SubSectionName = sub.SubSectionName,
                              SubSectionNameAlias = sub.SubSectionNameAlias,
                              ParentSubSectionId = sub.ParentSubSectionId,
+                             Description = sub.Description,
                              DeleteStatus=sub.DeleteStatus,
                              Referencerubric= (from r in _context.ReferenceRubricDetails
                                               where r.SubSectionId==subsectionId

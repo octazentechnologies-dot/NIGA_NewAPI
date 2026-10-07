@@ -77,9 +77,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
         {
             var questionSubGroupDetails = await (from q in _context.QuestionSubgroups
                                                  where q.QuestionSubgroupId == questionSubGroupId && q.DeleteStatus == false
+                                                 join g in _context.QuestionGroupMasters
+                                                     on q.QuestionGroupId equals (int?)g.QuestionGroupId into groupJoin
+                                                 from g in groupJoin.DefaultIfEmpty()
                                                  select new QuestionSubGroupModel
                                                  {
                                                      QuestionGroupId = q.QuestionGroupId,
+                                                     QuestionGroupName = g != null ? g.QuestionGroupName : null,
                                                      QuestionSubGroupName = q.QuestionSubgroup1,
                                                      QuestionSubgroupId = q.QuestionSubgroupId,
                                                      Description = q.Description,
@@ -96,11 +100,15 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
 
         public async Task<List<QuestionSubGroupModel>> GetQuestionSubGroupDD(string search)
         {
-            var questionSubGroupModelQuery = await (from x in _context.QuestionSubgroups
+            var questionSubGroupModelQuery = await (from x in _context.QuestionSubgroups.AsNoTracking()
+                                                    join g in _context.QuestionGroupMasters.AsNoTracking()
+                                                        on x.QuestionGroupId equals (int?)g.QuestionGroupId into groupJoin
+                                                    from g in groupJoin.DefaultIfEmpty()
                                                     select new QuestionSubGroupModel
                                                     {
                                                         QuestionSubgroupId = x.QuestionSubgroupId,
                                                         QuestionSubGroupName = x.QuestionSubgroup1,
+                                                        QuestionGroupName = g != null ? g.QuestionGroupName : null,
                                                         Description = x.Description,
                                                         DeleteStatus = x.DeleteStatus,
                                                         QuestionGroupId = x.QuestionGroupId
