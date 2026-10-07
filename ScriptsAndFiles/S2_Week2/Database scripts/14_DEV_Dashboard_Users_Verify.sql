@@ -8,7 +8,7 @@ Purpose      : Read-only proof that Tufan_* Dev logins exist for every web
                dashboard delivered in S1 Week 1 + S2 Week 2.
 Use          : HomeoCentrum_Dev only. Does not insert or update.
 Logins       : Tufan_Admin / Tufan_Doctor / Tufan_Account / Tufan_Pharmacy /
-               Tufan_Patient / Tufan_Caregiver / Tufan_NoMenu
+               Tufan_Patient / Tufan_Caregiver
                Reception staff: Tufan_Reception
                Email tufanpowar001@gmail.com  mobile 7768046064  password 123456
 ================================================================================
@@ -36,7 +36,6 @@ WHERE ISNULL(u.DeleteStatus, 0) = 0
       N'Tufan_Pharmacy',
       N'Tufan_Patient',
       N'Tufan_Caregiver',
-      N'Tufan_NoMenu',
       N'tufanpowar001@gmail.com'
   )
 ORDER BY r.RoleName, u.UserName;

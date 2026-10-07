@@ -33,7 +33,7 @@ SELECT r.RoleName,
        SUM(CASE WHEN rd.IsView = 1 THEN 1 ELSE 0 END) AS ViewMenus
 FROM dbo.RoleMaster r
 LEFT JOIN dbo.RoleDetails rd ON rd.RoleId = r.RoleId
-WHERE r.RoleName IN (N'Admin', N'Doctor', N'Reception', N'Patient', N'Account', N'PharmacyPartner', N'EmptyMenuProbe')
+WHERE r.RoleName IN (N'Admin', N'Doctor', N'Reception', N'Patient', N'Account', N'PharmacyPartner')
   AND ISNULL(r.DeleteStatus, 0) = 0
 GROUP BY r.RoleName
 ORDER BY r.RoleName;
@@ -47,7 +47,7 @@ LEFT JOIN dbo.RoleDetails rd ON rd.RoleId = r.RoleId AND rd.IsView = 1
 WHERE ISNULL(u.DeleteStatus, 0) = 0
   AND u.UserName IN (
       N'Tufan_Admin', N'Tufan_Doctor', N'Tufan_Account', N'Tufan_Pharmacy',
-      N'Tufan_Patient', N'Tufan_Caregiver', N'Tufan_NoMenu'
+      N'Tufan_Patient', N'Tufan_Caregiver'
   )
 GROUP BY u.UserName, r.RoleName, u.IsUserActivated, u.UserStatus, u.DeleteStatus
 ORDER BY u.UserName;
@@ -66,18 +66,6 @@ IF EXISTS (
     GROUP BY RoleId, MenuId
     HAVING COUNT(*) > 1
 ) SET @Fail += 1;
-
-IF NOT EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserName = N'Tufan_NoMenu' AND ISNULL(DeleteStatus,0)=0)
-    SET @Fail += 1;
-
-IF EXISTS (
-    SELECT 1
-    FROM dbo.UserMaster u
-    INNER JOIN dbo.RoleMaster r ON r.RoleId = u.RoleId
-    INNER JOIN dbo.RoleDetails rd ON rd.RoleId = r.RoleId AND rd.IsView = 1
-    WHERE u.UserName = N'Tufan_NoMenu'
-)
-    SET @Fail += 1;
 
 IF EXISTS (
     SELECT 1

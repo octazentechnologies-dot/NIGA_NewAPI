@@ -19,7 +19,7 @@ LEFT JOIN dbo.RoleMaster r ON r.RoleId = u.RoleId
 WHERE ISNULL(u.DeleteStatus, 0) = 0
   AND u.UserName IN (
       N'Tufan_Admin', N'Tufan_Doctor', N'Tufan_Account', N'Tufan_Pharmacy',
-      N'Tufan_Patient', N'Tufan_Caregiver', N'Tufan_NoMenu'
+      N'Tufan_Patient', N'Tufan_Caregiver'
   )
 ORDER BY r.RoleName, u.UserName;
 
@@ -62,7 +62,7 @@ LEFT JOIN dbo.RoleDetails rd ON rd.RoleId = r.RoleId AND rd.IsView = 1
 WHERE ISNULL(u.DeleteStatus, 0) = 0
   AND u.UserName IN (
       N'Tufan_Admin', N'Tufan_Doctor', N'Tufan_Account', N'Tufan_Pharmacy',
-      N'Tufan_Patient', N'Tufan_Caregiver', N'Tufan_NoMenu'
+      N'Tufan_Patient', N'Tufan_Caregiver'
   )
 GROUP BY u.UserName, r.RoleName
 ORDER BY r.RoleName, u.UserName;
@@ -82,7 +82,6 @@ IF NOT EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserName = N'Tufan_Account' AN
 IF NOT EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserName = N'Tufan_Pharmacy' AND ISNULL(DeleteStatus,0)=0) SET @Missing += 1;
 IF NOT EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserName = N'Tufan_Patient' AND ISNULL(DeleteStatus,0)=0) SET @Missing += 1;
 IF NOT EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserName = N'Tufan_Caregiver' AND ISNULL(DeleteStatus,0)=0) SET @Missing += 1;
-IF NOT EXISTS (SELECT 1 FROM dbo.UserMaster WHERE UserName = N'Tufan_NoMenu' AND ISNULL(DeleteStatus,0)=0) SET @Missing += 1;
 IF NOT EXISTS (SELECT 1 FROM dbo.DoctorReceptionStaff WHERE UserID = N'Tufan_Reception' AND ISNULL(DeleteStatus,0)=0) SET @Missing += 1;
 IF NOT EXISTS (
     SELECT 1 FROM dbo.Doctor d

@@ -129,6 +129,6 @@ COMMIT TRAN;
 
 PRINT '28_DEV_Tufan_Identity.sql completed.';
 PRINT 'Login with Tufan_Admin / Tufan_Doctor / Tufan_Reception / Tufan_Account /';
-PRINT 'Tufan_Pharmacy / Tufan_Patient / Tufan_Caregiver / Tufan_NoMenu  password 123456.';
+PRINT 'Tufan_Pharmacy / Tufan_Patient / Tufan_Caregiver  password 123456.';
 PRINT 'Email tufanpowar001@gmail.com  mobile 7768046064.';
 GO

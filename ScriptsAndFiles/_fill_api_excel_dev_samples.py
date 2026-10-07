@@ -86,9 +86,14 @@ def http_get(url: str, token: str) -> tuple[int, object]:
         headers["Authorization"] = "Bearer " + token
     req = request.Request(url, headers=headers)
     try:
-        with request.urlopen(req, timeout=25) as resp:
-            raw = resp.read().decode("utf-8", "replace")
+        with request.urlopen(req, timeout=90) as resp:
+            body = resp.read()
             status = resp.status
+            content_type = resp.headers.get("Content-Type", "")
+            if content_type and "json" not in content_type and not content_type.startswith("text/"):
+                disposition = resp.headers.get("Content-Disposition", "")
+                return status, {"file": content_type.split(";")[0], "bytes": len(body), "contentDisposition": disposition}
+            raw = body.decode("utf-8", "replace")
     except error.HTTPError as exc:
         raw = exc.read().decode("utf-8", "replace")
         status = exc.code

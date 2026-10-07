@@ -40,6 +40,12 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Helpers
         public static bool IsCancelled(string? status)
             => string.Equals(status, Cancelled, StringComparison.OrdinalIgnoreCase);
 
+        public const string Completed = "COMPLETED";
+
+        /// <summary>A completed visit is final: it cannot be rescheduled, moved to another time, or cancelled.</summary>
+        public static bool IsCompleted(string? status)
+            => string.Equals(status?.Trim(), Completed, StringComparison.OrdinalIgnoreCase);
+
         /// <summary>REC-13.02 — clinic SPA must not mark appointments paid; Account/webhook does.</summary>
         public static bool IsPaid(string? paymentStatus)
             => string.Equals(paymentStatus, Paid, StringComparison.OrdinalIgnoreCase);

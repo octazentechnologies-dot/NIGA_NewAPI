@@ -9,9 +9,8 @@ Purpose      : Shared team logins for every live web role.
 Use          : HomeoCentrum_Dev only. Idempotent (update password if login exists).
 Do not run   : Production.
 Logins       : Tufan_Admin / Tufan_Doctor / Tufan_Reception / Tufan_Account /
-               Tufan_Pharmacy / Tufan_Patient / Tufan_Caregiver / Tufan_NoMenu
+               Tufan_Pharmacy / Tufan_Patient / Tufan_Caregiver
                Password for all: 123456
-               Tufan_NoMenu is an EmptyMenuProbe API user (GetMenuByRole 200 []).
 ================================================================================
 */
 
@@ -46,17 +45,6 @@ DECLARE @HasEnteredBy BIT = CASE WHEN COL_LENGTH(N'dbo.UserMaster', N'EnteredBy'
 DECLARE @HasEnteredDate BIT = CASE WHEN COL_LENGTH(N'dbo.UserMaster', N'EnteredDate') IS NULL THEN 0 ELSE 1 END;
 DECLARE @HasUserStatus BIT = CASE WHEN COL_LENGTH(N'dbo.UserMaster', N'UserStatus') IS NULL THEN 0 ELSE 1 END;
 
--- BUG-S1-01 probe: a live user whose role has zero RoleDetails (GetMenuByRole must be 200 []).
-IF NOT EXISTS (
-    SELECT 1 FROM dbo.RoleMaster
-    WHERE RoleName = N'EmptyMenuProbe' AND ISNULL(DeleteStatus, 0) = 0
-)
-BEGIN
-    INSERT INTO dbo.RoleMaster (RoleName, FirmIds, DeleteStatus, EnteredBy, EnteredDate)
-    VALUES (N'EmptyMenuProbe', N'0', 0, N'TUFAN-TEAM', GETDATE());
-    PRINT 'INSERTED RoleMaster EmptyMenuProbe (no menus)';
-END
-
 DECLARE @QualId INT = (
     SELECT TOP 1 QualificationID FROM dbo.QualificationMaster
     WHERE ISNULL(DeleteStatus, 0) = 0
@@ -81,8 +69,7 @@ INSERT INTO @Users (RoleName, UserName, EmailId, FirstName, LastName, MobileNo) 
     (N'Account',          N'Tufan_Account',   N'tufanpowar001@gmail.com', N'Tufan', N'Account',   N'7768046064'),
     (N'PharmacyPartner',  N'Tufan_Pharmacy',  N'tufanpowar001@gmail.com', N'Tufan', N'Pharmacy',  N'7768046064'),
     (N'Patient',          N'Tufan_Patient',   N'tufanpowar001@gmail.com', N'Tufan', N'Patient',   N'7768046064'),
-    (N'Patient',          N'Tufan_Caregiver', N'tufanpowar001@gmail.com', N'Tufan', N'Caregiver', N'7768046064'),
-    (N'EmptyMenuProbe',   N'Tufan_NoMenu',    N'tufanpowar001@gmail.com', N'Tufan', N'NoMenu',    N'7768046064');
+    (N'Patient',          N'Tufan_Caregiver', N'tufanpowar001@gmail.com', N'Tufan', N'Caregiver', N'7768046064');
 
 BEGIN TRAN;
 
@@ -352,7 +339,7 @@ COMMIT TRAN;
 
 PRINT '15_DEV_Seed_Tufan_Role_Logins.sql completed.';
 PRINT 'All passwords: 123456';
-PRINT 'UserMaster: Tufan_Admin Tufan_Doctor Tufan_Account Tufan_Pharmacy Tufan_Patient Tufan_Caregiver Tufan_NoMenu';
+PRINT 'UserMaster: Tufan_Admin Tufan_Doctor Tufan_Account Tufan_Pharmacy Tufan_Patient Tufan_Caregiver';
 PRINT 'Reception (DoctorReceptionStaff): Tufan_Reception';
 PRINT 'NEXT: run 19_DEV_Seed_Role_Menus.sql so GetMenuByRole is mapped for every role.';
 GO

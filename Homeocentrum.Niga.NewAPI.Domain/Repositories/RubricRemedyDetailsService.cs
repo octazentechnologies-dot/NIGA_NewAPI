@@ -347,6 +347,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 return new List<GradeRemediesModel>();
             }
 
+            var authorAliasMap = BuildGlobalAuthorAliasMapForRemedyIds(
+                gradeGroup.SelectMany(g => g).Select(x => Convert.ToInt32(x.RemedyId))
+            );
+
             return gradeGroup
                 .Select(grade => new GradeRemediesModel
                 {
@@ -372,7 +376,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                                             x.RubricRemedyId == remedy.RubricRemedyId
                                         )
                                         ?.AuthorId ?? 0,
-                            AuthorAlias = GetAuthorAlies(Convert.ToInt32(remedy.RemedyId)),
+                            AuthorAlias = authorAliasMap.GetValueOrDefault(
+                                Convert.ToInt32(remedy.RemedyId),
+                                string.Empty
+                            ),
                             //context.AuthorMaster
                             //.Where(x => x.AuthorId == (remedy.RemedyRubricAuthorDetails
                             //    .FirstOrDefault(xa => xa.RubricRemedyId == remedy.RubricRemedyId).AuthorId))
@@ -447,10 +454,18 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     && ids.Contains(rrd.RemedyId.Value)
                     && rrd.DeletedStatus == false
                     && rrau.DeletedStatus == false
-                select new { RemedyId = rrd.RemedyId.Value, author.AuthorAlias }
-            ).ToList();
+                select new
+                {
+                    RemedyId = rrd.RemedyId.Value,
+                    author.AuthorId,
+                    author.AuthorAlias,
+                }
+            )
+                .Distinct()
+                .ToList();
 
             return authorRows
+                .OrderBy(x => x.AuthorId)
                 .Where(x => !string.IsNullOrWhiteSpace(x.AuthorAlias))
                 .GroupBy(x => x.RemedyId)
                 .ToDictionary(
@@ -488,6 +503,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             ref ErrorResponseModel errorResponseModel
         )
         {
+            errorResponseModel = new ErrorResponseModel();
             var rubricRemedyDetails = context
                 .RubricRemedyDetails.Where(x =>
                     x.SubSectionId == subSectionId && x.GradeId == grade
@@ -497,6 +513,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Grade details not found";
+                return null;
             }
             var rubricRemedyDetailsModel = new RubricRemedyDetailsModel();
             var sectionMaster = context
@@ -588,6 +605,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Remedy not found";
+                return null;
             }
 
             RubricRemedyDetailModel rubricRemedyDetailModel = new RubricRemedyDetailModel();
@@ -863,6 +881,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                 return new List<RemediesModel>();
             }
 
+            var authorAliasMap = BuildGlobalAuthorAliasMapForRemedyIds(
+                gradeGroup.Select(g => Convert.ToInt32(g.Key))
+            );
+
             return gradeGroup
                 .Select(grade => new RemediesModel
                 {
@@ -879,8 +901,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                                 : x.Remedy.RemedyAlias
                         )
                         .FirstOrDefault(),
-                    AuthorAlias = GetAuthorAlies(
-                        grade.Select(x => Convert.ToInt32(x.RemedyId)).FirstOrDefault()
+                    AuthorAlias = authorAliasMap.GetValueOrDefault(
+                        Convert.ToInt32(grade.Key),
+                        string.Empty
                     ),
                     //remediesModels = grade.Select(remedy => new RemediesModel
                     //{

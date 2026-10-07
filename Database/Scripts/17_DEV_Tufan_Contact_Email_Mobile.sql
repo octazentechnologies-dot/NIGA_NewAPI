@@ -24,7 +24,7 @@ SET EmailId = N'tufanpowar001@gmail.com',
     MobileNo = N'7768046064'
 WHERE ISNULL(DeleteStatus, 0) = 0
   AND (
-        UserName IN (N'Tufan_Admin', N'Tufan_Doctor', N'Tufan_Account', N'Tufan_Pharmacy', N'Tufan_Caregiver', N'Tufan_Patient', N'Tufan_NoMenu', N'tufanpowar001@gmail.com')
+        UserName IN (N'Tufan_Admin', N'Tufan_Doctor', N'Tufan_Account', N'Tufan_Pharmacy', N'Tufan_Caregiver', N'Tufan_Patient', N'tufanpowar001@gmail.com')
         OR EmailId = N'tufan.seed001@homeocentrum.dev'
         OR EmailId LIKE N'tufan.%@homeocentrum.dev'
       )

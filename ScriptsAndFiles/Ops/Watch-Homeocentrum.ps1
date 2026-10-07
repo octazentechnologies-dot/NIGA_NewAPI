@@ -8,7 +8,8 @@
     - Windows services W3SVC and WAS
     - IIS app pools and sites HomeocentrumUI, HomeocentrumOldAPI, HomeocentrumNewAPI
     - HTTP: UI on port 80, Old API on 5001, New API on 5002
-    - Free disk space
+    - Free disk space: DOWN when a fixed drive has DiskSpaceAlert:MinFreePercent (default 10) or less free.
+      DiskSpaceAlert:Drives in the same appsettings.json limits the drives; -MinFreePercent overrides the percentage.
     - New IIS / ASP.NET Core Module error events since the last run
   A mail is sent when a check goes DOWN, again every -ReminderMinutes while it stays down, and once when it RECOVERS.
   -Mode Startup (scheduled at boot) mails "server restarted", including whether the previous shutdown was unexpected
@@ -27,7 +28,7 @@ param(
     [string]$AppSettingsPath = 'C:\inetpub\homeocentrum\newapi\appsettings.json',
     [string]$DataDir = 'C:\ProgramData\Homeocentrum\Watchdog',
     [int]$ReminderMinutes = 60,
-    [int]$MinFreeGB = 5,
+    [double]$MinFreePercent = 0,
     [int]$HttpTimeoutSec = 15,
     [switch]$DryRun
 )
@@ -62,9 +63,19 @@ function Get-MailSettings {
     if ($cfg.ErrorAlert -and $cfg.ErrorAlert.Recipients) {
         $recipients = @($cfg.ErrorAlert.Recipients -split '[;,]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     }
+    $diskPercent = 10.0
+    $diskDrives = @()
+    if ($cfg.DiskSpaceAlert) {
+        $p = 0.0
+        if ([double]::TryParse([string]$cfg.DiskSpaceAlert.MinFreePercent, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$p) -and $p -gt 0 -and $p -lt 100) { $diskPercent = $p }
+        $diskDrives = @($cfg.DiskSpaceAlert.Drives | Where-Object { $_ } | ForEach-Object { ([string]$_).Trim().TrimEnd('\') })
+    }
+    if ($MinFreePercent -gt 0) { $diskPercent = $MinFreePercent }
     [pscustomobject]@{
-        Smtp       = $cfg.smtp
-        Recipients = $recipients
+        Smtp           = $cfg.smtp
+        Recipients     = $recipients
+        DiskMinPercent = $diskPercent
+        DiskDrives     = $diskDrives
     }
 }
 
@@ -148,12 +159,13 @@ function Get-Checks {
         $checks.Add([pscustomobject]@{ Check = 'IIS management module'; Ok = $false; Detail = 'WebAdministration unavailable (run as administrator / SYSTEM)' })
     }
 
-    foreach ($drive in (@($env:SystemDrive, (Split-Path -Qualifier $AppSettingsPath)) | Select-Object -Unique)) {
-        $d = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='" + $drive + "'") -ErrorAction SilentlyContinue
-        if ($d) {
-            $freeGb = [math]::Round($d.FreeSpace / 1GB, 1)
-            $checks.Add([pscustomobject]@{ Check = "Disk $drive"; Ok = ($freeGb -ge $MinFreeGB); Detail = "$freeGb GB free (alert below $MinFreeGB GB)" })
-        }
+    $disks = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' -ErrorAction SilentlyContinue)
+    if ($mail.DiskDrives.Count -gt 0) { $disks = @($disks | Where-Object { $mail.DiskDrives -contains $_.DeviceID }) }
+    foreach ($d in $disks) {
+        if (-not $d.Size) { continue }
+        $freePct = [math]::Round($d.FreeSpace * 100.0 / $d.Size, 1)
+        $detail = '{0} GB free of {1} GB ({2}%); alert at {3}% free or less' -f [math]::Round($d.FreeSpace / 1GB, 1), [math]::Round($d.Size / 1GB, 1), $freePct, $mail.DiskMinPercent
+        $checks.Add([pscustomobject]@{ Check = "Disk $($d.DeviceID)"; Ok = ($freePct -gt $mail.DiskMinPercent); Detail = $detail })
     }
     $checks
 }

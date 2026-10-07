@@ -331,6 +331,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 return null;
             }
 
+            if (S3AppointmentRules.IsCompleted(appointment.Status))
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.Conflict;
+                errorResponseModel.Message = "A completed appointment cannot be rescheduled.";
+                return null;
+            }
+
             var appointmentDate = model.AppointmentDate?.Date ?? appointment.AppointmentDate?.Date;
             if (!appointmentDate.HasValue)
             {
@@ -859,6 +866,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 return result;
             }
 
+            if (S3AppointmentRules.IsCompleted(appointment.Status))
+            {
+                result.StatusCode = 409;
+                result.Message = "A completed appointment cannot be rescheduled.";
+                return result;
+            }
+
             if (!request.AppointmentTime.HasValue || !request.AppointmentDate.HasValue)
             {
                 result.StatusCode = 400;
@@ -984,6 +998,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             {
                 result.StatusCode = 409;
                 result.Message = "Appointment is already cancelled.";
+                return result;
+            }
+
+            if (S3AppointmentRules.IsCompleted(appointment.Status))
+            {
+                result.StatusCode = 409;
+                result.Message = "A completed appointment cannot be cancelled.";
                 return result;
             }
 

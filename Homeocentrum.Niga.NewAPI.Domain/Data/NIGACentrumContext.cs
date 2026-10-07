@@ -2466,6 +2466,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
             entity.Property(e => e.LabDate).HasColumnType("datetime");
             entity.Property(e => e.ParameterName).HasMaxLength(500);
             entity.Property(e => e.ParameterValue).HasMaxLength(500);
+            // SQL stores these as int; the shared AuditableEntities type is string.
+            entity.Ignore(e => e.EnteredBy);
+            entity.Ignore(e => e.ChangedBy);
 
             entity.HasOne(d => d.PatientLabTest).WithMany(p => p.PatientLabEntries)
                 .HasForeignKey(d => d.PatientLabTestId)
@@ -2483,6 +2486,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
             entity.Property(e => e.EnteredDate).HasColumnType("datetime");
             entity.Property(e => e.LabName).HasMaxLength(500);
             entity.Property(e => e.OrderDate).HasColumnType("datetime");
+            // SQL stores these as int; the shared AuditableEntities type is string.
+            entity.Ignore(e => e.EnteredBy);
+            entity.Ignore(e => e.ChangedBy);
 
             entity.HasOne(d => d.PatientLabTest).WithMany(p => p.PatientLabOrders)
                 .HasForeignKey(d => d.PatientLabTestId)
@@ -2498,6 +2504,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
             entity.Property(e => e.ChangedDate).HasColumnType("datetime");
             entity.Property(e => e.EnteredDate).HasColumnType("datetime");
             entity.Property(e => e.LabTestName).HasMaxLength(1000);
+            // SQL stores these as int; the shared AuditableEntities type is string.
+            entity.Ignore(e => e.EnteredBy);
+            entity.Ignore(e => e.ChangedBy);
         });
 
         modelBuilder.Entity<PatternRubricDetail>(entity =>

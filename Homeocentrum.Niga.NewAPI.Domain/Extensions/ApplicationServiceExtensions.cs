@@ -304,6 +304,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Extensions
             services.AddHostedService<WhatsAppBulkSendBackgroundService>();
             services.AddHostedService<SmsOutboxWorker>();
             services.AddHostedService<DailyIssueMatrixEmailService>();
+            services.AddHostedService<Logging.DiskSpaceMonitor>();
             services.AddMvc()
         .AddRazorRuntimeCompilation();
 

@@ -1270,12 +1270,30 @@ public partial class S4Week4Service : IS4Week4Service
 
     private async Task WriteMedicineSplitsAsync(OrderRow order)
     {
-        var seller = Math.Round(order.Amount * 0.70m, 2);
-        var platform = Math.Round(order.Amount * 0.20m, 2);
+        var (sellerShare, platformShare) = MedicineSplitShares();
+        var seller = Math.Round(order.Amount * sellerShare, 2);
+        var platform = Math.Round(order.Amount * platformShare, 2);
         var delivery = order.Amount - seller - platform;
         await WriteLedgerAsync(order, "CREDIT", seller, 0, "Pharmacy", order.MedicineOrderId?.ToString() ?? "", seller, platform, delivery);
         await WriteLedgerAsync(order, "CREDIT", platform, 0, "Platform", order.MedicineOrderId?.ToString() ?? "", seller, platform, delivery);
         await WriteLedgerAsync(order, "CREDIT", delivery, 0, "Delivery", order.MedicineOrderId?.ToString() ?? "", seller, platform, delivery);
+    }
+
+    /// <summary>MedicineSplit:SellerPercent / PlatformPercent; delivery gets the remainder. Defaults 70 / 20.</summary>
+    private (decimal Seller, decimal Platform) MedicineSplitShares()
+    {
+        static decimal Percent(string? raw, decimal fallback)
+            => decimal.TryParse(raw, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var v)
+               && v >= 0 && v <= 100 ? v : fallback;
+
+        var seller = Percent(_config["MedicineSplit:SellerPercent"], 70m);
+        var platform = Percent(_config["MedicineSplit:PlatformPercent"], 20m);
+        if (seller + platform > 100m)
+        {
+            _logger.LogWarning("MedicineSplit percentages exceed 100; using defaults 70/20.");
+            (seller, platform) = (70m, 20m);
+        }
+        return (seller / 100m, platform / 100m);
     }
 
     private static S4ActionResult Ok(object body) => S4ActionResult.Ok(body);

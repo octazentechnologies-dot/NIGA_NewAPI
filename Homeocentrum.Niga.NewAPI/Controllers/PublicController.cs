@@ -432,6 +432,87 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             });
         }
 
+        /// <summary>
+        /// Live numbers and approved reviews for the marketing home page.
+        /// Reviews never carry the patient's name, mobile or id.
+        /// </summary>
+        [HttpGet("Highlights")]
+        public async Task<IActionResult> Highlights([FromQuery] int reviews = 6)
+        {
+            reviews = reviews is < 1 or > 12 ? 6 : reviews;
+
+            var directory = _context.Doctors.AsNoTracking()
+                .Where(d => !d.DeleteStatus && d.DirectoryVisible && d.VerificationStatus == "Verified");
+            var verifiedDoctors = await directory.CountAsync();
+            var onlineDoctors = await directory.CountAsync(d => d.IsOnline);
+            var teleDoctors = await directory.CountAsync(d => d.ConsultFeeTele != null);
+
+            var completed = _context.PatientAppointments.AsNoTracking()
+                .Where(a => a.DeleteStatus != true && a.Status == S3AppointmentRules.Completed);
+            var completedConsultations = await completed.CountAsync();
+            var patientsConsulted = await completed.Select(a => a.PatientId).Distinct().CountAsync();
+
+            var ratings = await _context.Database.SqlQuery<RatingSummary>($@"
+                SELECT CAST(ISNULL(AVG(CAST(r.Rating AS float)), 0) AS decimal(9,1)) AS AverageRating, COUNT(1) AS ReviewCount
+                FROM dbo.Review r
+                INNER JOIN dbo.Doctor d ON d.DoctorId = r.DoctorId
+                WHERE r.Status = N'APPROVED' AND d.DeleteStatus = 0 AND d.DirectoryVisible = 1 AND d.VerificationStatus = N'Verified'")
+                .ToListAsync();
+            var rating = ratings.FirstOrDefault() ?? new RatingSummary();
+
+            var latest = await _context.Database.SqlQuery<HighlightReview>($@"
+                SELECT TOP ({reviews}) r.ReviewId, r.Rating, r.Text, r.At, d.DoctorId,
+                       LTRIM(RTRIM(CONCAT(d.FirstName, N' ', d.LastName))) AS DoctorName, d.City
+                FROM dbo.Review r
+                INNER JOIN dbo.Doctor d ON d.DoctorId = r.DoctorId
+                WHERE r.Status = N'APPROVED' AND r.Rating >= 4 AND LEN(LTRIM(RTRIM(ISNULL(r.Text, N'')))) >= 20
+                  AND d.DeleteStatus = 0 AND d.DirectoryVisible = 1 AND d.VerificationStatus = N'Verified'
+                ORDER BY r.At DESC")
+                .ToListAsync();
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    verifiedDoctors,
+                    onlineDoctors,
+                    teleDoctors,
+                    patientsConsulted,
+                    completedConsultations,
+                    averageRating = rating.ReviewCount > 0 ? rating.AverageRating : (decimal?)null,
+                    reviewCount = rating.ReviewCount,
+                    reviews = latest.Select(r => new
+                    {
+                        r.ReviewId,
+                        r.Rating,
+                        Text = r.Text?.Trim(),
+                        r.At,
+                        r.DoctorId,
+                        r.DoctorName,
+                        r.City
+                    })
+                }
+            });
+        }
+
+        private sealed class RatingSummary
+        {
+            public decimal AverageRating { get; set; }
+            public int ReviewCount { get; set; }
+        }
+
+        private sealed class HighlightReview
+        {
+            public int ReviewId { get; set; }
+            public int Rating { get; set; }
+            public string? Text { get; set; }
+            public DateTime At { get; set; }
+            public int DoctorId { get; set; }
+            public string? DoctorName { get; set; }
+            public string? City { get; set; }
+        }
+
         private PublicDoctorCardDto MapCard(Doctor d, string? qualification, ReviewStat? stats = null)
         {
             var name = string.Join(" ", new[] { d.FirstName, d.MiddleName, d.LastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
