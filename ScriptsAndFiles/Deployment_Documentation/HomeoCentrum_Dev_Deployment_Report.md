@@ -148,3 +148,58 @@ Connected database remained `HomeoCentrum_Dev`. Eighteen expected tables were al
 | S3_Week3 | — | — | `M14_SUP_03_01.sql` | Verified byte-identical duplicate | Same bytes as canonical | NOT RE-EXECUTED | Byte-identical | — | Canonical `11_M14_SUP_03_01.sql` |
 | S3_Week3 | — | — | `M14_SUP_06_01.sql` | Verified byte-identical duplicate | Same bytes as canonical | NOT RE-EXECUTED | Byte-identical | — | Canonical `12_M14_SUP_06_01.sql` |
 | S3_Week3 | — | — | `M14_SUP_07_01.sql` | Verified byte-identical duplicate | Same bytes as canonical | NOT RE-EXECUTED | Byte-identical | — | Canonical `13_M14_SUP_07_01.sql` |
+
+# Run 2 — 2026-10-08: S4 changes, S5, changed S2 scripts and extras
+
+Same server and database. Credentials are not stored in this document.
+
+Backup before any script: copy-only full backup `C:\SQL\HomeoCentrum_Dev_PreScripts_2026-10-08.bak` (WITH CHECKSUM, 1,695,785 pages, 112 s).
+
+Every file ran with `sqlcmd -C -I -b -t 0 -f 65001` (QUOTED_IDENTIFIER on, stop on error). 33 executed, 0 failed, 3 skipped on purpose.
+
+## Executed (in order)
+
+| # | Week | Filename | Time | Why |
+|---|---|---|---|---|
+| 1 | S2 | `00_DOC_DoctorDailySchedule_Table.sql` | 5.8s | New since run 1 |
+| 2 | S2 | `15_DEV_Seed_Tufan_Role_Logins.sql` | 4.8s | Changed since run 1 (15 before 14, as in run 1) |
+| 3 | S2 | `14_DEV_Dashboard_Users_Verify.sql` | 1.7s | Changed since run 1 |
+| 4 | S2 | `16_DEV_Tufan_Role_Logins_Verify.sql` | 2.6s | Changed since run 1 |
+| 5 | S2 | `17_DEV_Tufan_Contact_Email_Mobile.sql` | 2.1s | Changed since run 1 |
+| 6 | S2 | `22_DEV_Role_Menu_Consistency.sql` | 3.0s | Changed since run 1 |
+| 7 | S2 | `25_WEB_Doctor_Credential_FilePath.sql` | 0.7s | New since run 1 |
+| 8 | S2 | `28_DEV_Tufan_Identity.sql` | 2.4s | Changed since run 1 |
+| 9 | S4 | `01_S4_Week4_Schema.sql` | 2.7s | Changed since run 1 |
+| 10 | S4 | `02_S4_Notification_Outbox.sql` | 0.8s | Renumbered since run 1 |
+| 11 | S4 | `03_S4_Week4_Menus.sql` | 0.9s | Renumbered since run 1 |
+| 12 | S4 | `04_S4_Week4_Demo_Data.sql` | 0.7s | Re-run with the week |
+| 13 | S4 | `05_S4_UserAddressLocation_Schema.sql` | 6.5s | New |
+| 14 | S4 | `06_S4_CountryMaster_Data.sql` | 5.9s | New (inserts missing rows only) |
+| 15 | S4 | `07_S4_StateMaster_Data.sql` | 31.2s | New (inserts missing rows only) |
+| 16 | S4 | `08_S4_IndiaLocation_Data.sql` | 997.0s | New (inserts missing rows only) |
+| 17 | S4 | `09_S4_AddressLocation_Other.sql` | 2.8s | New |
+| 18 | S4 | `12_S4_AddressLocation_CheckAndApply.sql` | 11.2s | New; replaces 10 and 11 on a database that already had location data |
+| 19 | S4 | `13_S4_DoctorProfile_Fields.sql` | 0.8s | New |
+| 20–28 | S5 | `01` to `09` | 0.7–2.0s each | New week |
+| 29 | S5 | `11_Consent_Notice_Version_Guardian.sql` | 3.1s | New week |
+| 30 | S5 | `12_Rubric_Remedy_Author_Indexes.sql` | 8.5s | New week |
+| 31 | S5 | `13_Remove_Junk_Roles.sql` | 1.3s | New week |
+| 32 | S5 | `14_Required_Extras.sql` | 2.2s | Objects and data fixes no other script carries |
+| 33 | S5 | `15_SubSection_SearchNormalized_FullText.sql` | 561.1s | Copy of Old API `Database\Scripts\SubSection_SearchNormalized_Setup.sql`. Adds `SearchNormalized` to the SubSectionMaster full-text index, which the remote lacked; without it Old API subsection search falls back to LIKE |
+
+## Skipped on purpose
+
+| Filename | Reason |
+|---|---|
+| S4 `10_S4_AddressLocation_EnteredBy.sql` | Overwrites EnteredBy/EnteredDate on every location row. `12` fills only empty values. |
+| S4 `11_S4_AddressLocation_UserData.sql` | Sets every Patient, Doctor and UserMaster row to Kolhapur 416003, overwriting real addresses. `12` fills only rows with no location. |
+| S5 `10_Security_Test_Tenant_LOCAL_ONLY.sql` | Marked local only. Creates second-tenant test logins (`Tufan_Doctor2`, `Tufan_Patient2`, `Tufan_Reception2`). |
+
+## Validation after run 2
+
+- Schema compared with the local database (tables, columns with type, size and nullability, indexes, keys, defaults, check constraints, full-text catalogs and columns, and the text of every procedure, view, function and trigger): nothing is missing, except SSMS diagram support (`sysdiagrams`, `sp_*diagram`, `fn_diagramobjects`), which the applications do not use. Nothing exists only on the remote.
+- Now present: `ConsentNotice` (6 current v1.0 notices), `SecurityAuditLog` with `usp_SecurityAudit_Append` and its triggers, `DoctorReminder`, `MedicineOrderReview`, `PharmacyConfig`, the ConsentRecord guardian columns, the Review reply columns, `IX_RubricRemedyDetails_RemedyId_DeletedStatus`, `IX_ConsentRecord_GuardianRef` and `IX_UserMaster_UserName`.
+- Every ConsentRecord row is linked to a notice. Every Patient, Doctor and UserMaster row has a location. No `string` placeholder values remain. FamilyRelationMaster has Child (17), Parent (18) and Sibling (19).
+- Role menus: Account 14, Admin 54, Doctor 12, Patient 5, PharmacyPartner 4, Reception 5. Admin has `/admin/enquiries`, which the UI maps to `/enquiries`.
+- Role `EmptyMenuProbe` was kept by `13_Remove_Junk_Roles.sql` because seven active team logins use it (`*_NoMenu`). `Tufan_NoMenu` and role `RoleName` were removed.
+- Remote-only location data from before this run is unchanged: 13 extra older country names (for example `Korea, North`, `Ivory Coast`, three `Dominican Republic` rows), each with its own `Other` child rows.
