@@ -40,7 +40,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
     {
         public string? WorkingHoursNote { get; set; }
         public string VerificationStatus { get; set; } = string.Empty;
-        public List<string> RankingReasons { get; set; } = new();
+        public new List<string> RankingReasons { get; set; } = new();
     }
 
     public class PublicBookingCreateRequest

@@ -89,7 +89,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 return Ok(drugs);
 
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return NoContent();
             }
@@ -104,7 +104,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 return drugs;
 
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return null;
             }
@@ -118,7 +118,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 Response.AddPaginationHeader(drugs.CurrentPage, drugs.PageSize, drugs.TotalCount, drugs.TotalPages);
                 return drugs;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return null;
             }
@@ -133,7 +133,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 return drugs;
 
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return null;
             }

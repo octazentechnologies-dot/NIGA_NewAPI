@@ -1451,7 +1451,6 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 }
 
                 //-----for Subsections Counts-----
-                int sum = 0;
                 rawData.ForEach(item =>
                 {
                     var subsections = rawData
@@ -1927,8 +1926,6 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             ref ErrorResponseModel errorResponseModel
         )
         {
-            var eliminateSubsectionId = 0;
-            var eliminateIntensity = 0;
             //var subsectionIds = clipboardRUbricModel.WithEliminateRubric.Select(c => c.SubSectionId).ToList();
             var OtherList = new List<List<int>>();
             foreach (var item in clipboardRUbricModel.WithEliminateRubric)

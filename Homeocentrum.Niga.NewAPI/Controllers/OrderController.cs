@@ -48,7 +48,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     return StatusCode(StatusCodes.Status500InternalServerError, "Failed to generate order");
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while generating order");
             }

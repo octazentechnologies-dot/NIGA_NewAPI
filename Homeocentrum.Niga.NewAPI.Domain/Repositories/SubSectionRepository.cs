@@ -1266,7 +1266,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 .ToDictionaryAsync(x => x.SectionName.ToUpper(), x => x.SectionId);
 
             var subSections = await _context.SubSectionMasters
-    .Where(x => x.DeleteStatus == false || x.DeleteStatus == null)
+    .Where(x => x.DeleteStatus == false)
     .ToDictionaryAsync(
         x => x.SubSectionName.ToUpper(),
         x => x.SubSectionId

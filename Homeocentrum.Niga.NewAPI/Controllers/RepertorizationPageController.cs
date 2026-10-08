@@ -108,7 +108,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 500)]
         public IActionResult GetMateriaMedicaHeadingbyAuthorId(int authorId)
         {
-            ErrorResponseModel errorResponseModel = null;
             try
             {
                 var materiamedicaheadModel = repertorizationPageService.GetMateriaMedicaHeadingbyAuthorId(authorId);
@@ -138,7 +137,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [OldApiContract]
         public IActionResult GetDifferentialMateriaMedica(DifferentialMateriaMedica differentialMateriaMedica)
         {
-            ErrorResponseModel errorResponseModel = null;
             try
             {
                 var differentialMateriaMedicaLists = repertorizationPageService.GetDifferentialMateriaMedica(differentialMateriaMedica);

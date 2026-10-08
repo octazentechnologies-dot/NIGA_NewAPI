@@ -34,7 +34,7 @@ public class ClinicalInferenceEngineTests
             },
         };
 
-        var result = await engine.InferAsync(concepts, Array.Empty<CausationLinkModel>(), new List<AudioCaseSuggestedRubricModel>());
+        var result = await engine.InferAsync(concepts, Array.Empty<CausationLinkModel>(), new List<AudioCaseSuggestedRubricModel>(), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(result.Rubrics);
         Assert.Equal("Inference", result.Rubrics[0].RubricTier);
@@ -73,7 +73,7 @@ public class ClinicalInferenceEngineTests
             },
         };
 
-        var result = await engine.InferAsync(concepts, Array.Empty<CausationLinkModel>(), existing);
+        var result = await engine.InferAsync(concepts, Array.Empty<CausationLinkModel>(), existing, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Empty(result.Rubrics);
     }
 

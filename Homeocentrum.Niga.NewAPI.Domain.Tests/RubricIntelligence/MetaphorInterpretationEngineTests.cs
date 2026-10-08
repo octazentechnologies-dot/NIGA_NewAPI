@@ -22,7 +22,7 @@ public class MetaphorInterpretationEngineTests
             },
         };
 
-        var result = await engine.EnrichAsync(concepts, "en");
+        var result = await engine.EnrichAsync(concepts, "en", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(1, result.MetaphorsMatched);
         Assert.Contains("aura", result.Concepts[0].ClinicalMeaning!, StringComparison.OrdinalIgnoreCase);
     }

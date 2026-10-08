@@ -21,9 +21,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Helpers
             byte[] clearBytes = Encoding.Unicode.GetBytes(encryptString);
             using (Aes encryptor = Aes.Create())
             {
-                var pdb = new Rfc2898DeriveBytes(EncryptionKey, Salt);
-                encryptor.Key = pdb.GetBytes(32);
-                encryptor.IV = pdb.GetBytes(16);
+                (encryptor.Key, encryptor.IV) = DeriveKeyAndIv();
                 using (var ms = new MemoryStream())
                 {
                     using (var cs = new CryptoStream(ms, encryptor.CreateEncryptor(), CryptoStreamMode.Write))
@@ -45,9 +43,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Helpers
                 byte[] cipherBytes = Convert.FromBase64String(cipherText);
                 using (Aes encryptor = Aes.Create())
                 {
-                    var pdb = new Rfc2898DeriveBytes(EncryptionKey, Salt);
-                    encryptor.Key = pdb.GetBytes(32);
-                    encryptor.IV = pdb.GetBytes(16);
+                    (encryptor.Key, encryptor.IV) = DeriveKeyAndIv();
                     using (var ms = new MemoryStream())
                     {
                         using (var cs = new CryptoStream(ms, encryptor.CreateDecryptor(), CryptoStreamMode.Write))
@@ -64,6 +60,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Helpers
                 // Keep legacy behaviour: return original text on decrypt failure.
             }
             return cipherText;
+        }
+
+        // Existing activation links need the old Rfc2898DeriveBytes defaults: SHA1, 1000 iterations, key then IV.
+        private static (byte[] Key, byte[] IV) DeriveKeyAndIv()
+        {
+            var bytes = Rfc2898DeriveBytes.Pbkdf2(EncryptionKey, Salt, 1000, HashAlgorithmName.SHA1, 48);
+            return (bytes[..32], bytes[32..]);
         }
     }
 }

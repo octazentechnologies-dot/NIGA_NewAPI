@@ -184,7 +184,7 @@ public sealed class FastClinicalRubricCatalog : IFastClinicalRubricCatalog
         };
 
         // Atomic publish — readers always see complete snapshot
-        Volatile.Write(ref _snapshot, next);
+        _snapshot = next;
         _logger.LogInformation(
             "FastClinicalRubricCatalog published version={Version} entries={Count}",
             next.Version, next.ById.Count);

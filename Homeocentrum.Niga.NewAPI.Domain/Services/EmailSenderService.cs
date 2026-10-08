@@ -46,7 +46,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
                     return false;
                 }
 
+                // SmtpClient still reads this setting on .NET 10; removing it would change the SMTP TLS versions.
+#pragma warning disable SYSLIB0014
                 ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+#pragma warning restore SYSLIB0014
 
                 using (var smtp = new SmtpClient())
                 {

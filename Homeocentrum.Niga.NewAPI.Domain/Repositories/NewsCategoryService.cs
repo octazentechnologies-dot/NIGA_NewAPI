@@ -11,7 +11,6 @@ using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Microsoft.EntityFrameworkCore;
-using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Microsoft.Extensions.Options;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation

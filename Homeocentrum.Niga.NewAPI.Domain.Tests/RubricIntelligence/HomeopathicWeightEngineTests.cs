@@ -30,7 +30,7 @@ public class HomeopathicWeightEngineTests
             },
         };
 
-        var result = await engine.ApplyAsync(concepts, Array.Empty<CausationLinkModel>());
+        var result = await engine.ApplyAsync(concepts, Array.Empty<CausationLinkModel>(), cancellationToken: TestContext.Current.CancellationToken);
 
         var srp = result.Concepts.First(c => c.IsSRP);
         var particular = result.Concepts.First(c => !c.IsSRP);
@@ -75,7 +75,7 @@ public class HomeopathicWeightEngineTests
             },
         };
 
-        var result = await engine.ApplyAsync(concepts, links);
+        var result = await engine.ApplyAsync(concepts, links, cancellationToken: TestContext.Current.CancellationToken);
         var effect = result.Concepts.Single(c => c.ConceptId == effectId);
 
         Assert.True(effect.HomeopathicWeight > 4m);
@@ -102,7 +102,7 @@ public class HomeopathicWeightEngineTests
             },
         };
 
-        await engine.ApplyWeightToRubricAsync(rubric, concepts);
+        await engine.ApplyWeightToRubricAsync(rubric, concepts, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(rubric.MatchScore > 0.6m);
         Assert.True(rubric.HomeopathicWeight >= 8m);
@@ -123,7 +123,8 @@ public class HomeopathicWeightEngineTests
 
         var result = await engine.ApplyAsync(
             [new() { ConceptId = effectId, RawStatement = "convulsion", Category = "particular" }],
-            [new() { EffectConceptId = effectId }]);
+            [new() { EffectConceptId = effectId }],
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(5.6m, result.Concepts.Single().HomeopathicWeight);
     }

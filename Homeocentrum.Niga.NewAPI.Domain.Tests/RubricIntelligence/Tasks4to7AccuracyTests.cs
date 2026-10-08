@@ -31,7 +31,7 @@ public class DualLanguageMeaningGraphTests
             ],
         };
 
-        var result = await engine.BuildAsync(dual.EnglishTranscript, "mr", dual);
+        var result = await engine.BuildAsync(dual.EnglishTranscript, "mr", dual, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Success);
         var sensation = Assert.Single(result.Meanings);

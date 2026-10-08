@@ -44,7 +44,7 @@ public class HybridRetrievalEngineTests
             },
         };
 
-        var result = await engine.RetrieveAsync(concepts, new List<AudioCaseSymptomModel>(), aliasRubrics);
+        var result = await engine.RetrieveAsync(concepts, new List<AudioCaseSymptomModel>(), aliasRubrics, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(result.Rubrics);
         Assert.Contains(result.Rubrics, r => r.SubSectionId == 101);

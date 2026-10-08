@@ -16,7 +16,8 @@ public class PatientMeaningGraphEngineTests
 
         var result = await engine.BuildAsync(
             "Patient says: फिट येण्याच्या आधी शरीरात कंपन येते. Also fear before the fit.",
-            "mr");
+            "mr",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Success);
         Assert.NotEmpty(result.Meanings);
@@ -35,7 +36,7 @@ public class PatientMeaningGraphEngineTests
             new FakeMeaningGptClient(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PatientMeaningGraphEngine>.Instance);
 
-        var result = await engine.BuildAsync(string.Empty, "en");
+        var result = await engine.BuildAsync(string.Empty, "en", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.Success);
     }

@@ -1147,10 +1147,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
                     {
                         using var reader = new StreamReader(stream);
                         int lineNum = 0;
-                        while (!reader.EndOfStream)
+                        string? line;
+                        while ((line = await reader.ReadLineAsync()) != null)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
-                            var line = await reader.ReadLineAsync();
                             lineNum++;
                             if (lineNum == 1) continue;
                             if (string.IsNullOrWhiteSpace(line)) continue;

@@ -65,10 +65,10 @@ public class RubricPipelineTelemetryTests
         telemetry.SetFinalRubricCounts(11, 10, 1);
 
         var start = DateTime.UtcNow.AddSeconds(-2);
-        await telemetry.RecordStageAsync("Whisper", 1500, start, DateTime.UtcNow, message: "detectedLanguage=en");
-        await telemetry.RecordStageAsync("GptExtraction", 800, start, DateTime.UtcNow);
+        await telemetry.RecordStageAsync("Whisper", 1500, start, DateTime.UtcNow, message: "detectedLanguage=en", cancellationToken: TestContext.Current.CancellationToken);
+        await telemetry.RecordStageAsync("GptExtraction", 800, start, DateTime.UtcNow, cancellationToken: TestContext.Current.CancellationToken);
 
-        await telemetry.FlushSummaryAsync();
+        await telemetry.FlushSummaryAsync(TestContext.Current.CancellationToken);
 
         Assert.Contains(repo.Logs, x => x.Stage == "Whisper" && x.EngineVersion == "fast-f");
         Assert.Contains(repo.Logs, x => x.Stage == RubricPipelineTelemetryConstants.SummaryStageName);
@@ -97,8 +97,8 @@ public class RubricPipelineTelemetryTests
             NullLogger<RubricPipelineTelemetry>.Instance);
 
         telemetry.IncrementLlmCalls(9);
-        await telemetry.RecordStageAsync("Whisper", 100, DateTime.UtcNow, DateTime.UtcNow);
-        await telemetry.FlushSummaryAsync();
+        await telemetry.RecordStageAsync("Whisper", 100, DateTime.UtcNow, DateTime.UtcNow, cancellationToken: TestContext.Current.CancellationToken);
+        await telemetry.FlushSummaryAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(repo.Logs);
     }

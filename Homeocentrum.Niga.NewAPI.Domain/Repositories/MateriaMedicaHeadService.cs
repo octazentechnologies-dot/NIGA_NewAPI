@@ -103,7 +103,6 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             //}
 
 
-            string Message2 = "";
             var materiamedicaheadEntity = context.MateriaMedicaHeadMasters.FirstOrDefault(x => x.MateriaMedicaHeadId == materiamedicaheadModel.MateriaMedicaHeadId);
             if (materiamedicaheadEntity != null)
             {

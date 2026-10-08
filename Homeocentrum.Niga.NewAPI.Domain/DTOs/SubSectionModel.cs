@@ -29,10 +29,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public List<ReferenceRubricDetailsModel> Referencerubric { get; set; } = new List<ReferenceRubricDetailsModel>();
         public List<SubSectionLanguageDetailsModel> SubSectionLanguageDetails { get; set; } = new List<SubSectionLanguageDetailsModel>();
         public bool? MainParentSubsection { get; set; }
-        public string EnteredBy { get; set; }
-        public DateTime? EnteredDate { get; set; }
-        public string ChangedBy { get; set; }
-        public DateTime? ChangedDate { get; set; }
+        public new string EnteredBy { get; set; }
+        public new DateTime? EnteredDate { get; set; }
+        public new string ChangedBy { get; set; }
+        public new DateTime? ChangedDate { get; set; }
     }
 
 

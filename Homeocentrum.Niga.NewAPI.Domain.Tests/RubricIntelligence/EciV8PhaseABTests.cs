@@ -20,7 +20,7 @@ Patient: I feel fear before every fit.
 Patient: I feel fear before every fit.
 """;
 
-        var result = await parser.ParseAsync(input);
+        var result = await parser.ParseAsync(input, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.Success);
         Assert.Contains("How are you?", result.CleanTranscript);
@@ -61,7 +61,7 @@ public class EciV8ClinicalValidatorTests
         var result = validator.Validate(extracted, "I become afraid before every fit.");
 
         Assert.Equal(3, result.Validated.Count);
-        Assert.Equal(1, result.Accepted.Count);
+        Assert.Single(result.Accepted);
         Assert.Equal(2, result.Rejected.Count);
         Assert.Contains(result.Rejected, r => r.RejectReasons.Any(x => x.Contains("Missing transcript evidence", StringComparison.OrdinalIgnoreCase)));
         Assert.Contains(result.Rejected, r => r.RejectReasons.Any(x => x.Contains("Duplicate", StringComparison.OrdinalIgnoreCase)));

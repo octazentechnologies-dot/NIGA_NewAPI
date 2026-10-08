@@ -19,7 +19,8 @@ public class RubricIntelligenceOrchestratorTests
         var session = new AudioCaseSession { AudioCaseSessionId = Guid.NewGuid() };
 
         var result = await orchestrator.AnalyzeAsync(
-            session, "transcript", new List<AudioCaseSymptomModel>(), null, "corr-1");
+            session, "transcript", new List<AudioCaseSymptomModel>(), null, "corr-1",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(result.Rubrics);
         Assert.Equal("v1", result.EngineVersion);
@@ -39,7 +40,8 @@ public class RubricIntelligenceOrchestratorTests
                 new() { Phrase = "vibration before fit", SearchTerms = new List<string> { "vibration", "fit" }, Category = "particular" },
             },
             null,
-            "corr-2");
+            "corr-2",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("v2", result.EngineVersion);
         Assert.NotEmpty(result.Concepts);

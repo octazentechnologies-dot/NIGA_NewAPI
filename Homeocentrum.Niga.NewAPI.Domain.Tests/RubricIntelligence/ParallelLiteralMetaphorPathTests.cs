@@ -10,7 +10,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Tests.RubricIntelligence;
 public class ParallelLiteralMetaphorPathTests
 {
     [Fact]
-    public void FallbackDualPath_LiteralProdrome_DoesNotForceMetaphor()
+    public async Task FallbackDualPath_LiteralProdrome_DoesNotForceMetaphor()
     {
         var meanings = new List<PatientMeaningNodeModel>
         {
@@ -36,7 +36,7 @@ public class ParallelLiteralMetaphorPathTests
         };
 
         var engine = new ClinicalConceptEngineV3(new FailingGptClient());
-        var concepts = engine.DeriveAsync(meanings, metaphors).GetAwaiter().GetResult();
+        var concepts = await engine.DeriveAsync(meanings, metaphors, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains(concepts, c => c.InterpretationSource == "Literal");
         Assert.DoesNotContain(concepts, c => c.InterpretationSource == "Metaphor");
@@ -48,7 +48,7 @@ public class ParallelLiteralMetaphorPathTests
     }
 
     [Fact]
-    public void FallbackDualPath_TrueSensationMetaphor_ProducesMetaphorCandidate()
+    public async Task FallbackDualPath_TrueSensationMetaphor_ProducesMetaphorCandidate()
     {
         var meanings = new List<PatientMeaningNodeModel>
         {
@@ -74,7 +74,7 @@ public class ParallelLiteralMetaphorPathTests
         };
 
         var engine = new ClinicalConceptEngineV3(new FailingGptClient());
-        var concepts = engine.DeriveAsync(meanings, metaphors).GetAwaiter().GetResult();
+        var concepts = await engine.DeriveAsync(meanings, metaphors, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains(concepts, c => c.InterpretationSource == "Literal");
         Assert.Contains(concepts, c => c.InterpretationSource == "Metaphor"
@@ -82,7 +82,7 @@ public class ParallelLiteralMetaphorPathTests
     }
 
     [Fact]
-    public void FallbackDualPath_BothValid_RetainsLiteralAndMetaphor()
+    public async Task FallbackDualPath_BothValid_RetainsLiteralAndMetaphor()
     {
         var meanings = new List<PatientMeaningNodeModel>
         {
@@ -108,12 +108,12 @@ public class ParallelLiteralMetaphorPathTests
         };
 
         var clinicalEngine = new ClinicalConceptEngineV3(new FailingGptClient());
-        var clinical = clinicalEngine.DeriveAsync(meanings, metaphors).GetAwaiter().GetResult();
+        var clinical = await clinicalEngine.DeriveAsync(meanings, metaphors, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(clinical, c => c.InterpretationSource == "Literal");
         Assert.Contains(clinical, c => c.InterpretationSource == "Metaphor");
 
         var homeoEngine = new HomeopathicConceptEngineV3(new FailingGptClient());
-        var homeo = homeoEngine.MapAsync(clinical, summary: null).GetAwaiter().GetResult();
+        var homeo = await homeoEngine.MapAsync(clinical, summary: null, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(homeo.Count >= 2, "Both literal and metaphor clinical concepts should map when GPT falls back.");
     }

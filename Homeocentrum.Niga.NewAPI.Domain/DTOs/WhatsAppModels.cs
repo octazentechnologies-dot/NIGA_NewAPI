@@ -91,7 +91,7 @@ public class SendOfferMessageRequest : SendWhatsAppCategoryMessageRequest
 
     public string? PatientContactNumber { get; set; }
 
-    public string? Offer { get; set; }
+    public new string? Offer { get; set; }
 }
 
 public class SendHealthTipMessageRequest : SendWhatsAppCategoryMessageRequest
@@ -104,7 +104,7 @@ public class SendHealthTipMessageRequest : SendWhatsAppCategoryMessageRequest
 
     public string? PatientContactNumber { get; set; }
 
-    public string? HealthTip { get; set; }
+    public new string? HealthTip { get; set; }
 }
 
 public class SendWhatsAppCategoryMessageRequest

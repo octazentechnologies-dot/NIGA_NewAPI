@@ -62,7 +62,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Log or handle the exception
                 throw;
