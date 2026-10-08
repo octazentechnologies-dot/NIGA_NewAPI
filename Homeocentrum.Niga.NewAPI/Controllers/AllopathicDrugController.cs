@@ -172,7 +172,8 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 if (body.ValueKind == System.Text.Json.JsonValueKind.Object)
                 {
                     // Old API contract: { allopathicDrugId } in, the posted model echoed back.
-                    var model = System.Text.Json.JsonSerializer.Deserialize<AllopathicDrugModel>(body.GetRawText(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+                    var jsonOptions = HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>>().Value.JsonSerializerOptions;
+                    var model = System.Text.Json.JsonSerializer.Deserialize<AllopathicDrugModel>(body.GetRawText(), jsonOptions);
                     await _allopathicDrugService.DeleteAllopathicDrug(model?.AllopathicDrugId ?? 0);
                     return Ok(model);
                 }

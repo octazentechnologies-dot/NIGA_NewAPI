@@ -88,6 +88,9 @@ builder.Services.AddControllers(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new FlexibleTimeOnlyJsonConverter());
         options.JsonSerializerOptions.Converters.Add(new FlexibleNullableTimeOnlyJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new LenientStringJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new LenientBooleanJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new EmptyStringAsNullJsonConverterFactory());
     });
 builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
