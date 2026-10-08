@@ -44,7 +44,10 @@ ConfigurationManager configuration = builder.Configuration;
 IWebHostEnvironment environment = builder.Environment;
 
 // This API has one appsettings.json. Do not load appsettings.Development.json or any other environment file.
-configuration.Sources.Clear();
+// Remove only the JSON files: IIS out-of-process hosting passes the listen port through the other sources,
+// and without it Kestrel falls back to localhost:5000 and IIS times out waiting for the app.
+foreach (var jsonSource in configuration.Sources.OfType<Microsoft.Extensions.Configuration.Json.JsonConfigurationSource>().ToList())
+    configuration.Sources.Remove(jsonSource);
 configuration.SetBasePath(environment.ContentRootPath);
 configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: false);
 var featureFlags = FeatureFlags.Load(configuration);
