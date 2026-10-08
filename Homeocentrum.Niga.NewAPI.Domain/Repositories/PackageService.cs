@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
@@ -165,6 +166,109 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             await _context.SaveChangesAsync();
             return "Package Topup Saved Successfully";
         }
+
+
+        #region Old API compatible methods
+#nullable disable
+
+        /// <summary>
+        /// Method is used for delete Package.
+        /// </summary>
+        /// <param name="packageModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string DeletePackage(PackageModel packageModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            var packageEntity = _context.PackageMasters.FirstOrDefault(x => x.PackageId == packageModel.PackageId);
+            if (packageEntity != null)
+            {
+                packageEntity.DeleteStatus = packageModel.DeleteStatus;
+                packageEntity.ChangedBy = packageModel.EnteredBy;
+                packageEntity.ChangedDate = DateTime.Now;
+                _context.SaveChanges();
+                Message = "Package Deleted Successfully";
+            }
+            return Message;
+        }
+
+        /// <summary>
+        /// Method for getting all the Packages
+        /// </summary>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public List<PackageModel> GetPackages(ref ErrorResponseModel errorResponseModel)
+        {
+            errorResponseModel = new ErrorResponseModel();
+            var packageModelList = new List<PackageModel>();
+            var packageEntityList = _context.PackageMasters.Where(x => x.DeleteStatus == false).ToList();
+            if (packageEntityList.Count == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "Package not found";
+            }
+            packageEntityList.ForEach(item =>
+            {
+                packageModelList.Add(new PackageModel
+                {
+                    PackageId = item.PackageId,
+                    PackageName = item.PackageName,
+                    CaseCount = item.CaseCount,
+                    ValidityInDays = item.ValidityInDays,
+                    Amount = item.Amount,
+                    EnteredDate = item.EnteredDate,
+                    EnteredBy = item.EnteredBy,
+                    ChangedBy = item.ChangedBy,
+                    ChangedDate = item.ChangedDate,
+                    DeleteStatus = item.DeleteStatus
+                });
+            });
+            return packageModelList;
+        }
+
+        /// <summary>
+        /// Method implementation for saving new Package
+        /// </summary>
+        /// <param name="packageModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string SavePackage(PackageModel packageModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            if (packageModel.PackageId == 0)
+            {
+                PackageMaster packageEntity = new PackageMaster();
+                packageEntity.PackageName = packageModel.PackageName;
+                packageEntity.CaseCount = packageModel.CaseCount;
+                packageEntity.ValidityInDays = packageModel.ValidityInDays;
+                packageEntity.Amount = packageModel.Amount;
+                packageEntity.EnteredBy = packageModel.EnteredBy;
+                packageEntity.EnteredDate = DateTime.Now;
+                _context.PackageMasters.Add(packageEntity);
+                _context.SaveChanges();
+                Message = "Package Saved Successfully";
+            }
+            else
+            {
+                var packageEntity = _context.PackageMasters.FirstOrDefault(x => x.PackageId == packageModel.PackageId);
+                if (packageEntity != null)
+                {
+
+                    packageEntity.PackageName = packageModel.PackageName;
+                    packageEntity.CaseCount = packageModel.CaseCount;
+                    packageEntity.ValidityInDays = packageModel.ValidityInDays;
+                    packageEntity.Amount = packageModel.Amount;
+                    packageEntity.ChangedBy = packageModel.EnteredBy;
+                    packageEntity.ChangedDate = DateTime.Now;
+                    _context.SaveChanges();
+                    Message = "Package Updated Successfully";
+                }
+            }
+            return Message;
+        }
+
+#nullable restore
+        #endregion
     }
     }
 

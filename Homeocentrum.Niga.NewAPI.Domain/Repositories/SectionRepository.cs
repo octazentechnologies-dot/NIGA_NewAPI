@@ -1,3 +1,4 @@
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
@@ -11,7 +12,7 @@ using AutoMapper;
 namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
 {
 
-    public class SectionService : ISectionRepository
+    public class SectionService : ISectionRepository, ISectionService
     {
         private readonly NIGACentrumContext _context;
         private readonly IMapper _mapper;
@@ -180,6 +181,73 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             }
             return sectionModelQuery;
         }
+
+
+        #region Old API compatible methods
+#nullable disable
+
+        /// <summary>
+        /// Method is used for delete Section.
+        /// </summary>
+        /// <param name="sectionModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string DeleteSection(SectionModel sectionModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            var sectionEntity = _context.SectionMasters.FirstOrDefault(x => x.SectionId == sectionModel.SectionId);
+            if (sectionEntity != null)
+            {
+                sectionEntity.DeleteStatus = sectionModel.DeleteStatus;
+                sectionEntity.ChangedBy = sectionModel.EnteredBy;
+                sectionEntity.ChangedDate = DateTime.Now;
+                _context.SaveChanges();
+                Message = "Section Deleted Successfully";
+            }
+            return Message;
+        }
+
+        /// <summary>
+        /// Method implementation for saving new Section
+        /// </summary>
+        /// <param name="sectionModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string SaveSection(SectionModel sectionModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            if (sectionModel.SectionId == 0)
+            {
+                SectionMaster sectionEntity = new SectionMaster();
+                sectionEntity.SectionName = sectionModel.SectionName;
+                sectionEntity.SectionAlias = sectionModel.SectionAlias;
+                sectionEntity.Description = sectionModel.Description;
+                sectionEntity.EnteredBy = sectionModel.EnteredBy;
+                sectionEntity.EnteredDate = DateTime.Now;
+                _context.SectionMasters.Add(sectionEntity);
+                _context.SaveChanges();
+                Message = "Section Saved Successfully";
+            }
+            else
+            {
+                var sectionEntity = _context.SectionMasters.FirstOrDefault(x => x.SectionId == sectionModel.SectionId);
+                if (sectionEntity != null)
+                {
+
+                    sectionEntity.SectionName = sectionModel.SectionName;
+                    sectionEntity.SectionAlias = sectionModel.SectionAlias;
+                    sectionEntity.Description = sectionModel.Description;
+                    sectionEntity.ChangedBy = sectionModel.EnteredBy;
+                    sectionEntity.ChangedDate = DateTime.Now;
+                    _context.SaveChanges();
+                    Message = "Section Updated Successfully";
+                }
+            }
+            return Message;
+        }
+
+#nullable restore
+        #endregion
     }
 }
 

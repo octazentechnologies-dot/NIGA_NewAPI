@@ -1,3 +1,5 @@
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
+using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using API.Extensions;
 using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
@@ -11,6 +13,7 @@ using System;
 
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
     /// <summary>
@@ -20,7 +23,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     [ApiController]
     [Authorize]
     [DoctorOnly]
-    public class QuestionSubGroupController : ControllerBase
+    public class QuestionSubGroupController : BaseAPIController
     {
         private readonly IQuestionSubGroupService _questionSubGroupService;
         private readonly IMapper _mapper;
@@ -203,5 +206,81 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             return await _questionSubGroupService.GetQuestionSubGroupDD(search);
         }
+
+
+        #region Old API compatible endpoints
+#nullable disable
+
+        /// <summary>
+        /// To add new QuestionSubGroup
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+
+        [HttpPost]
+        [ProducesResponseType(typeof(QuestionSubGroupModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult SaveQuestionSubGroup([FromServices] IQuestionSubGroupService questionsubgroupService, QuestionSubGroupModel questionSubGroupModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var questionSubGroupModel1 = questionsubgroupService.SaveQuestionSubGroup(questionSubGroupModel, ref errorResponseModel);
+
+
+
+                if (questionSubGroupModel1 != null)
+                {
+                    return Ok(questionSubGroupModel1);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To delete QuestionSubGroup
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+
+        [HttpPost]
+        [Route("DeleteQuestionSubGroup")]
+        [ProducesResponseType(typeof(QuestionSubGroupModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult DeleteQuestionSubGroup([FromServices] IQuestionSubGroupService questionsubgroupService, QuestionSubGroupModel questionSubGroupModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var questionSubGroupModel1 = questionsubgroupService.DeleteQuestionSubGroup(questionSubGroupModel, ref errorResponseModel);
+
+
+
+                if (questionSubGroupModel1 != null)
+                {
+                    return Ok(questionSubGroupModel1);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+#nullable restore
+        #endregion
     }
 }

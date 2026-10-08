@@ -1,3 +1,7 @@
+using Homeocentrum.Niga.NewAPI.Domain.Master;
+using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.DTOs;
+using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using System;
 using System.Threading.Tasks;
 using API.Extensions;
@@ -7,6 +11,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Extensions;
 using Homeocentrum.Niga.NewAPI.Domain.Services;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
@@ -16,7 +21,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     [Route("api/package")]
     [ApiController]
   //  [Authorize]
-    public class PackageController : ControllerBase
+    public class PackageController : BaseAPIController
     {
         private readonly IPackageService _packageService;
         private readonly IAuditEventWriter _auditEventWriter;
@@ -145,5 +150,105 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 // Never fail the business mutate because audit write failed.
             }
         }
+
+
+        #region Old API compatible endpoints
+#nullable disable
+
+        /// <summary>
+        /// To Get all Packages
+        /// </summary>
+        /// <returns></returns>
+        [HttpGet]
+        [AllowAnonymous]
+        [ProducesResponseType(typeof(PackageModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
+        public IActionResult GetPackages([FromServices] IPackageService packageService)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var packageModelList = packageService.GetPackages(ref errorResponseModel);
+
+                if (packageModelList != null)
+                {
+                    return Ok(packageModelList);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To add new Package 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [ProducesResponseType(typeof(PackageModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult SavePackage([FromServices] IPackageService packageService, PackageModel packageModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var packagemodel = packageService.SavePackage(packageModel, ref errorResponseModel);
+
+                if (packagemodel != null)
+                {
+                    return Ok(packagemodel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To delete Package 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("DeletePackage")]
+        [ProducesResponseType(typeof(PackageModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult DeletePackage([FromServices] IPackageService packageService, PackageModel packageModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var packagemodel = packageService.DeletePackage(packageModel, ref errorResponseModel);
+
+                if (packagemodel != null)
+                {
+                    return Ok(packagemodel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+#nullable restore
+        #endregion
     }
 }

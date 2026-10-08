@@ -495,6 +495,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
             string Message = "";
             foreach (var item in patient.ChiefComplaintIds.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0))
             {
+                var already = context.CaseEntryChiefComplaints.Any(x =>
+                    x.CaseId == CaseEntry.CaseId && x.ChiefComplaintName == item);
+                if (already)
+                {
+                    Message = "Complaints Saved Successfully";
+                    continue;
+                }
                 var caseEntryChiefComplaint = new CaseEntryChiefComplaint();
                 caseEntryChiefComplaint.ChiefComplaintName = item;
                 caseEntryChiefComplaint.CaseId = CaseEntry.CaseId;

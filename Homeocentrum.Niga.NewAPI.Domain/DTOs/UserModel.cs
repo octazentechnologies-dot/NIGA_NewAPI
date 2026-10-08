@@ -55,5 +55,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string LastName { get; set; }
         public int? RoleId { get; set; }
         public string Role { get; set; }
+        public string? MobileNo { get; set; }
+        public DateTime? CreatedDate { get; set; }
     }
 }

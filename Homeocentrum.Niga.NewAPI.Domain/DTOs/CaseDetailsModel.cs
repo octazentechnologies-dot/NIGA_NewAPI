@@ -19,6 +19,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public int? RemedyId { get; set; }
         public int? RemedyIndex { get; set; }
         public List<CaseDetailRemedy1> ModelEx { get; set; }
+        public string? SubsectionName { get; set; }
+        public int? IntensityNo { get; set; }
+        public string? IntensityDescription { get; set; }
     }
 
 

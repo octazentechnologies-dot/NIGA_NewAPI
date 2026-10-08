@@ -1,3 +1,6 @@
+﻿using Homeocentrum.Niga.NewAPI.Domain.Business.Implementation;
+using System.Text.RegularExpressions;
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using System.IO;
 using System.Net;
 using API.Helpers;
@@ -8,6 +11,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.CodeAnalysis;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
@@ -19,17 +25,24 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
     /// <summary>
     /// This is implementation  for the subsection operations 
     /// </summary>
-    public class SubSectionService : ISubSectionRepository
+    public class SubSectionService : ISubSectionRepository, ISubSectionService
     {
         private readonly NIGACentrumContext _context;
         private readonly IMapper _mapper;
         private readonly IWebHostEnvironment _env;
+        private readonly IMemoryCache _cache;
+        private readonly ILogger<SubSectionService> _logger;
+        /// <summary>-1 unknown, 0 missing, 1 SearchNormalized is on the table FTS index.</summary>
+        private static int _searchNormalizedFtsState = -1;
 
-        public SubSectionService(NIGACentrumContext centrumContext, IMapper mapper, IWebHostEnvironment env)
+        public SubSectionService(NIGACentrumContext centrumContext, IMapper mapper, IWebHostEnvironment env,
+            IMemoryCache cache, ILogger<SubSectionService> logger)
         {
             _context = centrumContext;
             _mapper = mapper;
             _env = env;
+            _cache = cache;
+            _logger = logger;
         }
 
         public void DeleteLanguageDetails(SubSectionLanguageDetail languageDetails)
@@ -1601,5 +1614,1420 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             });
         }
 
+
+        #region Old API compatible methods
+#nullable disable
+
+        private static readonly HashSet<string> StopWords = new HashSet<string>
+        {
+            "a","an","the","of","in","on","at","for","to","from","and","or","is","are",
+            "with","by","as","be","was","were"
+        };
+
+        private async Task<List<SubSectionSearchResultModel>> BuildSearchResultsWithAncestorsAsync(
+            List<SubSectionSearchMatchRow> rankedMatches)
+        {
+            if (rankedMatches == null || rankedMatches.Count == 0)
+                return new List<SubSectionSearchResultModel>();
+
+            try
+            {
+                var seedIds = rankedMatches.Select(m => (int)m.SubSectionId).Distinct().ToList();
+                var nodeLookup = await LoadSubSectionTreeNodesAsync(seedIds);
+
+                foreach (var match in rankedMatches)
+                {
+                    nodeLookup[(int)match.SubSectionId] = match;
+                }
+
+                var allIds = nodeLookup.Keys.ToList();
+                var childCountRows = await _context.SubSectionMasters
+                    .AsNoTracking()
+                    .Where(c => c.DeleteStatus == false && c.ParentSubSectionId != null && allIds.Contains(c.ParentSubSectionId.Value))
+                    .GroupBy(c => c.ParentSubSectionId)
+                    .Select(g => new { ParentId = g.Key.Value, Count = g.Count() })
+                    .ToListAsync();
+
+                var childCounts = childCountRows.ToDictionary(x => x.ParentId, x => x.Count);
+
+                var results = new List<SubSectionSearchResultModel>();
+
+                foreach (var match in rankedMatches)
+                {
+                    var ancestors = new List<SubSectionLevelModel>();
+                    var currentParentId = match.ParentSubSectionId;
+                    var visitedAncestors = new HashSet<int>();
+
+                    while (currentParentId.HasValue && currentParentId.Value > 0)
+                    {
+                        if (!visitedAncestors.Add(currentParentId.Value))
+                            break;
+
+                        if (!nodeLookup.TryGetValue(currentParentId.Value, out var parentNode))
+                            break;
+
+                        ancestors.Insert(0, new SubSectionLevelModel
+                        {
+                            SubSectionId = parentNode.SubSectionId,
+                            SubSectionName = parentNode.SubSectionName,
+                            ChildCount = childCounts.TryGetValue((int)parentNode.SubSectionId, out var parentChildCount)
+                                ? parentChildCount
+                                : 0
+                        });
+
+                        currentParentId = parentNode.ParentSubSectionId;
+                    }
+
+                    results.Add(new SubSectionSearchResultModel
+                    {
+                        SubSectionId = match.SubSectionId,
+                        SubSectionName = match.SubSectionName,
+                        ParentSubSectionId = match.ParentSubSectionId,
+                        ChildCount = childCounts.TryGetValue((int)match.SubSectionId, out var matchChildCount)
+                            ? matchChildCount
+                            : 0,
+                        Ancestors = ancestors
+                    });
+                }
+
+                return results;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Building subsection ancestor tree failed. Returning flat matches.");
+
+                return rankedMatches.Select(match => new SubSectionSearchResultModel
+                {
+                    SubSectionId = match.SubSectionId,
+                    SubSectionName = match.SubSectionName,
+                    ParentSubSectionId = match.ParentSubSectionId,
+                    ChildCount = 0,
+                    Ancestors = new List<SubSectionLevelModel>()
+                }).ToList();
+            }
+        }
+
+        private async Task<int> CountSubSectionsWithEfLikeAsync(long? sectionId, string[] words)
+        {
+            try
+            {
+                IQueryable<SubSectionMaster> query = _context.SubSectionMasters
+                    .AsNoTracking()
+                    .Where(s => s.DeleteStatus == false);
+
+                if (sectionId.HasValue)
+                {
+                    query = query.Where(s => s.SectionId == sectionId.Value);
+                }
+
+                foreach (var word in words)
+                {
+                    var pattern = "%" + word + "%";
+                    query = query.Where(s =>
+                        (s.SearchNormalized != null && EF.Functions.Like(s.SearchNormalized, pattern))
+                        || (s.SubSectionName != null && EF.Functions.Like(s.SubSectionName, pattern)));
+                }
+
+                return await query.CountAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "EF LIKE subsection count failed for SectionId={SectionId}.", sectionId);
+                return 0;
+            }
+        }
+
+        public string DeleteReferenceRubricDetails(ReferenceRubricDetailsModel referenceRubricDetailsModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            var ReferenceRubricDetailsEntity = _context.ReferenceRubricDetails.FirstOrDefault(x => x.ReferenceRubricId == referenceRubricDetailsModel.ReferenceRubricId);
+            if (ReferenceRubricDetailsEntity != null)
+            {
+                ReferenceRubricDetailsEntity.DeleteStatus = true;
+                // _context.Remove(authorEntity);
+                _context.SaveChanges();
+                Message = "Reference Rubric Details Deleted Successfully";
+
+            }
+            return Message;
+        }
+
+        /// <summary>
+        /// Method is used for delete SubSection.
+        /// </summary>
+        /// <param name="subSectionModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string DeleteSubSection(SubSectionModel subSectionModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            var subSectionEntity = _context.SubSectionMasters.FirstOrDefault(x => x.SubSectionId == subSectionModel.SubSectionId);
+            if (subSectionEntity != null)
+            {
+                subSectionEntity.DeleteStatus = subSectionModel.DeleteStatus;
+                subSectionEntity.ChangedBy = subSectionModel.EnteredBy;
+                subSectionEntity.ChangedDate = DateTime.Now;
+                _context.SaveChanges();
+                Message = "SubSection Deleted Successfully";
+            }
+            return Message;
+        }
+
+        public string DeleteSubSectionLanguageDetails(SubSectionLanguageDetailsModel subSectionLanguageDetailsModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            var SubSectionLanguageDetailsEntity = _context.SubSectionLanguageDetails.FirstOrDefault(x => x.SubSectionLanguageId == subSectionLanguageDetailsModel.SubSectionLanguageId);
+            if (SubSectionLanguageDetailsEntity != null)
+            {
+                SubSectionLanguageDetailsEntity.DeleteStatus = true;
+                // _context.Remove(authorEntity);
+                _context.SaveChanges();
+                Message = "Language Details Deleted Successfully";
+
+            }
+            return Message;
+        }
+
+        private static string[] GetSearchWords(string normalizedQuery)
+        {
+            return normalizedQuery
+                .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length >= 2 && !StopWords.Contains(w))
+                .Distinct()
+                .ToArray();
+        }
+
+        /// <summary>
+        /// Methood to get subsection by SubSectionId
+        /// </summary>
+        /// <param name="subsectionId"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public SubSectionModel GetSubSectionById(long subsectionId, ref ErrorResponseModel errorResponseModel)
+        {
+            OldApiCommandTimeout.Apply(_context);
+            var listSubSectionModel = new SubSectionModel();
+            errorResponseModel = new ErrorResponseModel();
+            if (subsectionId == 0)
+            {
+                var listSubsectionEntity = _context.SectionMasters.Where(x => x.DeleteStatus == false).ToList();
+                if (listSubsectionEntity == null)
+                {
+                    errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                    errorResponseModel.Message = "Section not found";
+                }
+
+
+                listSubSectionModel.SubSectionId = 0;
+                listSubSectionModel.SubSectionName = listSubSectionModel.SectionName;
+                listSubSectionModel.SectionId = listSubSectionModel.SectionId;
+                listSubSectionModel.ParentSubSectionId = listSubSectionModel.ParentSubSectionId;
+                listSubSectionModel.MainParentSubsection= listSubSectionModel.MainParentSubsection;
+
+            }
+
+            else
+            {
+                var listSubsectionEntity = _context.SubSectionMasters.Where(x => x.DeleteStatus == false).Where((x => x.SubSectionId == subsectionId)).FirstOrDefault();
+                List<ReferenceRubricDetailsModel> lstMatMedicaDetails = new List<ReferenceRubricDetailsModel>();
+                var materiamedicaremediesEntity = (from sub in _context.SubSectionMasters
+                                                   join refrub in _context.ReferenceRubricDetails
+                                                   on sub.SubSectionId equals refrub.RefSubSectionId
+                                                   join sect in _context.SectionMasters
+                                                  on sub.SectionId equals sect.SectionId
+                                                   where refrub.SubSectionId == subsectionId && refrub.DeleteStatus == false
+                                                   select new ReferenceRubricDetailsModel
+                                                   {
+                                                        ReferenceRubricId= (int)refrub.ReferenceRubricId,
+                                                        SubSectionId=refrub.SubSectionId,
+                                                        RefSubSectionId=refrub.RefSubSectionId,
+                                                        RefSubSectionName=sub.SubSectionName,
+                                                        SectionId=sub.SectionId,
+                                                        SectionName=sect.SectionName,
+                                                       EnteredBy= refrub.EnteredBy,
+                                                       EnteredDate=refrub.EnteredDate,
+                                                       ChangedBy = refrub.ChangedBy,
+                                                       ChangedDate = refrub.ChangedDate
+                                                   }).ToList();
+
+
+
+
+
+
+                var subsectionlanguageEntity = (from sub in _context.SubSectionMasters
+                                                   join sublag in _context.SubSectionLanguageDetails
+                                                   on sub.SubSectionId equals sublag.SubSectionId
+                                                    join lagmst in _context.LanguageMasters
+                                                   on sublag.LanguageId equals lagmst.LanguageId
+
+
+                                                where sublag.SubSectionId == subsectionId && sublag.DeleteStatus == false
+                                                   select new SubSectionLanguageDetailsModel
+                                                   {
+                                                      SubSectionId =sublag.SubSectionId,
+                                                       SectionName=sub.SubSectionName,
+                                                       LanguageId =sublag.LanguageId,
+                                                       SubSectionDetails=sublag.SubSectionDetails,
+                                                       LanguageName=lagmst.LanguageName,
+                                                       SubSectionLanguageId=sublag.SubSectionLanguageId,
+                                                       LanguageDescription =lagmst.Description
+
+                                                   }).ToList();
+
+                if (listSubsectionEntity == null)
+                {
+                    errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                    errorResponseModel.Message = "Section not found";
+                }
+                else
+                {
+                    listSubSectionModel.SubSectionId = listSubsectionEntity.SubSectionId;
+                    listSubSectionModel.Description = listSubsectionEntity.Description;
+                    listSubSectionModel.SubSectionNameAlias = listSubsectionEntity.SubSectionNameAlias;
+                    listSubSectionModel.SubSectionName = listSubsectionEntity.SubSectionName;
+                    listSubSectionModel.SectionId = listSubsectionEntity.SectionId;
+                    listSubSectionModel.SectionName = _context.SectionMasters.Where(x => x.SectionId == listSubsectionEntity.SectionId).Select(x => x.SectionName).FirstOrDefault();
+                    listSubSectionModel.ParentSubSectionId = listSubsectionEntity.ParentSubSectionId;
+                    listSubSectionModel.ParentSubSectionName = _context.SubSectionMasters.Where(x=>x.SubSectionId== listSubsectionEntity.ParentSubSectionId).Select(x=>x.SubSectionName).FirstOrDefault();
+                    listSubSectionModel.Referencerubric = materiamedicaremediesEntity;
+                    listSubSectionModel.SubSectionLanguageDetails = subsectionlanguageEntity;
+                    listSubSectionModel.MainParentSubsection = listSubsectionEntity.MainParentSubsection;
+
+
+                }
+            }
+
+            return listSubSectionModel;
+        }
+
+        /// <summary>
+        /// Method to get all the subsections
+        /// </summary>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+       
+
+        public List<SubSectionModel> GetSubSections(int sectionId, NigaParameters nigaParameters)
+        {
+            var subsectionModelList = new List<SubSectionModel>();
+            var errorResponseModel = new ErrorResponseModel();
+            var subsectionEntityList = _context.SubSectionMasters
+                                            .Where(x => x.DeleteStatus == false
+                                            && x.SectionId == sectionId).OrderBy(x => x.SubSectionName)
+                                            .Skip((nigaParameters.PageNumber - 1) * nigaParameters.PageSize)
+             .Take(nigaParameters.PageSize)
+             .ToList();
+
+
+
+
+            if (subsectionEntityList.Count == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "SubSection not found";
+            }
+
+            var sectionNames = SubSectionNameLookup.GetSectionNames(_context);
+            var parentNames = SubSectionNameLookup.GetParentSubSectionNames(_context, subsectionEntityList);
+
+            subsectionEntityList.ForEach(item =>
+            {
+                subsectionModelList.Add(new SubSectionModel
+                {
+                    SubSectionId = item.SubSectionId,
+                    SectionId = item.SectionId,
+                    SectionName = sectionNames.NameOrNull(item.SectionId),
+                    ParentSubSectionId = item.ParentSubSectionId,
+                    ParentSubSectionName = parentNames.NameOrNull(item.ParentSubSectionId) ?? string.Empty,
+                    SubSectionName = item.SubSectionName,
+                    SubSectionNameAlias = item.SubSectionNameAlias,
+                    MainParentSubsection=item.MainParentSubsection,
+                    Description = item.Description,
+                    EnteredDate = item.EnteredDate,
+                    EnteredBy = item.EnteredBy,
+                    ChangedBy = item.ChangedBy,
+                    ChangedDate = item.ChangedDate,
+                    DeleteStatus = item.DeleteStatus,
+                });
+            });
+            return subsectionModelList;
+        }
+
+        /// <summary>
+        /// Method to get all the subsections
+        /// </summary>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public List<SubSectionModel> GetSubSections(ref ErrorResponseModel errorResponseModel)
+        {
+            OldApiCommandTimeout.Apply(_context);
+            var subsectionModelList = new List<SubSectionModel>();
+            errorResponseModel = new ErrorResponseModel();
+            var subsectionEntityList = _context.SubSectionMasters
+                                            .Where(x => x.DeleteStatus == false).ToList();
+                                            
+            if (subsectionEntityList.Count == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "SubSection not found";
+            }
+
+            var sectionNames = SubSectionNameLookup.GetSectionNames(_context);
+            var parentNames = SubSectionNameLookup.GetParentSubSectionNames(_context, subsectionEntityList);
+
+            subsectionEntityList.ForEach(item =>
+            {
+                subsectionModelList.Add(new SubSectionModel
+                {
+                    SubSectionId = item.SubSectionId,
+                    SectionId = item.SectionId,
+                    SectionName = sectionNames.NameOrNull(item.SectionId),
+                    ParentSubSectionId = item.ParentSubSectionId,
+                    ParentSubSectionName = parentNames.NameOrNull(item.ParentSubSectionId) ?? string.Empty,
+                    SubSectionName = item.SubSectionName,
+                    SubSectionNameAlias = item.SubSectionNameAlias,
+                    MainParentSubsection = item.MainParentSubsection,
+                    Description = item.Description,
+                    EnteredDate = item.EnteredDate,
+                    EnteredBy = item.EnteredBy,
+                    ChangedBy = item.ChangedBy,
+                    ChangedDate = item.ChangedDate,
+                    DeleteStatus = item.DeleteStatus,
+                });
+            });
+            return subsectionModelList;
+        }
+
+        private static bool IsMissingFullTextIndex(Exception ex)
+        {
+            for (var cur = ex; cur != null; cur = cur.InnerException)
+            {
+                if (cur is SqlException sql && sql.Number == 7601)
+                    return true;
+                if (!string.IsNullOrEmpty(cur.Message)
+                    && cur.Message.IndexOf("not full-text indexed", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
+        }
+
+        private bool IsSearchNormalizedFullTextAvailable()
+        {
+            if (_searchNormalizedFtsState >= 0)
+                return _searchNormalizedFtsState == 1;
+
+            try
+            {
+                var conn = _context.Database.GetDbConnection();
+                var openedHere = conn.State != System.Data.ConnectionState.Open;
+                if (openedHere)
+                    conn.Open();
+                try
+                {
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = @"
+SELECT CASE WHEN EXISTS (
+    SELECT 1
+    FROM sys.fulltext_index_columns fic
+    INNER JOIN sys.columns c
+        ON c.object_id = fic.object_id AND c.column_id = fic.column_id
+    WHERE fic.object_id = OBJECT_ID(N'dbo.SubSectionMaster')
+      AND c.name = N'SearchNormalized') THEN 1 ELSE 0 END";
+                        var scalar = cmd.ExecuteScalar();
+                        _searchNormalizedFtsState = Convert.ToInt32(scalar);
+                    }
+                }
+                finally
+                {
+                    if (openedHere)
+                        conn.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                // Transient failures (connection timeouts) must not pin the whole process to LIKE search.
+                _logger?.LogWarning(ex, "Could not detect SearchNormalized full-text index. Using LIKE search for this request.");
+                return false;
+            }
+
+            if (_searchNormalizedFtsState == 0)
+            {
+                _logger?.LogWarning("SearchNormalized is not full-text indexed. Subsection search uses LIKE until the FTS column is added.");
+            }
+
+            return _searchNormalizedFtsState == 1;
+        }
+
+        private async Task<Dictionary<int, SubSectionSearchMatchRow>> LoadSubSectionTreeNodesAsync(List<int> seedIds)
+        {
+            if (seedIds == null || seedIds.Count == 0)
+                return new Dictionary<int, SubSectionSearchMatchRow>();
+
+            var distinctIds = seedIds.Where(id => id > 0).Distinct().Take(50).ToList();
+            if (!distinctIds.Any())
+                return new Dictionary<int, SubSectionSearchMatchRow>();
+
+            return await LoadSubSectionTreeNodesBatchedAsync(distinctIds, new Dictionary<int, SubSectionSearchMatchRow>());
+        }
+
+        private async Task<Dictionary<int, SubSectionSearchMatchRow>> LoadSubSectionTreeNodesBatchedAsync(
+            List<int> seedIds,
+            Dictionary<int, SubSectionSearchMatchRow> nodeLookup)
+        {
+            if (nodeLookup == null)
+            {
+                nodeLookup = new Dictionary<int, SubSectionSearchMatchRow>();
+            }
+
+            var visited = new HashSet<int>(nodeLookup.Keys);
+            var pendingParentIds = seedIds
+                .Where(id => id > 0)
+                .Distinct()
+                .Where(id => !visited.Contains(id))
+                .ToList();
+
+            var safetyCounter = 0;
+            while (pendingParentIds.Count > 0 && safetyCounter < 50)
+            {
+                safetyCounter++;
+                pendingParentIds = pendingParentIds
+                    .Where(id => !visited.Contains(id))
+                    .Distinct()
+                    .ToList();
+
+                if (!pendingParentIds.Any())
+                    break;
+
+                var batch = pendingParentIds.Take(200).ToList();
+                pendingParentIds = pendingParentIds.Skip(batch.Count).ToList();
+
+                var parents = await _context.SubSectionMasters
+                    .AsNoTracking()
+                    .Where(s => batch.Contains(s.SubSectionId) && s.DeleteStatus == false)
+                    .Select(s => new SubSectionSearchMatchRow
+                    {
+                        SubSectionId = s.SubSectionId,
+                        SubSectionName = s.SubSectionName,
+                        ParentSubSectionId = s.ParentSubSectionId,
+                        Rank = 0
+                    })
+                    .ToListAsync();
+
+                foreach (var parent in parents)
+                {
+                    var parentId = (int)parent.SubSectionId;
+                    if (visited.Add(parentId))
+                    {
+                        nodeLookup[parentId] = parent;
+                    }
+
+                    if (parent.ParentSubSectionId.HasValue
+                        && parent.ParentSubSectionId.Value > 0
+                        && !visited.Contains(parent.ParentSubSectionId.Value))
+                    {
+                        pendingParentIds.Add(parent.ParentSubSectionId.Value);
+                    }
+                }
+            }
+
+            return nodeLookup;
+        }
+
+        private static void MarkSearchNormalizedFullTextUnavailable()
+        {
+            _searchNormalizedFtsState = 0;
+        }
+
+        private static string NormalizeSubSectionSearchText(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                return string.Empty;
+
+            var normalized = input.ToLowerInvariant();
+            normalized = Regex.Replace(normalized, @"[-,\.:;]", " ");
+            normalized = Regex.Replace(normalized, @"(\d)\s*pm\b", "$1 pm");
+            normalized = Regex.Replace(normalized, @"(\d)\s*am\b", "$1 am");
+            normalized = Regex.Replace(normalized, @"\s+", " ");
+            return normalized.Trim();
+        }
+
+        /// <summary>
+        /// Method implementation for saving new SubSection
+        /// </summary>
+        /// <param name="subSectionModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string SaveSubSection(List<SubSectionModel> subSectionModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            foreach (var items in subSectionModel)
+            {
+                if(items.SubSectionId == 0)
+                {
+                    foreach (var item in subSectionModel)
+                    {
+                        SubSectionMaster subSectionEntity = new SubSectionMaster();
+                        if (item.SubSectionId == 0)
+                        {
+                            subSectionEntity.SectionId = item.SectionId;
+                            subSectionEntity.ParentSubSectionId = item.ParentSubSectionId;
+                            subSectionEntity.SubSectionName = item.SubSectionName;
+                            subSectionEntity.SubSectionNameAlias = item.SubSectionNameAlias;
+                            subSectionEntity.Description = item.Description;
+                            subSectionEntity.EnteredBy = item.EnteredBy;
+                            subSectionEntity.EnteredDate = DateTime.Now;
+                            subSectionEntity.DeleteStatus = false;
+                            subSectionEntity.MainParentSubsection = item.MainParentSubsection;
+                            _context.SubSectionMasters.Add(subSectionEntity);
+                            _context.SaveChanges();
+                        }
+
+                        foreach (var item1 in item.Referencerubric)
+                        {
+                            var modeldetails = new ReferenceRubricDetail();
+                            modeldetails.SubSectionId = subSectionEntity.SubSectionId;
+                            modeldetails.RefSubSectionId = item1.RefSubSectionId;
+                            modeldetails.EnteredBy = item1.EnteredBy;
+                            modeldetails.EnteredDate = DateTime.Now;
+                            modeldetails.ChangedBy = item1.ChangedBy;
+                            modeldetails.ChangedDate = item1.ChangedDate;
+                            modeldetails.DeleteStatus = false;
+                            _context.ReferenceRubricDetails.Add(modeldetails);
+                            _context.SaveChanges();
+
+                        }
+
+
+
+                        foreach (var item1 in item.SubSectionLanguageDetails)
+                        {
+                            var languagemodeldetails = new SubSectionLanguageDetail();
+                            languagemodeldetails.SubSectionId = subSectionEntity.SubSectionId;
+                            languagemodeldetails.LanguageId = item1.LanguageId;
+                            languagemodeldetails.SubSectionDetails = item1.SubSectionDetails;
+                            languagemodeldetails.DeleteStatus=false;
+                            _context.SubSectionLanguageDetails.Add(languagemodeldetails);
+                            _context.SaveChanges();
+
+                        }
+
+                        Message = "Rubric Remedy Details Saved Successfully";
+                    }
+
+                }
+                else
+                {
+                    foreach (var item in subSectionModel)
+                    {
+                        SubSectionMaster subSectionEntity = new SubSectionMaster();
+                        if (item.SubSectionId > 0)
+                        {
+                            var subSectionUpdateEntity = _context.SubSectionMasters.FirstOrDefault(x => x.SubSectionId == item.SubSectionId);
+                                if (subSectionUpdateEntity != null) 
+                                {
+                                    subSectionUpdateEntity.SectionId = item.SectionId;
+                                    subSectionUpdateEntity.ParentSubSectionId = item.ParentSubSectionId;
+                                    subSectionUpdateEntity.SubSectionName = item.SubSectionName;
+                                    subSectionUpdateEntity.SubSectionNameAlias = item.SubSectionNameAlias;
+                                    subSectionUpdateEntity.Description = item.Description;
+                                    subSectionUpdateEntity.EnteredBy = item.EnteredBy;
+                                    subSectionUpdateEntity.ChangedBy = item.ChangedBy;
+                                    subSectionUpdateEntity.ChangedDate = DateTime.Now;
+                                    subSectionUpdateEntity.EnteredDate = DateTime.Now;
+                                    subSectionEntity.MainParentSubsection = item.MainParentSubsection;
+                                _context.SaveChanges();
+                                }
+                        }
+
+
+                        foreach (var item1 in item.Referencerubric)
+                        {
+                            var referencerubricUpdateEntity = _context.ReferenceRubricDetails.FirstOrDefault(x => x.ReferenceRubricId == item1.ReferenceRubricId && x.DeleteStatus==false);
+                            if (referencerubricUpdateEntity != null)
+                            {
+                                referencerubricUpdateEntity.SubSectionId = item1.SubSectionId;
+                                referencerubricUpdateEntity.RefSubSectionId = item1.RefSubSectionId;
+                                referencerubricUpdateEntity.EnteredDate = item1.EnteredDate;
+                                referencerubricUpdateEntity.EnteredBy = Convert.ToInt32(item.EnteredBy);
+                                referencerubricUpdateEntity.ChangedBy = Convert.ToInt32(item.ChangedBy);
+                                referencerubricUpdateEntity.ChangedDate = DateTime.Now;
+                                referencerubricUpdateEntity.EnteredDate = item1.EnteredDate;
+                                referencerubricUpdateEntity.DeleteStatus = false;
+                                _context.SaveChanges();
+                            }
+                            else
+                            {
+                                var modeldetails = new ReferenceRubricDetail();
+                                modeldetails.SubSectionId = item.SubSectionId;
+                                modeldetails.RefSubSectionId = item1.RefSubSectionId;
+                                modeldetails.EnteredDate = DateTime.Now;
+                                modeldetails.EnteredBy = Convert.ToInt32(item.EnteredBy);
+                                modeldetails.ChangedBy = Convert.ToInt32(item.ChangedBy);
+                                modeldetails.DeleteStatus = false;
+                                _context.ReferenceRubricDetails.Add(modeldetails);
+                                _context.SaveChanges();
+
+                            }
+                        }
+
+
+
+                        foreach (var item1 in item.SubSectionLanguageDetails)
+                        {
+                            var subSectionLanguageDetailsEntity = _context.SubSectionLanguageDetails.FirstOrDefault(x => x.SubSectionLanguageId == item1.SubSectionLanguageId && x.DeleteStatus == false);
+                            if (subSectionLanguageDetailsEntity != null)
+                            {
+                                subSectionLanguageDetailsEntity.SubSectionId = item1.SubSectionId;
+                                subSectionLanguageDetailsEntity.LanguageId = item1.LanguageId;
+                                subSectionLanguageDetailsEntity.SubSectionDetails = item1.SubSectionDetails;
+                                subSectionLanguageDetailsEntity.DeleteStatus = false;
+
+                                _context.SaveChanges();
+                            }
+                            else
+                            {
+                                var languagemodeldetails = new SubSectionLanguageDetail();
+                                languagemodeldetails.SubSectionId = item.SubSectionId;
+                                languagemodeldetails.LanguageId = item1.LanguageId;
+                                languagemodeldetails.SubSectionDetails = item1.SubSectionDetails;
+                                languagemodeldetails.DeleteStatus = false;
+                                _context.SubSectionLanguageDetails.Add(languagemodeldetails);
+                                _context.SaveChanges();
+
+                            }
+                        }
+
+                        Message = "Rubric Remedy Details Update Successfully";
+                    }
+                }
+            }
+
+            
+
+
+            //if (subSectionModel.SubSectionId == 0)
+            //{
+            //    SubSectionMaster subSectionEntity = new SubSectionMaster();
+            //    subSectionEntity.SectionId = subSectionModel.SectionId;
+            //    subSectionEntity.ParentSubSectionId = subSectionModel.ParentSubSectionId;
+            //    subSectionEntity.SubSectionName = subSectionModel.SubSectionName;
+            //    subSectionEntity.SubSectionNameAlias = subSectionModel.SubSectionNameAlias;
+            //    subSectionEntity.Description = subSectionModel.Description;
+            //    subSectionEntity.EnteredBy = subSectionModel.EnteredBy;
+            //    subSectionEntity.EnteredDate = DateTime.Now;
+            //    _context.SubSectionMasters.Add(subSectionEntity);
+            //    _context.SaveChanges();
+            //    Message = "SubSection Saved Successfully";
+            //}
+            //else
+            //{
+            //    var subSectionEntity = _context.SubSectionMasters.FirstOrDefault(x => x.SubSectionId == subSectionModel.SubSectionId);
+            //    if (subSectionEntity != null)
+            //    {
+
+            //        subSectionEntity.SectionId = subSectionModel.SectionId;
+            //        subSectionEntity.ParentSubSectionId = subSectionModel.ParentSubSectionId;
+            //        subSectionEntity.SubSectionName = subSectionModel.SubSectionName;
+            //        subSectionEntity.SubSectionNameAlias = subSectionModel.SubSectionNameAlias;
+            //        subSectionEntity.Description = subSectionModel.Description;
+            //        subSectionEntity.ChangedBy = subSectionModel.EnteredBy;
+            //        subSectionEntity.ChangedDate = DateTime.Now;
+            //        _context.SaveChanges();
+            //        Message = "SubSection Updated Successfully";
+            //    }
+            //}
+            return Message;
+        }
+
+        public async Task<List<SubSectionSearchResponse>> SearchAsync(string query, int top)
+        {
+            OldApiCommandTimeout.Apply(_context);
+            try
+            {
+                if (string.IsNullOrWhiteSpace(query))
+                    return new List<SubSectionSearchResponse>();
+
+                string cacheKey = $"subsection_search_{query}_{top}";
+
+                if (_cache.TryGetValue(cacheKey, out List<SubSectionSearchResponse> cached))
+                    return cached;
+
+                var words = GetSearchWords(NormalizeSubSectionSearchText(query));
+
+                if (!words.Any())
+                    return new List<SubSectionSearchResponse>();
+
+                var fullTextQuery = string.Join(" OR ",
+                    words.Select(w => $"\"{w}*\""));
+
+                var sql = @"
+            SELECT TOP (@Top)
+                s.SubSectionID AS Id,
+                s.SubSectionName AS Name,
+                ft.RANK
+            FROM dbo.SubSectionMaster s
+            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
+                ON s.SubSectionID = ft.[KEY]
+            WHERE s.DeleteStatus = 0
+            ORDER BY ft.RANK DESC";
+
+                var result = await _context.Database.SqlQueryRaw<SubSectionSearchResponse>(sql,
+                        new SqlParameter("@Top", top),
+                        new SqlParameter("@SearchQuery", fullTextQuery))
+                    .ToListAsync();
+
+                _cache.Set(cacheKey, result, TimeSpan.FromMinutes(5));
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "SearchAsync failed. Query: {Query}", query);
+                return new List<SubSectionSearchResponse>();
+            }
+        }
+
+        public async Task<List<SubSectionSearchResultModel>> SearchBySectionAsync(long sectionId, string query, int top)
+        {
+            OldApiCommandTimeout.Apply(_context);
+            if (sectionId <= 0)
+                return new List<SubSectionSearchResultModel>();
+
+            return await SearchSubSectionsInternalAsync(sectionId, query, top, "section");
+        }
+
+        public async Task<SubSectionSearchPagedResultModel> SearchBySectionPagedAsync(long sectionId, string query, int pageNumber, int pageSize)
+        {
+            OldApiCommandTimeout.Apply(_context);
+            if (sectionId <= 0)
+                return new SubSectionSearchPagedResultModel();
+
+            return await SearchSubSectionsPagedInternalAsync(sectionId, query, pageNumber, pageSize, "section");
+        }
+
+        public async Task<List<SubSectionSearchResultModel>> SearchGlobalAsync(string query, int top)
+        {
+            OldApiCommandTimeout.Apply(_context);
+            return await SearchSubSectionsInternalAsync(null, query, top, "global");
+        }
+
+        public async Task<SubSectionSearchPagedResultModel> SearchGlobalPagedAsync(string query, int pageNumber, int pageSize)
+        {
+            OldApiCommandTimeout.Apply(_context);
+            return await SearchSubSectionsPagedInternalAsync(null, query, pageNumber, pageSize, "global");
+        }
+
+        private async Task<List<SubSectionSearchResultModel>> SearchSubSectionsInternalAsync(
+            long? sectionId,
+            string query,
+            int top,
+            string scope)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return new List<SubSectionSearchResultModel>();
+
+            query = query.Trim();
+            if (query.Length < 2)
+                return new List<SubSectionSearchResultModel>();
+
+            top = Math.Max(5, Math.Min(top, scope == "global" ? 20 : 100));
+
+            var cacheKey = sectionId.HasValue
+                ? $"subsection_search_{scope}_{sectionId.Value}_{query.ToLowerInvariant()}_{top}"
+                : $"subsection_search_{scope}_{query.ToLowerInvariant()}_{top}";
+
+            if (_cache.TryGetValue(cacheKey, out List<SubSectionSearchResultModel> cached))
+                return cached;
+
+            var words = GetSearchWords(NormalizeSubSectionSearchText(query));
+            if (!words.Any())
+                return new List<SubSectionSearchResultModel>();
+
+            var previousTimeout = _context.Database.GetCommandTimeout();
+            _context.Database.SetCommandTimeout(scope == "global" ? 45 : previousTimeout ?? 30);
+
+            try
+            {
+                var rankedMatches = await TrySearchSubSectionsFullTextAsync(sectionId, words, top);
+                if (!rankedMatches.Any())
+                {
+                    rankedMatches = await SearchSubSectionsWithEfLikeAsync(sectionId, words, top);
+                }
+
+                var result = await BuildSearchResultsWithAncestorsAsync(rankedMatches);
+                if (result.Any())
+                {
+                    _cache.Set(cacheKey, result, TimeSpan.FromMinutes(5));
+                }
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(
+                    ex,
+                    "Subsection search failed. Scope={Scope}, SectionId={SectionId}, Query={Query}",
+                    scope,
+                    sectionId,
+                    query);
+                return new List<SubSectionSearchResultModel>();
+            }
+            finally
+            {
+                _context.Database.SetCommandTimeout(previousTimeout);
+            }
+        }
+
+        private async Task<SubSectionSearchPagedResultModel> SearchSubSectionsPagedInternalAsync(
+            long? sectionId,
+            string query,
+            int pageNumber,
+            int pageSize,
+            string scope)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return new SubSectionSearchPagedResultModel();
+
+            query = query.Trim();
+            if (query.Length < 2)
+                return new SubSectionSearchPagedResultModel();
+
+            pageNumber = Math.Max(1, pageNumber);
+            pageSize = Math.Max(10, Math.Min(pageSize, 100));
+            var offset = (pageNumber - 1) * pageSize;
+
+            var cacheKey = sectionId.HasValue
+                ? $"subsection_search_paged_{scope}_{sectionId.Value}_{query.ToLowerInvariant()}_{pageNumber}_{pageSize}"
+                : $"subsection_search_paged_{scope}_{query.ToLowerInvariant()}_{pageNumber}_{pageSize}";
+
+            if (_cache.TryGetValue(cacheKey, out SubSectionSearchPagedResultModel cached))
+                return cached;
+
+            var words = GetSearchWords(NormalizeSubSectionSearchText(query));
+            if (!words.Any())
+                return new SubSectionSearchPagedResultModel();
+
+            var previousTimeout = _context.Database.GetCommandTimeout();
+            _context.Database.SetCommandTimeout(scope == "global" ? 45 : previousTimeout ?? 30);
+
+            try
+            {
+                int totalCount;
+                List<SubSectionSearchMatchRow> rankedMatches;
+
+                var fullTextCount = await TryCountSubSectionsFullTextAsync(sectionId, words);
+                if (fullTextCount > 0)
+                {
+                    totalCount = fullTextCount;
+                    rankedMatches = await TrySearchSubSectionsFullTextPagedAsync(sectionId, words, offset, pageSize);
+                }
+                else
+                {
+                    totalCount = await CountSubSectionsWithEfLikeAsync(sectionId, words);
+                    rankedMatches = await SearchSubSectionsWithEfLikePagedAsync(sectionId, words, offset, pageSize);
+                }
+
+                // Full-text count can succeed while OFFSET/FETCH page query returns nothing (EF FromSql param issue).
+                if (!rankedMatches.Any())
+                {
+                    if (totalCount <= 0)
+                    {
+                        totalCount = await CountSubSectionsWithEfLikeAsync(sectionId, words);
+                    }
+
+                    rankedMatches = await SearchSubSectionsWithEfLikePagedAsync(sectionId, words, offset, pageSize);
+                }
+
+                var items = await BuildSearchResultsWithAncestorsAsync(rankedMatches);
+                var result = new SubSectionSearchPagedResultModel
+                {
+                    Items = items,
+                    TotalCount = totalCount,
+                    PageNumber = pageNumber,
+                    PageSize = pageSize,
+                    HasMore = pageNumber * pageSize < totalCount
+                };
+
+                if (result.Items.Any())
+                {
+                    _cache.Set(cacheKey, result, TimeSpan.FromMinutes(5));
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(
+                    ex,
+                    "Paged subsection search failed. Scope={Scope}, SectionId={SectionId}, Query={Query}, Page={Page}",
+                    scope,
+                    sectionId,
+                    query,
+                    pageNumber);
+                return new SubSectionSearchPagedResultModel();
+            }
+            finally
+            {
+                _context.Database.SetCommandTimeout(previousTimeout);
+            }
+        }
+
+        private async Task<List<SubSectionSearchMatchRow>> SearchSubSectionsWithEfLikeAsync(
+            long? sectionId,
+            string[] words,
+            int top)
+        {
+            return await SearchSubSectionsWithEfLikePagedAsync(sectionId, words, 0, top);
+        }
+
+        private async Task<List<SubSectionSearchMatchRow>> SearchSubSectionsWithEfLikePagedAsync(
+            long? sectionId,
+            string[] words,
+            int offset,
+            int pageSize)
+        {
+            try
+            {
+                IQueryable<SubSectionMaster> query = _context.SubSectionMasters
+                    .AsNoTracking()
+                    .Where(s => s.DeleteStatus == false);
+
+                if (sectionId.HasValue)
+                {
+                    query = query.Where(s => s.SectionId == sectionId.Value);
+                }
+
+                foreach (var word in words)
+                {
+                    var pattern = "%" + word + "%";
+                    query = query.Where(s =>
+                        (s.SearchNormalized != null && EF.Functions.Like(s.SearchNormalized, pattern))
+                        || (s.SubSectionName != null && EF.Functions.Like(s.SubSectionName, pattern)));
+                }
+
+                return await query
+                    .OrderBy(s => s.SubSectionName)
+                    .Skip(offset)
+                    .Take(pageSize)
+                    .Select(s => new SubSectionSearchMatchRow
+                    {
+                        SubSectionId = s.SubSectionId,
+                        SubSectionName = s.SubSectionName,
+                        ParentSubSectionId = s.ParentSubSectionId,
+                        Rank = 0
+                    })
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Paged EF LIKE subsection search failed for SectionId={SectionId}.", sectionId);
+                return new List<SubSectionSearchMatchRow>();
+            }
+        }
+
+        private async Task<int> TryCountSubSectionsFullTextAsync(long? sectionId, string[] words)
+        {
+            if (!IsSearchNormalizedFullTextAvailable())
+                return 0;
+
+            try
+            {
+                var fullTextQuery = string.Join(" OR ", words.Select(w => $"\"{w}*\""));
+                var sectionFilter = sectionId.HasValue ? " AND s.SectionID = @SectionId" : string.Empty;
+
+                var sql = $@"
+            SELECT COUNT(*)
+            FROM dbo.SubSectionMaster s
+            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
+                ON s.SubSectionID = ft.[KEY]
+            WHERE s.DeleteStatus = 0{sectionFilter}";
+
+                var parameters = new List<SqlParameter>
+                {
+                    new SqlParameter("@SearchQuery", fullTextQuery)
+                };
+
+                if (sectionId.HasValue)
+                {
+                    parameters.Add(new SqlParameter("@SectionId", sectionId.Value));
+                }
+
+                await _context.Database.OpenConnectionAsync();
+                try
+                {
+                    using (var command = _context.Database.GetDbConnection().CreateCommand())
+                    {
+                        command.CommandText = sql;
+                        foreach (var parameter in parameters)
+                        {
+                            command.Parameters.Add(parameter);
+                        }
+
+                        var scalar = await command.ExecuteScalarAsync();
+                        return scalar == null || scalar == DBNull.Value ? 0 : Convert.ToInt32(scalar);
+                    }
+                }
+                finally
+                {
+                    _context.Database.CloseConnection();
+                }
+            }
+            catch (Exception ex)
+            {
+                if (IsMissingFullTextIndex(ex))
+                    MarkSearchNormalizedFullTextUnavailable();
+                _logger?.LogWarning(
+                    ex,
+                    "Full-text subsection count failed for SectionId={SectionId}. Falling back to LIKE search.",
+                    sectionId);
+                return 0;
+            }
+        }
+
+        private async Task<List<SubSectionSearchMatchRow>> TrySearchSubSectionsFullTextAsync(
+            long? sectionId,
+            string[] words,
+            int top)
+        {
+            if (!IsSearchNormalizedFullTextAvailable())
+                return new List<SubSectionSearchMatchRow>();
+
+            try
+            {
+                var fullTextQuery = string.Join(" OR ", words.Select(w => $"\"{w}*\""));
+                var sectionFilter = sectionId.HasValue ? " AND s.SectionID = @SectionId" : string.Empty;
+
+                var sql = $@"
+            SELECT TOP ({top})
+                s.SubSectionID AS SubSectionId,
+                s.SubSectionName AS SubSectionName,
+                s.ParentSubSectionID AS ParentSubSectionId,
+                ft.RANK AS Rank
+            FROM dbo.SubSectionMaster s
+            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
+                ON s.SubSectionID = ft.[KEY]
+            WHERE s.DeleteStatus = 0{sectionFilter}
+            ORDER BY ft.RANK DESC";
+
+                var parameters = new List<SqlParameter>
+                {
+                    new SqlParameter("@SearchQuery", fullTextQuery)
+                };
+
+                if (sectionId.HasValue)
+                {
+                    parameters.Add(new SqlParameter("@SectionId", sectionId.Value));
+                }
+
+                return await _context.Database.SqlQueryRaw<SubSectionSearchMatchRow>(sql, parameters.ToArray())
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                if (IsMissingFullTextIndex(ex))
+                    MarkSearchNormalizedFullTextUnavailable();
+                _logger?.LogWarning(
+                    ex,
+                    "Full-text subsection search failed for SectionId={SectionId}. Falling back to LIKE search.",
+                    sectionId);
+                return new List<SubSectionSearchMatchRow>();
+            }
+        }
+
+        private async Task<List<SubSectionSearchMatchRow>> TrySearchSubSectionsFullTextPagedAsync(
+            long? sectionId,
+            string[] words,
+            int offset,
+            int pageSize)
+        {
+            if (!IsSearchNormalizedFullTextAvailable())
+                return new List<SubSectionSearchMatchRow>();
+
+            try
+            {
+                var fullTextQuery = string.Join(" OR ", words.Select(w => $"\"{w}*\""));
+                var sectionFilter = sectionId.HasValue ? " AND s.SectionID = @SectionId" : string.Empty;
+
+                // OFFSET/FETCH values must be inlined – EF Core 2.x FromSql does not bind @Offset/@PageSize correctly.
+                var sql = $@"
+            SELECT
+                s.SubSectionID AS SubSectionId,
+                s.SubSectionName AS SubSectionName,
+                s.ParentSubSectionID AS ParentSubSectionId,
+                ft.RANK AS Rank
+            FROM dbo.SubSectionMaster s
+            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
+                ON s.SubSectionID = ft.[KEY]
+            WHERE s.DeleteStatus = 0{sectionFilter}
+            ORDER BY ft.RANK DESC
+            OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
+
+                var parameters = new List<SqlParameter>
+                {
+                    new SqlParameter("@SearchQuery", fullTextQuery)
+                };
+
+                if (sectionId.HasValue)
+                {
+                    parameters.Add(new SqlParameter("@SectionId", sectionId.Value));
+                }
+
+                return await _context.Database.SqlQueryRaw<SubSectionSearchMatchRow>(sql, parameters.ToArray())
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                if (IsMissingFullTextIndex(ex))
+                    MarkSearchNormalizedFullTextUnavailable();
+                _logger?.LogWarning(
+                    ex,
+                    "Paged full-text subsection search failed for SectionId={SectionId}. Falling back to LIKE search.",
+                    sectionId);
+                return new List<SubSectionSearchMatchRow>();
+            }
+        }
+
+        /// <summary>
+        /// Method implementation to update MainParentSubsection against subsectionId
+        /// </summary>
+        /// <param name="subsectionId"></param>
+        /// <param name="mainParentSubsection"></param>
+        /// <param name="changedBy"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string UpdateMainParentSubsection(long subsectionId, bool mainParentSubsection, string changedBy, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            errorResponseModel = new ErrorResponseModel();
+
+            if (subsectionId == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "SubSectionId is required";
+                return Message;
+            }
+
+            var subSectionEntity = _context.SubSectionMasters.FirstOrDefault(x => x.SubSectionId == subsectionId && x.DeleteStatus == false);
+            
+            if (subSectionEntity == null)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "SubSection not found";
+                return Message;
+            }
+
+            subSectionEntity.MainParentSubsection = mainParentSubsection;
+            subSectionEntity.ChangedBy = changedBy;
+            subSectionEntity.ChangedDate = DateTime.Now;
+            _context.SaveChanges();
+            
+            Message = "MainParentSubsection updated successfully";
+            return Message;
+        }
+
+#nullable restore
+        #endregion
+
+
+        #region Old API compatible overloads
+#nullable disable
+
+        public List<SubSectionLevelModel> GetMainParentSubSectionsWithChildCount(
+    long sectionId,
+    ref ErrorResponseModel errorResponseModel)
+        {
+            OldApiCommandTimeout.Apply(_context);
+            errorResponseModel = new ErrorResponseModel();
+
+            var result = new List<SubSectionLevelModel>();
+            if (sectionId >= int.MinValue && sectionId <= int.MaxValue)
+            {
+                var sectionIdValue = (int)sectionId;
+                result = _context.SubSectionMasters
+                    .AsNoTracking()
+                    .Where(s => s.SectionId == sectionIdValue && s.DeleteStatus == false && s.MainParentSubsection == true)
+                    .Select(s => new SubSectionLevelModel
+                    {
+                        SubSectionId = s.SubSectionId,
+                        SubSectionName = s.SubSectionName,
+                        ChildCount = _context.SubSectionMasters.Count(c => c.DeleteStatus == false && c.ParentSubSectionId == s.SubSectionId)
+                    })
+                    .OrderBy(x => x.SubSectionName)
+                    .ToList();
+            }
+
+            if (!result.Any())
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "No main parent subsections found";
+            }
+
+            return result;
+        }
+
+        //public List<SubSectionLevelModel> GetSubSectionWithChildrenCount(long subsectionId, ref ErrorResponseModel errorResponseModel)
+        //{
+        //    errorResponseModel = new ErrorResponseModel();
+
+        //    var result = _context.SubSectionMasters
+        //        .Where(s =>
+        //            (s.SubSectionId == subsectionId ||
+        //             s.ParentSubSectionId == subsectionId) &&
+        //            s.DeleteStatus == false)
+        //        .Select(s => new SubSectionLevelModel
+        //        {
+        //            SubSectionId = s.SubSectionId,
+        //            SubSectionName = s.SubSectionName,
+        //            ChildCount = _context.SubSectionMasters.Count(c =>
+        //                c.ParentSubSectionId == s.SubSectionId &&
+        //                c.DeleteStatus == false)
+        //        })
+        //        .OrderBy(x => x.SubSectionId == subsectionId ? 0 : 1)
+        //        .ThenBy(x => x.SubSectionName)
+        //        .ToList();
+
+        //    if (result == null || result.Count == 0)
+        //    {
+        //        errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+        //        errorResponseModel.Message = "Subsection not found";
+        //    }
+
+        //    return result;
+        //}
+
+        //    public List<SubSectionLevelModel> GetSubSectionWithChildrenCount(
+        //long subsectionId,
+        //ref ErrorResponseModel errorResponseModel)
+        //    {
+        //        errorResponseModel = new ErrorResponseModel();
+
+        //        var result =
+        //            (from s in _context.SubSectionMasters
+        //             where (s.SubSectionId == subsectionId ||
+        //                    s.ParentSubSectionId == subsectionId)
+        //                   && s.DeleteStatus == false
+
+        //             join c in _context.SubSectionMasters
+        //                 .Where(x => x.DeleteStatus == false)
+        //                 on s.SubSectionId equals c.ParentSubSectionId into childGroup
+
+        //             select new SubSectionLevelModel
+        //             {
+        //                 SubSectionId = s.SubSectionId,
+        //                 SubSectionName = s.SubSectionName,
+        //                 ChildCount = childGroup.Count()
+        //             })
+        //            .OrderBy(x => x.SubSectionId == subsectionId ? 0 : 1)
+        //            .ThenBy(x => x.SubSectionName)
+        //            .ToList();
+
+        //        if (!result.Any())
+        //        {
+        //            errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+        //            errorResponseModel.Message = "Subsection not found";
+        //        }
+
+        //        return result;
+        //    }
+
+        //its used for if below is not work
+        //public List<SubSectionLevelModel> GetSubSectionWithChildrenCount( long subsectionId, ref ErrorResponseModel errorResponseModel)
+        //{
+        //    errorResponseModel = new ErrorResponseModel();
+
+        //    // 1️⃣ Pre-aggregate child counts
+        //    var childCounts =
+        //        _context.SubSectionMasters
+        //            .AsNoTracking()
+        //            .Where(c => c.DeleteStatus == false && c.ParentSubSectionId != null)
+        //            .GroupBy(c => c.ParentSubSectionId)
+        //            .Select(g => new
+        //            {
+        //                ParentSubSectionId = g.Key,
+        //                Count = g.Count()
+        //            });
+
+        //    // 2️⃣ Get target + its children (index-friendly)
+        //    var targetAndChildren =
+        //        _context.SubSectionMasters
+        //            .AsNoTracking()
+        //            .Where(s => s.DeleteStatus == false &&
+        //                       (s.SubSectionId == subsectionId ||
+        //                        s.ParentSubSectionId == subsectionId));
+
+        //    // 3️⃣ Join with aggregated counts
+        //    var result =
+        //        (from s in targetAndChildren
+        //         join cc in childCounts
+        //             on s.SubSectionId equals cc.ParentSubSectionId into ccg
+        //         from cc in ccg.DefaultIfEmpty()
+
+        //         select new SubSectionLevelModel
+        //         {
+        //             SubSectionId = s.SubSectionId,
+        //             SubSectionName = s.SubSectionName,
+        //             ChildCount = cc == null ? 0 : cc.Count
+        //         })
+        //        .OrderBy(x => x.SubSectionId == subsectionId ? 0 : 1)
+        //        .ThenBy(x => x.SubSectionName)
+        //        .ToList();
+
+        //    if (!result.Any())
+        //    {
+        //        errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+        //        errorResponseModel.Message = "Subsection not found";
+        //    }
+
+        //    return result;
+        //}
+
+        public List<SubSectionLevelModel> GetSubSectionWithChildrenCount(
+    long subsectionId,
+    ref ErrorResponseModel errorResponseModel)
+        {
+            OldApiCommandTimeout.Apply(_context);
+            errorResponseModel = new ErrorResponseModel();
+
+            // Two narrow queries: a single EF Core 8 statement aggregates the whole table and times out.
+            int? parentId = subsectionId > int.MaxValue ? null : (int)subsectionId;
+            var children = _context.SubSectionMasters
+                .AsNoTracking()
+                .Where(s => s.DeleteStatus == false && s.ParentSubSectionId == parentId)
+                .Select(s => new { s.SubSectionId, s.SubSectionName })
+                .ToList();
+
+            var childIds = children.Select(c => (int?)c.SubSectionId).ToList();
+            var childCounts = childIds.Count == 0
+                ? new Dictionary<int, int>()
+                : _context.SubSectionMasters
+                    .AsNoTracking()
+                    .Where(c => c.DeleteStatus == false && childIds.Contains(c.ParentSubSectionId))
+                    .GroupBy(c => c.ParentSubSectionId)
+                    .Select(g => new { ParentSubSectionId = g.Key, Count = g.Count() })
+                    .ToList()
+                    .ToDictionary(x => x.ParentSubSectionId!.Value, x => x.Count);
+
+            var result = children
+                .Select(s => new SubSectionLevelModel
+                {
+                    SubSectionId = s.SubSectionId,
+                    SubSectionName = s.SubSectionName,
+                    ChildCount = childCounts.TryGetValue(s.SubSectionId, out var count) ? count : 0
+                })
+                .OrderBy(x => x.SubSectionName)
+                .ToList();
+
+            if (!result.Any())
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "No child subsections found";
+            }
+
+            return result;
+        }
+
+#nullable restore
+        #endregion
     }
 }

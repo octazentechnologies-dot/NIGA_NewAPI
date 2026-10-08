@@ -92,29 +92,186 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             return UploadedMedia.MediaRelative(folderName, fileName);
         }
 
+        #region Old API compatible methods
+#nullable disable
         public NewDetailModel1 GetNewsDetailsbyId(long newsId, ref ErrorResponseModel errorResponseModel)
         {
-            throw new NotImplementedException();
+            errorResponseModel = new ErrorResponseModel();
+            var newsEntity = (from news in _context.NewsDetails
+                              join category in _context.NewsCategories
+                              on news.NewsCategoryId equals category.NewsCategoryId
+                              where news.NewsId == newsId
+                              select new
+                              {
+                                  news.NewsId,
+                                  news.NewsCategoryId,
+                                  news.NewsDate,
+                                  news.NewsHeading,
+                                  news.NewsSubHeading,
+                                  news.NewsImage1,
+                                  news.NewsImage2,
+                                  news.NewsImage3,
+                                  news.NewsImage4,
+                                  news.EnteredBy,
+                                  news.EnteredDate,
+                                  category.NewsCategory1,
+                                  news.NewsContent,
+                                  news.IsActive
+                              }).AsNoTracking().FirstOrDefault();
+
+            if (newsEntity == null)
+            {
+                errorResponseModel.StatusCode = System.Net.HttpStatusCode.NotFound;
+                errorResponseModel.Message = "News Details not found";
+                return null;
+            }
+            return new NewDetailModel1
+            {
+                NewsId = newsEntity.NewsId,
+                NewsDate = newsEntity.NewsDate,
+                NewsHeading = newsEntity.NewsHeading,
+                NewsSubHeading = newsEntity.NewsSubHeading,
+                NewsCategoryId = newsEntity.NewsCategoryId,
+                NewsContent = newsEntity.NewsContent,
+                NewsImage1 = newsEntity.NewsImage1,
+                NewsImage2 = newsEntity.NewsImage2,
+                NewsImage3 = newsEntity.NewsImage3,
+                NewsImage4 = newsEntity.NewsImage4,
+                EnteredBy = newsEntity.EnteredBy,
+                EnteredDate = newsEntity.EnteredDate,
+                NewsCategory1 = newsEntity.NewsCategory1,
+                IsActive = newsEntity.IsActive,
+            };
         }
 
         public List<NewDetailModel> GetAllNewsDetails(ref ErrorResponseModel errorResponseModel)
         {
-            throw new NotImplementedException();
+            errorResponseModel = new ErrorResponseModel();
+            var list = GetNewsDetailList(null);
+            if (list.Count == 0)
+            {
+                errorResponseModel.StatusCode = System.Net.HttpStatusCode.NotFound;
+                errorResponseModel.Message = "News Details not found";
+            }
+            return list;
         }
 
         public string SaveNewsDetails(NewDetailModel1 model, ref ErrorResponseModel errorResponseModel)
         {
-            throw new NotImplementedException();
+            string message = "";
+            if (model.NewsId == 0)
+            {
+                var details = new NewsDetail
+                {
+                    NewsDate = model.NewsDate,
+                    NewsHeading = model.NewsHeading,
+                    NewsSubHeading = model.NewsSubHeading,
+                    NewsContent = model.NewsContent,
+                    NewsImage1 = model.NewsImage1,
+                    NewsImage2 = model.NewsImage2,
+                    NewsImage3 = model.NewsImage3,
+                    NewsImage4 = model.NewsImage4,
+                    NewsCategoryId = model.NewsCategoryId,
+                    EnteredBy = model.EnteredBy,
+                    EnteredDate = DateTime.Now,
+                    IsActive = model.IsActive,
+                };
+                _context.NewsDetails.Add(details);
+                _context.SaveChanges();
+                message = "News Details saved Successfully";
+            }
+            else
+            {
+                var details = _context.NewsDetails.FirstOrDefault(x => x.NewsId == model.NewsId);
+                if (details != null)
+                {
+                    details.NewsDate = model.NewsDate;
+                    details.NewsHeading = model.NewsHeading;
+                    details.NewsSubHeading = model.NewsSubHeading;
+                    details.NewsCategoryId = model.NewsCategoryId;
+                    details.NewsContent = model.NewsContent;
+                    details.NewsImage1 = model.NewsImage1;
+                    details.NewsImage2 = model.NewsImage2;
+                    details.NewsImage3 = model.NewsImage3;
+                    details.NewsImage4 = model.NewsImage4;
+                    details.EnteredBy = model.EnteredBy;
+                    details.EnteredDate = DateTime.Now;
+                    details.IsActive = model.IsActive;
+                    _context.SaveChanges();
+                    message = "News Details Update Successfully";
+                }
+            }
+            return message;
         }
 
         public string DeleteNewsDetails(int newsId, ref ErrorResponseModel errorResponseModel)
         {
-            throw new NotImplementedException();
+            string message = "";
+            var newsEntity = _context.NewsDetails.FirstOrDefault(x => x.NewsId == newsId);
+            if (newsEntity != null)
+            {
+                newsEntity.IsActive = false;
+                _context.SaveChanges();
+                message = " News Details Delete Successfully";
+            }
+            return message;
         }
 
         public List<NewDetailModel> GetNewsDetailsbyCategoryId(long newsCategoryId, ref ErrorResponseModel errorResponseModel)
         {
-            throw new NotImplementedException();
+            errorResponseModel = new ErrorResponseModel();
+            var list = GetNewsDetailList(newsCategoryId);
+            if (list.Count == 0)
+            {
+                errorResponseModel.StatusCode = System.Net.HttpStatusCode.NotFound;
+                errorResponseModel.Message = "News Details not found";
+            }
+            return list;
         }
+
+        private List<NewDetailModel> GetNewsDetailList(long? newsCategoryId)
+        {
+            var rows = (from news in _context.NewsDetails
+                        join category in _context.NewsCategories
+                        on news.NewsCategoryId equals category.NewsCategoryId
+                        where news.IsActive == true && (newsCategoryId == null || news.NewsCategoryId == newsCategoryId)
+                        select new
+                        {
+                            news.NewsId,
+                            news.NewsCategoryId,
+                            news.NewsDate,
+                            news.NewsHeading,
+                            news.NewsSubHeading,
+                            news.NewsImage1,
+                            news.NewsImage2,
+                            news.NewsImage3,
+                            news.NewsImage4,
+                            news.EnteredBy,
+                            news.EnteredDate,
+                            category.NewsCategory1,
+                            news.NewsContent,
+                            news.IsActive
+                        }).AsNoTracking().ToList();
+
+            return rows.Select(item => new NewDetailModel
+            {
+                NewsId = item.NewsId,
+                NewsDate = item.NewsDate.HasValue ? item.NewsDate.Value.ToString("dd/MM/yyyy") : string.Empty,
+                NewsHeading = item.NewsHeading,
+                NewsSubHeading = item.NewsSubHeading,
+                NewsCategoryId = item.NewsCategoryId,
+                NewsContent = item.NewsContent,
+                NewsImage1 = item.NewsImage1,
+                NewsImage2 = item.NewsImage2,
+                NewsImage3 = item.NewsImage3,
+                NewsImage4 = item.NewsImage4,
+                EnteredBy = item.EnteredBy,
+                EnteredDate = item.EnteredDate,
+                NewsCategory1 = item.NewsCategory1,
+                IsActive = newsCategoryId == null ? null : item.IsActive,
+            }).ToList();
+        }
+#nullable restore
+        #endregion
     }
 }

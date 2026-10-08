@@ -10,6 +10,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
 using Homeocentrum.Niga.NewAPI.Domain.Extensions;
 using System.Net;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
@@ -197,6 +198,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [HttpPost]
         [Route("SaveComplaints")]
         [DoctorOnly]
+        [OldApiContract]
         public async Task<IActionResult> SaveComplaints(PatientModel model)
         {
             if (model == null || !ModelState.IsValid)
@@ -209,12 +211,18 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             {
                 var errorMessage = new ErrorResponseModel();
                 var userModel = _patientService.SaveComplaints(model, ref errorMessage);
-                if (userModel != "")
+                if (!string.IsNullOrEmpty(userModel))
                 {
                     return Ok(userModel);
                 }
-                return ReturnErrorResponse(errorMessage);
+                if (errorMessage?.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    return NotFound(new { success = false, message = errorMessage.Message ?? "Case not found for this patient." });
+                return BadRequest(errorMessage?.Message ?? "Complaints could not be saved.");
 
+            }
+            catch (NullReferenceException)
+            {
+                return BadRequest("Invalid complaints payload.");
             }
             catch (Exception ex)
             {
@@ -354,6 +362,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     c.CaseChiefComplaintId,
                     c.CaseId,
                     c.ChiefComplaintName,
+                    DoctorId = caseRow.DoctorId,
                     c.CreatedByRole
                 })
                 .ToListAsync();
@@ -373,14 +382,22 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             if (!await CanAccessPatientAsync(caseRow.PatientId, caseRow.DoctorId))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this doctor resource." });
 
-            var rows = await _context.CaseDetails.AsNoTracking()
-                .Where(d => d.CaseId == caseId)
-                .Select(d => new CaseDetailsModel
+            var rows = await (
+                from d in _context.CaseDetails.AsNoTracking()
+                join s in _context.SubSectionMasters.AsNoTracking() on d.SubsectionId equals (int?)s.SubSectionId into sj
+                from s in sj.DefaultIfEmpty()
+                join i in _context.IntensityMasters.AsNoTracking() on d.IntensityId equals (int?)i.IntensityId into ij
+                from i in ij.DefaultIfEmpty()
+                where d.CaseId == caseId
+                select new CaseDetailsModel
                 {
                     CaseDetailId = d.CaseDetailId,
                     CaseId = d.CaseId,
                     SubsectionId = d.SubsectionId,
+                    SubsectionName = s != null ? s.SubSectionName : null,
                     IntensityId = d.IntensityId,
+                    IntensityNo = i != null ? (int?)i.IntensityNo : null,
+                    IntensityDescription = i != null ? i.Description : null,
                     RemedyCount = d.RemedyCount
                 })
                 .ToListAsync();

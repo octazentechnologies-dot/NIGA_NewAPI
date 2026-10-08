@@ -1,5 +1,8 @@
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using System.Globalization;
+using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
@@ -102,5 +105,87 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                         : null
                 });
         }
+
+
+        #region Old API compatible methods
+#nullable disable
+
+        /// <summary>
+        ///  Method implementation for getting Prescription Remedy list
+        /// </summary>
+        /// <param name="rubricList"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public List<PrescriptionRemedyViewModel> GetPrescriptionRemedy(List<int?> rubricList, ref ErrorResponseModel errorResponseModel)
+        {
+            errorResponseModel = new ErrorResponseModel();
+
+            var remedyEntity = (from rubricRemedy in  _context.RubricRemedyDetails 
+                                          join remedy in _context.RemedyMasters on rubricRemedy.RemedyId equals remedy.RemedyId
+                                          where rubricList.Contains(rubricRemedy.SubSectionId) && rubricRemedy.DeletedStatus==false
+                                          select new PrescriptionRemedyViewModel
+                                          {
+                                            RemedyId = remedy.RemedyId,
+                                            RemedyName = remedy.RemedyName,
+                                          }).OrderBy(rem => rem.RemedyId).ToList();
+
+            if (remedyEntity.Count == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "records not found";
+            }
+
+            return remedyEntity.GroupBy(x => x.RemedyId).Select(x => x.FirstOrDefault()).ToList();
+        }
+
+        /// <summary>
+        /// Methood to save prescription Rubric Detail
+        /// </summary>
+        /// <param name="prescriptionRubricDetail"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        /// 
+
+        public string SavePrescriptionDetail(PrescriptionDetailModel prescriptionDetail, ref ErrorResponseModel errorResponseModel)
+        {
+            string Mesaage = "";
+
+            foreach (var item in prescriptionDetail.PrescriptionRubricDetailList)
+            {
+                var prescriptionRubricDetailEntity = new PrescriptionRubricDetail();
+                prescriptionRubricDetailEntity.AppointmentId = prescriptionDetail.AppointmentId;
+                prescriptionRubricDetailEntity.RubricId = item.RubricId;
+                prescriptionRubricDetailEntity.IntensityId = item.IntensityId;
+                prescriptionRubricDetailEntity.RemedyCount = item.RemedyCount;
+                prescriptionRubricDetailEntity.DeletedStatus = false;
+                prescriptionRubricDetailEntity.CreatedDate = DateTime.Now;
+                _context.PrescriptionRubricDetails.Add(prescriptionRubricDetailEntity);
+                _context.SaveChanges();
+            }
+
+            foreach (var item in prescriptionDetail.PrescriptionRemedyDetailList)
+            {
+                var prescriptionRemedyDetailEntity = new PrescriptionRemedyDetail();
+                prescriptionRemedyDetailEntity.AppointmentId = prescriptionDetail.AppointmentId;
+                prescriptionRemedyDetailEntity.RemedyId = item.RemedyId;
+                prescriptionRemedyDetailEntity.Description = item.Description;
+                prescriptionRemedyDetailEntity.Dose = item.Dose;
+                prescriptionRemedyDetailEntity.PotencyId = item.PotencyId;
+                prescriptionRemedyDetailEntity.Frequency = item.Frequency;
+                prescriptionRemedyDetailEntity.Duration = item.Duration;
+                prescriptionRemedyDetailEntity.Instructions = item.Instructions;
+                prescriptionRemedyDetailEntity.DeletedStatus = false;
+                prescriptionRemedyDetailEntity.CreatedDate = DateTime.Now;
+                _context.PrescriptionRemedyDetails.Add(prescriptionRemedyDetailEntity);
+                _context.SaveChanges();
+            }
+
+            Mesaage = "Record Saved Successfully";
+            
+            return Mesaage;
+        }
+
+#nullable restore
+        #endregion
     }
 }

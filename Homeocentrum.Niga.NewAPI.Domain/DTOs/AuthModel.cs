@@ -24,5 +24,6 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public bool IslastFiveDays { get; set; }
 
         public int DaysRemaining { get; set; }
+        public int? DoctorUserId { get; set; }
     }
 }

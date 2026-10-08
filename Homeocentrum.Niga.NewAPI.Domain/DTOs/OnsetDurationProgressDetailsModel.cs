@@ -15,6 +15,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public bool? DeletedStatus { get; set; }
 
         public List<OnsetDurationProgressRubricDetailsModel> OnsetDurationProgressRubricDetails { get; set; }
-
+        public List<int>? SectionIds { get; set; }
+        public List<SectionViewModel>? Sections { get; set; }
     }
 }

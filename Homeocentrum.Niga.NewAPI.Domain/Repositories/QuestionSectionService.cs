@@ -111,5 +111,69 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
 
             return questionSectionModelQuery;
         }
+
+
+        #region Old API compatible overloads
+#nullable disable
+
+        /// <summary>
+        /// Method is used for delete question Section.
+        /// </summary>
+        /// <param name="diagnosisModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string DeleteQuestionSection(QuestionSectionModel questionSectionModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            var questionsectionEntity = _context.QuestionSectionMasters.FirstOrDefault(x => x.QuestionSectionId == questionSectionModel.QuestionSectionId);
+            if (questionsectionEntity != null)
+            {
+                questionsectionEntity.DeleteStatus = questionSectionModel.DeleteStatus;
+                questionsectionEntity.ChangedBy = questionSectionModel.EnteredBy;
+                questionsectionEntity.ChangedDate = DateTime.Now;
+                _context.SaveChanges();
+                Message = "Question Section Deleted Successfully";
+            }
+            return Message;
+        }
+
+        /// <summary>
+        /// Method implementation for saving new Question Section
+        /// </summary>
+        /// <param name="questionSectionModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string SaveQuestionSection(QuestionSectionModel questionSectionModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            if (questionSectionModel.QuestionSectionId == 0)
+            {
+                QuestionSectionMaster questionsectionEntity = new QuestionSectionMaster();
+                questionsectionEntity.QuestionSectionName = questionSectionModel.QuestionSectionName;
+                questionsectionEntity.Desciption = questionSectionModel.Description;
+                questionsectionEntity.EnteredBy = questionSectionModel.EnteredBy;
+                questionsectionEntity.EnteredDate = DateTime.Now;
+                _context.QuestionSectionMasters.Add(questionsectionEntity);
+                _context.SaveChanges();
+                Message = "Question Section Saved Successfully";
+            }
+            else
+            {
+                var questionsectionEntity = _context.QuestionSectionMasters.FirstOrDefault(x => x.QuestionSectionId == questionSectionModel.QuestionSectionId);
+                if (questionsectionEntity != null)
+                {
+                    questionsectionEntity.QuestionSectionName = questionSectionModel.QuestionSectionName;
+                    questionsectionEntity.Desciption = questionSectionModel.Description;
+                    questionsectionEntity.ChangedBy = questionSectionModel.EnteredBy;
+                    questionsectionEntity.ChangedDate = DateTime.Now;
+                    _context.SaveChanges();
+                    Message = "Question Section Updated Successfully";
+                }
+            }
+            return Message;
+        }
+
+#nullable restore
+        #endregion
     }
 }

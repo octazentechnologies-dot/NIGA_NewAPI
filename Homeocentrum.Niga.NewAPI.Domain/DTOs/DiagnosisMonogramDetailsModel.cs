@@ -17,5 +17,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public bool? DeletedStatus { get; set; }
 
         public List<DiagnosisMonogramRubricDetailsModel> DiagnosisMonogramRubricDetails { get; set; }
+        public List<int>? SectionIds { get; set; }
+        public List<SectionViewModel>? Sections { get; set; }
     }
 }

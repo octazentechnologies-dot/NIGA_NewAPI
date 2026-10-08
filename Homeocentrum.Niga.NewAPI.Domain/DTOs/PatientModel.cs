@@ -100,5 +100,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public DateTime? WhatsAppOptInDate { get; set; }
     }
 
-
+#nullable disable
+    public class PatientComplaintDto
+    {
+        public int CaseChiefComplaintId { get; set; }
+        public int? CaseId { get; set; }
+        public string ChiefComplaintName { get; set; }
+        public int DoctorId { get; set; }
+    }
+#nullable restore
 }

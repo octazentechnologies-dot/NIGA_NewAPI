@@ -15,5 +15,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string Symptom { get; set; }
         public int? EnteredBy { get; set; }
         public List<DiagnosisSymptomRubricModel> DiagnosisSymptomRubric { get; set; }
+        public List<int>? SectionIds { get; set; }
+        public List<SectionViewModel>? Sections { get; set; }
     }
 }

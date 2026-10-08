@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Interface;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
@@ -134,6 +135,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
         public IActionResult GetDifferentialMateriaMedica(DifferentialMateriaMedica differentialMateriaMedica)
         {
             ErrorResponseModel errorResponseModel = null;

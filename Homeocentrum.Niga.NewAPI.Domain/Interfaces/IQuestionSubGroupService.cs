@@ -65,5 +65,24 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Interfaces
         /// </summary>
         /// <returns></returns>
         Task<bool> SaveAllAsync();
+
+        #region Old API compatible overloads
+#nullable disable
+        /// <summary>remedyId
+        /// Interface is used to save QuestionSubGroup
+        /// </summary>
+        /// <param name="questionSubGroupModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        string SaveQuestionSubGroup(QuestionSubGroupModel questionSubGroupModel, ref ErrorResponseModel errorResponseModel);
+        /// <summary>
+        /// Interface is used to deactivate QuestionSubGroup.
+        /// </summary>
+        /// <param name="questionSubGroupModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        string DeleteQuestionSubGroup(QuestionSubGroupModel questionSubGroupModel, ref ErrorResponseModel errorResponseModel);
+#nullable restore
+        #endregion
     }
 }

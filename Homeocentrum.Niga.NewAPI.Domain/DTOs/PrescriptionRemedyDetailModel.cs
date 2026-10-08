@@ -10,6 +10,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public int RemedyId { get; set; } = 0;
         public string Description { get; set; } = string.Empty;
         public string Dose { get; set; } = string.Empty;
+        public int? PotencyId { get; set; }
+        public string? Frequency { get; set; }
+        public string? Duration { get; set; }
+        public string? Instructions { get; set; }
     }
 
     public class PrescriptionRemedyDetailViewModel
@@ -21,6 +25,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string Description { get; set; } = string.Empty;
         public string Dose { get; set; } = string.Empty;
         public string? CreatedDate { get; set; }
+        public int? PotencyId { get; set; }
+        public string? PotencyCode { get; set; }
     }
 
     public class PrescriptionRemedyViewModel

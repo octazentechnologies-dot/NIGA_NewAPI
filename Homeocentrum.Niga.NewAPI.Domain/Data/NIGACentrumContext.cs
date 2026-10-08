@@ -96,6 +96,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
 
     public virtual DbSet<DiagnosisGroupMaster> DiagnosisGroupMasters { get; set; }
 
+    public virtual DbSet<DiagnosisKeywordSection> DiagnosisKeywordSections { get; set; }
+
     public virtual DbSet<DiagnosisMaster> DiagnosisMasters { get; set; }
 
     public virtual DbSet<DiagnosisMonogram> DiagnosisMonograms { get; set; }
@@ -355,6 +357,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
     public virtual DbSet<QuestionSectionMaster> QuestionSectionMasters { get; set; }
 
     public virtual DbSet<QuestionSubgroup> QuestionSubgroups { get; set; }
+
+    public virtual DbSet<QuestionSubgroupSection> QuestionSubgroupSections { get; set; }
 
     public virtual DbSet<ReferenceRubricDetail> ReferenceRubricDetails { get; set; }
 
@@ -2636,6 +2640,29 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Data
             entity.Property(e => e.QuestionSubgroup1)
                 .HasMaxLength(1000)
                 .HasColumnName("QuestionSubgroup");
+        });
+
+        modelBuilder.Entity<QuestionSubgroupSection>(entity =>
+        {
+            entity.ToTable("QuestionSubgroupSection");
+
+            entity.Property(e => e.SectionId).HasColumnName("SectionID");
+            entity.Property(e => e.EnteredBy).HasMaxLength(50);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            entity.Property(e => e.ChangedBy).HasMaxLength(50);
+            entity.Property(e => e.ChangedDate).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<DiagnosisKeywordSection>(entity =>
+        {
+            entity.ToTable("DiagnosisKeywordSection");
+
+            entity.Property(e => e.SectionId).HasColumnName("SectionID");
+            entity.Property(e => e.KeywordType).HasMaxLength(50);
+            entity.Property(e => e.EnteredBy).HasMaxLength(50);
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            entity.Property(e => e.ChangedBy).HasMaxLength(50);
+            entity.Property(e => e.ChangedDate).HasColumnType("datetime");
         });
 
         modelBuilder.Entity<ReferenceRubricDetail>(entity =>

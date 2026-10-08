@@ -39,5 +39,18 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Interface
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
         Task<string> AddEditPatientLabTest(PatientLabTestModel patientLabTestModel, int userID);
+
+        #region Old API compatible overloads
+#nullable disable
+        /// <summary>
+        ///Add/ Edit lab test details
+        /// </summary>
+        /// <param name="labTestModel"></param>
+        /// <param name="userID"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        string AddEditPatientLabTest(PatientLabTestModel patientLabTestModel, int userID, ref ErrorResponseModel errorResponseModel);
+#nullable restore
+        #endregion
     }
 }

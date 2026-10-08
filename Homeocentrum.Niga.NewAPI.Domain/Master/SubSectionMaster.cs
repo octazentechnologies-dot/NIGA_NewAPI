@@ -40,6 +40,8 @@ public partial class SubSectionMaster:AuditableEntities
     public virtual ICollection<ReferenceRubricDetail> ReferenceRubricDetailSubSections { get; set; } = new List<ReferenceRubricDetail>();
 
     public virtual ICollection<RubricRemedyDetail> RubricRemedyDetails { get; set; } = new List<RubricRemedyDetail>();
+    public string? SearchNormalized { get; set; }
+
 
     public virtual SectionMaster? Section { get; set; }
 

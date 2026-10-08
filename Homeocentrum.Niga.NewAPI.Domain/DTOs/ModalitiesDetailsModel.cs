@@ -16,5 +16,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public int DiagnosisId { get; set; }
         public bool? DeletedStatus { get; set; }
         public List<ModalitiesRubricDetailsModel> ModalitiesRubricDetails { get; set; }
+        public List<int>? SectionIds { get; set; }
+        public List<SectionViewModel>? Sections { get; set; }
     }
 }

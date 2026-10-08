@@ -35,7 +35,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             {
                 thermalsDDL = thermalsDDL.Where(s => s.ThermalName.ToLower().Contains(Desc.ToLower())).ToList();
             }
-            thermalsDDL = thermalsDDL.Take(20).ToList();
+            if (!string.IsNullOrEmpty(Desc))
+            {
+                thermalsDDL = thermalsDDL.Take(20).ToList();
+            }
 
             return thermalsDDL;
         }
@@ -58,7 +61,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             {
                 thermalsDDL= thermalsDDL.Where(a => a.ThermalId == authorId).ToList();
             }
-            thermalsDDL = thermalsDDL.Take(20).ToList();
+            if (!string.IsNullOrEmpty(Desc))
+            {
+                thermalsDDL = thermalsDDL.Take(20).ToList();
+            }
             return thermalsDDL;
         }
 
@@ -83,7 +89,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             {
                 authorModelList = authorModelList.Where(a => a.AuthorName.ToLower().Contains(Desc.ToLower())).ToList();
             }
-            authorModelList = authorModelList.Take(20).ToList();
+            if (!string.IsNullOrEmpty(Desc))
+            {
+                authorModelList = authorModelList.Take(20).ToList();
+            }
             return authorModelList;
         }
 
@@ -102,7 +111,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             {
                 patientLabTestDDl = patientLabTestDDl.Where(p => p.LabTestName.ToLower().Contains(Desc.ToLower())).ToList();
             }
-            patientLabTestDDl = patientLabTestDDl.Take(20).ToList();
+            if (!string.IsNullOrEmpty(Desc))
+            {
+                patientLabTestDDl = patientLabTestDDl.Take(20).ToList();
+            }
             return patientLabTestDDl;
         }
 
@@ -121,7 +133,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             {
                 questionGroupList = questionGroupList.Where(q => q.QuestionGroupName.ToLower().Contains(Desc.ToLower())).ToList();
             }
-            questionGroupList = questionGroupList.Take(20).ToList();
+            if (!string.IsNullOrEmpty(Desc))
+            {
+                questionGroupList = questionGroupList.Take(20).ToList();
+            }
             if (questionGroupList.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
@@ -145,7 +160,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             {
                 questionSectionList = questionSectionList.Where(q => q.QuestionSectionName.ToLower().Contains(Desc.ToLower())).ToList();
             }
-            questionSectionList = questionSectionList.Take(20).ToList();
+            if (!string.IsNullOrEmpty(Desc))
+            {
+                questionSectionList = questionSectionList.Take(20).ToList();
+            }
             if (questionSectionList.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
@@ -169,11 +187,18 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             {
                 questionSectionList = questionSectionList.Where(q => q.QuestionSubgroup1.ToLower().Contains(Desc.ToLower())).ToList();
             }
-            questionSectionList = questionSectionList.Take(20).ToList();
+            if (!string.IsNullOrEmpty(Desc))
+            {
+                questionSectionList = questionSectionList.Take(20).ToList();
+            }
             if (questionSectionList.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "QuestionSubGroup Not Found";
+            }
+            else
+            {
+                AttachSectionIds(questionSectionList);
             }
             return questionSectionList;
         }
@@ -193,7 +218,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             {
                 bodyPartList = bodyPartList.Where(b => b.BodyPartName.ToLower().Contains(Desc.ToLower())).ToList();
             }
-            bodyPartList = bodyPartList.Take(20).ToList();
+            if (!string.IsNullOrEmpty(Desc))
+            {
+                bodyPartList = bodyPartList.Take(20).ToList();
+            }
             if (bodyPartList.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
@@ -222,17 +250,35 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             {
                 questionSubGroupList = questionSubGroupList.Where(q => q.QuestionSubgroup1.ToLower().Contains(Desc.ToLower())).ToList();
             }
-            if (questionGroupId > 0)
+            if (!string.IsNullOrEmpty(Desc))
             {
-                questionSubGroupList = questionSubGroupList.Where(q => q.QuestionSubgroupId == questionGroupId).ToList();
+                questionSubGroupList = questionSubGroupList.Take(20).ToList();
             }
-            questionSubGroupList = questionSubGroupList.Take(20).ToList();
             if (questionSubGroupList.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Question SubGroup Not Found";
             }
+            else
+            {
+                AttachSectionIds(questionSubGroupList);
+            }
             return questionSubGroupList;
+        }
+
+        private void AttachSectionIds(List<QuestionSubGroupModelDDL> subGroups)
+        {
+            var subGroupIds = subGroups.Select(x => x.QuestionSubgroupId).ToList();
+            var sectionLinks = context.QuestionSubgroupSections
+                .Where(x => subGroupIds.Contains(x.QuestionSubgroupId) && !x.DeleteStatus)
+                .Select(x => new { x.QuestionSubgroupId, x.SectionId })
+                .ToList()
+                .ToLookup(x => x.QuestionSubgroupId, x => x.SectionId);
+
+            foreach (var sg in subGroups)
+            {
+                sg.SectionIds = sectionLinks[sg.QuestionSubgroupId].Distinct().ToList();
+            }
         }
 
         /// <summary>
@@ -243,19 +289,27 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
         public List<SubSectionDDLModel> GetSubsectionBySection(long sectionId,  string? Desc = null)
         {
             var errorResponseModel = new ErrorResponseModel();
+            if (sectionId < int.MinValue || sectionId > int.MaxValue)
+                return new List<SubSectionDDLModel>();
+            var sectionIdValue = (int)sectionId;
+            OldApiCommandTimeout.Apply(context);
             var subsectionEntityList =(from subSection in context.SubSectionMasters
-                                       where subSection.SectionId==sectionId && subSection.DeleteStatus==false
+                                       where subSection.SectionId==sectionIdValue && subSection.DeleteStatus==false
                                        orderby subSection.SubSectionName
                                        select new SubSectionDDLModel
                                        {
                                            SubSectionId = subSection.SubSectionId,
                                            SubSectionName = subSection.SubSectionName,
+                                           MainParentSubsection = subSection.MainParentSubsection
                                        }).ToList();
             if (!string.IsNullOrEmpty(Desc))
             {
                 subsectionEntityList = subsectionEntityList.Where(s => s.SubSectionName.ToLower().Contains(Desc.ToLower())).ToList();
             }
-            subsectionEntityList = subsectionEntityList.Take(20).ToList();
+            if (!string.IsNullOrEmpty(Desc))
+            {
+                subsectionEntityList = subsectionEntityList.Take(20).ToList();
+            }
             if (subsectionEntityList.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;

@@ -26,8 +26,13 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string SubSectionNameAlias { get; set; }
         public string Description { get; set; }
         public bool DeleteStatus { get; set; }
-        public List<ReferenceRubricDetailsModel> Referencerubric { get; set; }
-        public List<SubSectionLanguageDetailsModel> SubSectionLanguageDetails { get; set; }
+        public List<ReferenceRubricDetailsModel> Referencerubric { get; set; } = new List<ReferenceRubricDetailsModel>();
+        public List<SubSectionLanguageDetailsModel> SubSectionLanguageDetails { get; set; } = new List<SubSectionLanguageDetailsModel>();
+        public bool? MainParentSubsection { get; set; }
+        public string EnteredBy { get; set; }
+        public DateTime? EnteredDate { get; set; }
+        public string ChangedBy { get; set; }
+        public DateTime? ChangedDate { get; set; }
     }
 
 
@@ -112,6 +117,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string SubSectionName { get; set; }
         public string SubSectionNameAlias { get; set; }
         public string Description { get; set; }
+        public bool? MainParentSubsection { get; set; }
+        public string ParentSubSectionName { get; set; }
     }
 
 
@@ -166,6 +173,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
     {
         public int SubSectionId { get; set; }
         public string SubSectionName { get; set; }
+        public bool? MainParentSubsection { get; set; }
     }
 
 
@@ -188,6 +196,51 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public string SkippedFilePath { get; set; }
     }
 
+#nullable disable
+    public class SubSectionLevelModel
+    {
+        public long SubSectionId { get; set; }
+        public string SubSectionName { get; set; }
+        public int ChildCount { get; set; }
+    }
+#nullable restore
 
+#nullable disable
+    public class SubSectionSearchPagedResultModel
+    {
+        public List<SubSectionSearchResultModel> Items { get; set; } = new List<SubSectionSearchResultModel>();
+        public int TotalCount { get; set; }
+        public int PageNumber { get; set; }
+        public int PageSize { get; set; }
+        public bool HasMore { get; set; }
+    }
+#nullable restore
 
+#nullable disable
+    public class SubSectionSearchResultModel
+    {
+        public long SubSectionId { get; set; }
+        public string SubSectionName { get; set; }
+        public long? ParentSubSectionId { get; set; }
+        public int ChildCount { get; set; }
+        public List<SubSectionLevelModel> Ancestors { get; set; } = new List<SubSectionLevelModel>();
+    }
+#nullable restore
+
+#nullable disable
+    public class SubSectionSearchMatchRow
+    {
+        public int SubSectionId { get; set; }
+        public string SubSectionName { get; set; }
+        public int? ParentSubSectionId { get; set; }
+        public int Rank { get; set; }
+    }
+
+    public class SubSectionSearchResponse
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public int RANK { get; set; }
+    }
+#nullable restore
 }

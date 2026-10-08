@@ -3,6 +3,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
+using Microsoft.EntityFrameworkCore;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
 {
@@ -22,20 +23,24 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
 
         public async Task<string> SavePatinetLabOrder(PatientLabOrderModel patientLabOrderModel)
         {
-            if (patientLabOrderModel.PatientOrderedTestId == 0)
+            var userId = patientLabOrderModel.UserId > 0 ? patientLabOrderModel.UserId : patientLabOrderModel.EnteredBy;
+            PatientLabOrder row;
+            var isNew = patientLabOrderModel.PatientOrderedTestId == 0;
+            if (isNew)
             {
-                context.PatientLabOrders.Add(new PatientLabOrder
+                row = new PatientLabOrder
                 {
                     PatientId = patientLabOrderModel.PatientId,
                     PatientLabTestId = patientLabOrderModel.PatientLabTestId,
                     OrderDate = patientLabOrderModel.OrderDate ?? DateTime.Now,
                     LabName = patientLabOrderModel.LabName,
                     DeleteStatus = false
-                });
+                };
+                context.PatientLabOrders.Add(row);
             }
             else
             {
-                var row = context.PatientLabOrders.FirstOrDefault(x =>
+                row = context.PatientLabOrders.FirstOrDefault(x =>
                     x.PatientOrderedTestId == patientLabOrderModel.PatientOrderedTestId && !x.DeleteStatus);
                 if (row == null)
                     return "Not found";
@@ -45,7 +50,20 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 row.LabName = patientLabOrderModel.LabName;
             }
 
-            return await SaveAllAsync() ? "Record saved successfully" : "Something went wrong";
+            if (!await SaveAllAsync())
+                return "Something went wrong";
+
+            // EnteredBy/ChangedBy are int columns that the EF model ignores, so they are written directly.
+            if (userId > 0)
+            {
+                if (isNew)
+                    await context.Database.ExecuteSqlInterpolatedAsync(
+                        $"UPDATE dbo.PatientLabOrder SET EnteredBy = {userId} WHERE PatientOrderedTestId = {row.PatientOrderedTestId}");
+                else
+                    await context.Database.ExecuteSqlInterpolatedAsync(
+                        $"UPDATE dbo.PatientLabOrder SET ChangedBy = {userId} WHERE PatientOrderedTestId = {row.PatientOrderedTestId}");
+            }
+            return "Record saved successfully";
         }
 
         public List<PatientLabOrderModel> GetAllPatinetLabOrder(ref ErrorResponseModel errorResponseModel)
@@ -86,7 +104,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                        OrderDate = order.OrderDate,
                        LabName = order.LabName,
                        DeleteStatus = order.DeleteStatus
-                   };
+                   } into model
+                   orderby model.PatientOrderedTestId descending
+                   select model;
         }
     }
 }

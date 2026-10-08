@@ -8,5 +8,6 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
     {
         public int KeywordId { get; set; } = 0;
        public string keyword { get; set; } = string.Empty;
+        public List<int>? SectionIds { get; set; }
     }
 }

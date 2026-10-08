@@ -1,3 +1,6 @@
+using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
+using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using API.Extensions;
 using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
@@ -9,6 +12,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
     /// <summary>
@@ -17,7 +21,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     [Route("api/remedy")]
     [ApiController]
    // //[Authorize]
-    public class RemedyController : ControllerBase
+    public class RemedyController : BaseAPIController
     {
         private readonly IRemedyService _remedyService;
         private readonly IMapper _mapper;
@@ -236,5 +240,135 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 return this.ServerError(ex);
             }
         }
+
+
+        #region Old API compatible endpoints
+#nullable disable
+
+        /// <summary>
+        /// To get remedy by Remedy ID 
+        /// </summary>
+        /// <param name="remedyId"></param>
+        /// <returns></returns>
+        [HttpGet("{remedyId}")]
+        [ProducesResponseType(typeof(RemedyModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
+        public IActionResult GetRemedyById([FromServices] IRemedyService remedyService, long remedyId)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var remedyModel = remedyService.GetRemedyById(remedyId, ref errorResponseModel);
+
+                if (remedyModel != null)
+                {
+                    return Ok(remedyModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To get all remedies
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpGet("GetRemedies")]
+        [ProducesResponseType(typeof(SearchRemedyModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
+        public IActionResult GetRemedies([FromServices] IRemedyService remedyService, string search)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var remedyModelList = remedyService.GetRemedies(search,ref errorResponseModel);
+
+                if (remedyModelList != null)
+                {
+                    return Ok(remedyModelList);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To add new Remedie 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [ProducesResponseType(typeof(RemedyModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult SaveRemedy([FromServices] IRemedyService remedyService, RemedyModel remedyModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var remedymodel = remedyService.SaveRemedy(remedyModel, ref errorResponseModel);
+
+                if (remedymodel != null)
+                {
+                    return Ok(remedymodel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To delete Remedie 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("DeleteRemedy")]
+        [ProducesResponseType(typeof(RemedyModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult DeleteRemedy([FromServices] IRemedyService remedyService, RemedyModel remedyModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var remedymodel = remedyService.DeleteRemedy(remedyModel, ref errorResponseModel);
+
+                if (remedymodel != null)
+                {
+                    return Ok(remedymodel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+#nullable restore
+        #endregion
     }
 }

@@ -6,6 +6,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Interface;
 using System;
 
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
     [Route("api/[controller]")]
@@ -34,6 +35,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
         [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
         public IActionResult DeleteSeriousSideEffect(SeriousSideEffectModel seriousSideEffectModel)
         {
             ErrorResponseModel errorResponseModel = null;

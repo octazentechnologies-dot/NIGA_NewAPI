@@ -13,6 +13,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
@@ -304,6 +305,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         /// </summary>
         [HttpPost]
         [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
         public IActionResult Post([FromBody] UserModel model)
         {
             if (model == null || !ModelState.IsValid)

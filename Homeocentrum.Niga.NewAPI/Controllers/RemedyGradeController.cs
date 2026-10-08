@@ -1,3 +1,6 @@
+using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
+using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using API.Extensions;
 using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
@@ -8,6 +11,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
     /// <summary>
@@ -16,7 +20,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     [Route("api/remedyGrade")]
     [ApiController]
    // //[Authorize]
-    public class RemedyGradeController : ControllerBase
+    public class RemedyGradeController : BaseAPIController
     {
         private readonly IRemedyGradeRepository _remedyGradeService;
         private readonly IMapper _mapper;
@@ -185,5 +189,74 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         //     return await _remedyGradeService.GetRemedyGradeDD(Search);
         // }
 
+
+        #region Old API compatible endpoints
+#nullable disable
+
+        /// <summary>
+        /// To add new Remedy Grade 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [ProducesResponseType(typeof(RemedyGradeModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult SaveRemedyGrade([FromServices] IRemedyGradeService remedygradeService, RemedyGradeModel remedyGradeModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var remedygradeModel = remedygradeService.SaveRemedyGrade(remedyGradeModel, ref errorResponseModel);
+
+                if (remedygradeModel != null)
+                {
+                    return Ok(remedygradeModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To delete Remedy Grade 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("DeleteRemedyGrade")]
+        [ProducesResponseType(typeof(RemedyGradeModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult DeleteRemedyGrade([FromServices] IRemedyGradeService remedygradeService, RemedyGradeModel remedyGradeModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var remedygradeModel = remedygradeService.DeleteRemedyGrade(remedyGradeModel, ref errorResponseModel);
+
+                if (remedygradeModel != null)
+                {
+                    return Ok(remedygradeModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+#nullable restore
+        #endregion
     }
 }

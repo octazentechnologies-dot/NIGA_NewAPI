@@ -9,8 +9,10 @@ using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Controllers;
 using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
+using Homeocentrum.Niga.NewAPI.Domain.Extensions;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
 using Microsoft.EntityFrameworkCore;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
@@ -211,6 +213,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
         public async Task<IActionResult> SavePatientLabOrder(PatientLabOrderModel patientLabOrderModel)
         {
             ErrorResponseModel errorResponseModel = null;
@@ -227,8 +230,14 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             try
             {
+                var jwtUserId = User.GetUserId();
+                if (jwtUserId > 0)
+                    patientLabOrderModel.UserId = jwtUserId;
+
                 var response = await _patientLabOrderServices.SavePatinetLabOrder(patientLabOrderModel);
 
+                if (response == "Not found")
+                    return NotFound(response);
                 if (response != null)
                 {
                     return Ok(patientLabOrderModel);
@@ -251,6 +260,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
         public async Task<IActionResult> SavePatientLabEntry(PatientLabEntryModel patientLabEntryModel)
         {
             ErrorResponseModel errorResponseModel = null;
@@ -267,8 +277,14 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
             try
             {
+                var jwtUserId = User.GetUserId();
+                if (jwtUserId > 0)
+                    patientLabEntryModel.EnteredBy = jwtUserId;
+
                 var response = await _patientLabEntryServices.SavePatientLabEntry(patientLabEntryModel);
 
+                if (response == "Not found")
+                    return NotFound(response);
                 if (response != null)
                 {
                     return Ok(patientLabEntryModel);

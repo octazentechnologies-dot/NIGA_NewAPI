@@ -11,6 +11,7 @@ using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Extensions;
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
@@ -371,6 +372,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
         public IActionResult GetRemedies(RubricRemedyDetailsModel rubricRemedyDetailsModel)
         {
             ErrorResponseModel errorResponseModel = null;

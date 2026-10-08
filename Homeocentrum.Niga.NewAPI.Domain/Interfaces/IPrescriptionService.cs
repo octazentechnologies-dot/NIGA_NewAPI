@@ -17,5 +17,19 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Interfaces
         /// </summary>
         Task<PrescriptionDetailsPaginatedResult> GetPrescriptionDetailsByAppointmentIdAsync(
             GetPrescriptionDetailsByAppointmentIdRequest request);
+
+        #region Old API compatible methods
+#nullable disable
+        /// <summary>
+        /// Method is used for get all the Clipboard Rubrics
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        /// 
+
+        string SavePrescriptionDetail(PrescriptionDetailModel prescriptionDetail, ref ErrorResponseModel errorResponseModel);
+        List<PrescriptionRemedyViewModel> GetPrescriptionRemedy(List<int?> rubricList, ref ErrorResponseModel errorResponseModel);
+#nullable restore
+        #endregion
     }
 }

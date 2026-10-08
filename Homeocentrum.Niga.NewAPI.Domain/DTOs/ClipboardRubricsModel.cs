@@ -28,9 +28,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
     public class ClipboardRubricsModel1
     {
         public int? SubSectionId { get; set; }
-        public string SubSectionName { get; set; }
+        public string? SubSectionName { get; set; }
         public int? RemedyId { get; set; }
-        public string RemedyName { get; set; }
+        public string? RemedyName { get; set; }
         public int Intensity { get; set; }
         public int Rubriccount { get; set; }
         public int GradeSum { get; set; }

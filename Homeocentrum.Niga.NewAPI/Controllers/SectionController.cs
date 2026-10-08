@@ -1,3 +1,6 @@
+using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
+using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using API.Extensions;
 using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
@@ -8,6 +11,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
     /// <summary>
@@ -16,7 +20,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     [Route("api/section")]
     [ApiController]
    // //[Authorize]
-    public class SectionController : ControllerBase
+    public class SectionController : BaseAPIController
     {
         private readonly ISectionRepository _sectionService;
         private readonly IMapper _mapper;
@@ -208,5 +212,74 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             return await _sectionService.GetSectionDD(Search);
         }
 
+
+        #region Old API compatible endpoints
+#nullable disable
+
+        /// <summary>
+        /// To add new Section 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [ProducesResponseType(typeof(SectionModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult SaveSection([FromServices] ISectionService sectionService, SectionModel sectionModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var sectionmodel = sectionService.SaveSection(sectionModel, ref errorResponseModel);
+
+                if (sectionmodel != null)
+                {
+                    return Ok(sectionmodel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To delete Section 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("DeleteSection")]
+        [ProducesResponseType(typeof(SectionModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult DeleteSection([FromServices] ISectionService sectionService, SectionModel sectionModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var sectionmodel = sectionService.DeleteSection(sectionModel, ref errorResponseModel);
+
+                if (sectionmodel != null)
+                {
+                    return Ok(sectionmodel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+#nullable restore
+        #endregion
     }
 }

@@ -122,6 +122,118 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             return questionSubGroupModelQuery;
         }
 
-       
+
+        #region Old API compatible overloads
+#nullable disable
+
+        /// <summary>
+        /// Method is used for delete QuestionSubGroup.
+        /// </summary>
+        /// <param name="questionSubGroupModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+
+        public string DeleteQuestionSubGroup(QuestionSubGroupModel questionSubGroupModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            var questionsubEntity = _context.QuestionSubgroups.FirstOrDefault(x => x.QuestionSubgroupId == questionSubGroupModel.QuestionSubgroupId);
+            if (questionsubEntity != null)
+            {
+                questionsubEntity.DeleteStatus = true;
+
+                var mappingRows = _context.QuestionSubgroupSections
+                    .Where(x => x.QuestionSubgroupId == questionsubEntity.QuestionSubgroupId && !x.DeleteStatus)
+                    .ToList();
+                foreach (var row in mappingRows)
+                {
+                    row.DeleteStatus = true;
+                    row.ChangedDate = DateTime.Now;
+                }
+
+                _context.SaveChanges();
+                Message = "QuestionSubGroup Deleted Successfully";
+            }
+            return Message;
+        }
+
+        /// <summary>
+        /// Method implementation for saving new QuestionSubGroup
+        /// </summary>
+        /// <param name="questionSubGroupModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+
+        public string SaveQuestionSubGroup(QuestionSubGroupModel questionSubGroupModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            if (questionSubGroupModel.QuestionSubgroupId == 0)
+            {
+                QuestionSubgroup questionsubEntity = new QuestionSubgroup();
+                questionsubEntity.QuestionSubgroupId = questionSubGroupModel.QuestionSubgroupId;
+                questionsubEntity.QuestionGroupId = questionSubGroupModel.QuestionGroupId;
+                questionsubEntity.QuestionSubgroup1 = questionSubGroupModel.QuestionSubGroupName;
+                questionsubEntity.Description = questionSubGroupModel.Description;
+                questionsubEntity.DeleteStatus = false;
+                _context.QuestionSubgroups.Add(questionsubEntity);
+                _context.SaveChanges();
+
+                SyncSections(questionsubEntity.QuestionSubgroupId, questionSubGroupModel.SectionIds);
+                Message = "QuestionSubGroup Saved Successfully";
+            }
+            else
+            {
+                var questionsubEntity = _context.QuestionSubgroups.FirstOrDefault(x => x.QuestionSubgroupId == questionSubGroupModel.QuestionSubgroupId);
+                if (questionsubEntity != null)
+                {
+                    questionsubEntity.QuestionSubgroupId = questionSubGroupModel.QuestionSubgroupId;
+                    questionsubEntity.QuestionGroupId = questionSubGroupModel.QuestionGroupId;
+                    questionsubEntity.QuestionSubgroup1 = questionSubGroupModel.QuestionSubGroupName;
+                    questionsubEntity.Description = questionSubGroupModel.Description;
+                    questionsubEntity.DeleteStatus = false;
+                    _context.SaveChanges();
+
+                    SyncSections(questionsubEntity.QuestionSubgroupId, questionSubGroupModel.SectionIds);
+                    Message = "QuestionSubGroup Updated Successfully";
+                }
+            }
+            return Message;
+        }
+
+        private void SyncSections(int questionSubgroupId, List<int> sectionIds)
+        {
+            var existingRows = _context.QuestionSubgroupSections
+                .Where(x => x.QuestionSubgroupId == questionSubgroupId)
+                .ToList();
+
+            if (existingRows.Any())
+            {
+                _context.QuestionSubgroupSections.RemoveRange(existingRows);
+                _context.SaveChanges();
+            }
+
+            var distinctSectionIds = (sectionIds ?? new List<int>())
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList();
+
+            foreach (var sectionId in distinctSectionIds)
+            {
+                _context.QuestionSubgroupSections.Add(new QuestionSubgroupSection
+                {
+                    QuestionSubgroupId = questionSubgroupId,
+                    SectionId = sectionId,
+                    DeleteStatus = false,
+                    EnteredDate = DateTime.Now
+                });
+            }
+
+            if (distinctSectionIds.Any())
+            {
+                _context.SaveChanges();
+            }
+        }
+
+#nullable restore
+        #endregion
     }
 }

@@ -198,5 +198,102 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Implementation
         // {
         //     throw new NotImplementedException();
         // }
+
+
+        #region Old API compatible overloads
+#nullable disable
+
+        /// <summary>
+        /// Method is used for delete Question Group.
+        /// </summary>
+        /// <param name="questiongroupModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string DeleteQuestionGroup(QuestionGroupModel questiongroupModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            var questiongroupEntity = context.QuestionGroupMasters.FirstOrDefault(x => x.QuestionGroupId == questiongroupModel.QuestionGroupId);
+            if (questiongroupEntity != null)
+            {
+                questiongroupEntity.DeleteStatus = true;
+                questiongroupEntity.ChangedBy = questiongroupModel.EnteredBy;
+                questiongroupEntity.ChangedDate = DateTime.Now;
+                context.SaveChanges();
+                Message = "Question Group Deleted Successfully";
+            }
+            return Message;
+        }
+
+        public List<QuestionGroupModel1> GetQuestionGroupByExistanceId(long QuestionSectionId, ref ErrorResponseModel errorResponseModel)
+        {
+            errorResponseModel = new ErrorResponseModel();
+            var questiongroupModel1 = new List<QuestionGroupModel1>();
+            var questiongroupEntity = context.QuestionGroupMasters.Where(x => x.QuestionSectionId==QuestionSectionId && x.DeleteStatus==false).ToList();
+
+            if (questiongroupModel1.Count == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "Question Group not found";
+            }
+            questiongroupEntity.ForEach(item =>
+            {
+                questiongroupModel1.Add(new QuestionGroupModel1
+                {
+                    QuestionGroupId = item.QuestionGroupId,
+                    QuestionGroupName = item.QuestionGroupName,
+                    QuestionSectionId = item.QuestionSectionId,
+                    Description = item.Description,
+                    SectionId = item.SectionId,
+                    DeleteStatus = item.DeleteStatus,
+                    EnteredDate = item.EnteredDate,
+
+
+                });
+            });
+            return questiongroupModel1;
+        }
+
+        /// <summary>
+        /// Method implementation for saving new Question Group
+        /// </summary>
+        /// <param name="questiongroupModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string SaveQuestionGroup(QuestionGroupModel questiongroupModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            if (questiongroupModel.QuestionGroupId == 0)
+            {
+                QuestionGroupMaster questiongroupEntity = new QuestionGroupMaster();
+                questiongroupEntity.QuestionGroupName = questiongroupModel.QuestionGroupName;     
+                questiongroupEntity.QuestionSectionId = questiongroupModel.QuestionSectionId;   
+                questiongroupEntity.Description = questiongroupModel.Description;
+                questiongroupEntity.SectionId = questiongroupModel.SectionId;
+                questiongroupEntity.EnteredBy = questiongroupModel.EnteredBy;
+                questiongroupEntity.EnteredDate = DateTime.Now;
+                context.QuestionGroupMasters.Add(questiongroupEntity);
+                context.SaveChanges();
+                Message = "Question Group Saved Successfully";
+            }
+            else
+            {
+                var questiongroupEntity = context.QuestionGroupMasters.FirstOrDefault(x => x.QuestionGroupId == questiongroupModel.QuestionGroupId);
+                if (questiongroupEntity != null)
+                {
+                    questiongroupEntity.QuestionGroupName = questiongroupModel.QuestionGroupName;
+                    questiongroupEntity.QuestionSectionId= questiongroupModel.QuestionSectionId;
+                    questiongroupEntity.SectionId= questiongroupModel.SectionId;
+                    questiongroupEntity.Description = questiongroupModel.Description;
+                    questiongroupEntity.ChangedBy = questiongroupModel.EnteredBy;
+                    questiongroupEntity.ChangedDate = DateTime.Now;
+                    context.SaveChanges();
+                    Message = "Question Group Updated Successfully";
+                }
+            }
+            return Message;
+        }
+
+#nullable restore
+        #endregion
     }
 }

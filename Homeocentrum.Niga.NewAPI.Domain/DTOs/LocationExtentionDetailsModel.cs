@@ -17,6 +17,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public bool? DeletedStatus { get; set; }
 
         public virtual List<LocationExtentionRubricDetailsModel> LocationExtentionRubricDetails { get; set; }
-
+        public List<int>? SectionIds { get; set; }
+        public List<SectionViewModel>? Sections { get; set; }
     }
 }

@@ -1,3 +1,5 @@
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
+using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,6 +14,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
     /// <summary>
@@ -21,7 +24,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     [ApiController]
     [Authorize]
     [DoctorOnly]
-    public class QuestionGroupController : ControllerBase
+    public class QuestionGroupController : BaseAPIController
     {
         private readonly IQuestionGroupService _questionGroupService;
         private readonly IMapper _mapper;
@@ -180,5 +183,105 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             return await _questionGroupService.GetQuestionGroupByExistanceId(QuestionSectionId);
         }
+
+
+        #region Old API compatible endpoints
+#nullable disable
+
+        /// <summary>
+        /// To add new questions group
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [ProducesResponseType(typeof(QuestionGroupModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult SaveQuestionGroup([FromServices] IQuestionGroupService questiongroupService, QuestionGroupModel questiongroupModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var questionGroupModel = questiongroupService.SaveQuestionGroup(questiongroupModel, ref errorResponseModel);
+
+                if (questionGroupModel != null)
+                {
+                    return Ok(questionGroupModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To delete questions group 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("DeleteQuestionGroup")]
+        [ProducesResponseType(typeof(QuestionGroupModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult DeleteQuestionGroup([FromServices] IQuestionGroupService questiongroupService, QuestionGroupModel questiongroupModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var questionGroupModel = questiongroupService.DeleteQuestionGroup(questiongroupModel, ref errorResponseModel);
+
+                if (questionGroupModel != null)
+                {
+                    return Ok(questionGroupModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To get GetQuestionGroup by ExistanceId
+        /// </summary>
+        /// <param name="QuestionSectionId"></param>
+        /// <returns></returns>
+        [HttpGet("GetQuestionGroupByExistanceId/{QuestionSectionId}")]
+        [ProducesResponseType(typeof(QuestionGroupModel1), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
+        public IActionResult GetQuestionGroupByExistanceId([FromServices] IQuestionGroupService questiongroupService, long QuestionSectionId)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var questiongroupModel1 = questiongroupService.GetQuestionGroupByExistanceId(QuestionSectionId, ref errorResponseModel);
+
+                if (questiongroupModel1 != null)
+                {
+                    return Ok(questiongroupModel1);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+#nullable restore
+        #endregion
     }
 }

@@ -1,3 +1,5 @@
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
+using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,6 +17,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Master;
 
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
     /// <summary>
@@ -24,7 +27,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     [ApiController]
     [Authorize]
     [DoctorOnly]
-    public class SubSectionController : ControllerBase
+    public class SubSectionController : BaseAPIController
     {
         private readonly ISubSectionRepository _subSectionService;
         private readonly IMapper _mapper;
@@ -497,5 +500,388 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 return this.ServerError(ex);
             }
         }
+
+
+        #region Old API compatible endpoints
+#nullable disable
+
+        /// <summary>
+        /// To get subsection by SubSection ID 
+        /// </summary>
+        /// <param name="subsectionId"></param>
+        /// <returns></returns>
+        [HttpGet("{subsectionId}")]
+        [ProducesResponseType(typeof(SubSectionModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
+        public IActionResult GetSubSectionById([FromServices] ISubSectionService subsectionService, long subsectionId)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var subsectionModel = subsectionService.GetSubSectionById(subsectionId, ref errorResponseModel);
+
+                if (subsectionModel != null)
+                {
+                    return Ok(subsectionModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To add new SubSection 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [ProducesResponseType(typeof(SubSectionModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult SaveSubSection([FromServices] ISubSectionService subsectionService, List<SubSectionModel> subSectionModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var subsectionModel = subsectionService.SaveSubSection(subSectionModel, ref errorResponseModel);
+
+                if (subsectionModel != null)
+                {
+                    return Ok(subsectionModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To delete SubSection 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("DeleteSubSection")]
+        [ProducesResponseType(typeof(SubSectionModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult DeleteSubSection([FromServices] ISubSectionService subsectionService, SubSectionModel subSectionModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var subsectionModel = subsectionService.DeleteSubSection(subSectionModel, ref errorResponseModel);
+
+                if (subsectionModel != null)
+                {
+                    return Ok(subsectionModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To get all subsections
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpGet("GetSubSections")]
+        [ProducesResponseType(typeof(SubSectionModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
+        public IActionResult GetSubSections([FromServices] ISubSectionService subsectionService)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var subsectionModelList = subsectionService.GetSubSections(ref errorResponseModel);
+
+                if (subsectionModelList != null)
+                {
+                    return Ok(subsectionModelList);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To delete author 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("DeleteSubSectionLanguageDetails")]
+        [ProducesResponseType(typeof(SubSectionLanguageDetailsModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult DeleteSubSectionLanguageDetails([FromServices] ISubSectionService subsectionService, SubSectionLanguageDetailsModel subSectionLanguageDetailsModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var SubSectionLanguageDetailsModel = subsectionService.DeleteSubSectionLanguageDetails(subSectionLanguageDetailsModel, ref errorResponseModel);
+
+                if (SubSectionLanguageDetailsModel != null)
+                {
+                    return Ok(SubSectionLanguageDetailsModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To delete author 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("DeleteReferenceRubricDetails")]
+        [ProducesResponseType(typeof(ReferenceRubricDetailsModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult DeleteReferenceRubricDetails([FromServices] ISubSectionService subsectionService, ReferenceRubricDetailsModel referenceRubricDetailsModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var ReferenceRubricDetailsModel = subsectionService.DeleteReferenceRubricDetails(referenceRubricDetailsModel, ref errorResponseModel);
+
+                if (ReferenceRubricDetailsModel != null)
+                {
+                    return Ok(ReferenceRubricDetailsModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// Get subsection with its children and child count
+        /// </summary>
+        [HttpGet("GetSubSectionWithChildrenCount/{subsectionId}")]
+        [ProducesResponseType(typeof(List<SubSectionLevelModel>), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
+        public IActionResult GetSubSectionWithChildrenCount([FromServices] ISubSectionService subsectionService, long subsectionId)
+        {
+            ErrorResponseModel errorResponseModel = null;
+
+            try
+            {
+                var result = subsectionService
+                    .GetSubSectionWithChildrenCount(subsectionId, ref errorResponseModel);
+
+                if (result != null && result.Count > 0)
+                {
+                    return Ok(result);
+                }
+
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// Get main parent subsections with child count by section id
+        /// </summary>
+        [HttpGet("GetMainParentSubSectionsWithChildCount/{sectionId}")]
+        [ProducesResponseType(typeof(List<SubSectionLevelModel>), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
+        public IActionResult GetMainParentSubSectionsWithChildCount([FromServices] ISubSectionService subsectionService, long sectionId)
+        {
+            ErrorResponseModel errorResponseModel = null;
+
+            try
+            {
+                var result = subsectionService
+                    .GetMainParentSubSectionsWithChildCount(sectionId, ref errorResponseModel);
+
+                if (result != null && result.Count > 0)
+                {
+                    return Ok(result);
+                }
+
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To update MainParentSubsection against subsectionId
+        /// </summary>
+        /// <param name="subsectionId"></param>
+        /// <param name="mainParentSubsection"></param>
+        /// <param name="changedBy"></param>
+        /// <returns></returns>
+        [HttpPost("UpdateMainParentSubsection/{subsectionId}")]
+        [ProducesResponseType(typeof(string), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult UpdateMainParentSubsection([FromServices] ISubSectionService subsectionService, long subsectionId, [FromQuery] bool mainParentSubsection, [FromQuery] string changedBy)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var result = subsectionService.UpdateMainParentSubsection(subsectionId, mainParentSubsection, changedBy, ref errorResponseModel);
+
+                if (result != null && !string.IsNullOrEmpty(result))
+                {
+                    return Ok(result);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        [HttpGet("search")]
+        [OldApiContract]
+        public async Task<IActionResult> Search([FromServices] ISubSectionService subsectionService, [FromQuery] string query,
+       [FromQuery] int top = 20)
+        {
+            var result = await subsectionService.SearchAsync(query, top);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Search subsections within a section (autocomplete + tree filter).
+        /// </summary>
+        [HttpGet("SearchBySection")]
+        [ProducesResponseType(typeof(List<SubSectionSearchResultModel>), 200)]
+        [OldApiContract]
+        public async Task<IActionResult> SearchBySection([FromServices] ISubSectionService subsectionService, [FromQuery] long sectionId,
+            [FromQuery] string query,
+            [FromQuery] int top = 20)
+        {
+            if (sectionId <= 0)
+            {
+                return BadRequest("sectionId is required");
+            }
+
+            var result = await subsectionService.SearchBySectionAsync(sectionId, query, top);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Global subsection search across all sections (autocomplete + tree).
+        /// </summary>
+        [HttpGet("SearchGlobal")]
+        [ProducesResponseType(typeof(List<SubSectionSearchResultModel>), 200)]
+        [OldApiContract]
+        public async Task<IActionResult> SearchGlobal([FromServices] ISubSectionService subsectionService, [FromQuery] string query,
+            [FromQuery] int top = 20)
+        {
+            try
+            {
+                var result = await subsectionService.SearchGlobalAsync(query, top);
+                return Ok(result ?? new List<SubSectionSearchResultModel>());
+            }
+            catch (Exception)
+            {
+                return Ok(new List<SubSectionSearchResultModel>());
+            }
+        }
+
+        /// <summary>
+        /// Paginated global subsection search for tree results (all matches, level-wise).
+        /// </summary>
+        [HttpGet("SearchGlobalPaged")]
+        [ProducesResponseType(typeof(SubSectionSearchPagedResultModel), 200)]
+        [OldApiContract]
+        public async Task<IActionResult> SearchGlobalPaged([FromServices] ISubSectionService subsectionService, [FromQuery] string query,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 40)
+        {
+            try
+            {
+                var result = await subsectionService.SearchGlobalPagedAsync(query, pageNumber, pageSize);
+                return Ok(result ?? new SubSectionSearchPagedResultModel());
+            }
+            catch (Exception)
+            {
+                return Ok(new SubSectionSearchPagedResultModel());
+            }
+        }
+
+        /// <summary>
+        /// Paginated section-scoped subsection search for tree results (all matches, level-wise).
+        /// </summary>
+        [HttpGet("SearchBySectionPaged")]
+        [ProducesResponseType(typeof(SubSectionSearchPagedResultModel), 200)]
+        [OldApiContract]
+        public async Task<IActionResult> SearchBySectionPaged([FromServices] ISubSectionService subsectionService, [FromQuery] long sectionId,
+            [FromQuery] string query,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 40)
+        {
+            if (sectionId <= 0)
+            {
+                return BadRequest("sectionId is required");
+            }
+
+            try
+            {
+                var result = await subsectionService.SearchBySectionPagedAsync(sectionId, query, pageNumber, pageSize);
+                return Ok(result ?? new SubSectionSearchPagedResultModel());
+            }
+            catch (Exception)
+            {
+                return Ok(new SubSectionSearchPagedResultModel());
+            }
+        }
+
+#nullable restore
+        #endregion
     }
 }

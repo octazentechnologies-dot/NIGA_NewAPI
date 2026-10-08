@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
@@ -271,6 +272,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
         public IActionResult GetCommanUnCommanRubricsDetails(List<ClipboardRubricsModel1> lstIntensity)
         {
             ErrorResponseModel errorResponseModel = null;
@@ -297,6 +299,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
         public IActionResult GetEliminationData(ClipboardRUbricModel clipboardRUbricModel)
         {
             ErrorResponseModel errorResponseModel = null;

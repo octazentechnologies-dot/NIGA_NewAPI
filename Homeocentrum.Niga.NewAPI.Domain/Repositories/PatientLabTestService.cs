@@ -3,6 +3,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
 {
@@ -103,5 +104,47 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             }
             return Message;
         }
+
+
+        #region Old API compatible overloads
+#nullable disable
+
+        public string AddEditPatientLabTest(PatientLabTestModel labTestModel, int userID, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            if (labTestModel.PatientLabTestId == 0)
+            {
+                PatientLabTestMaster labTestEntity = new PatientLabTestMaster();
+                labTestEntity.PatientLabTestId = labTestModel.PatientLabTestId;
+                labTestEntity.LabTestName = labTestModel.LabTestName;
+                labTestEntity.Description = labTestModel.Description;
+                labTestEntity.DeleteStatus = false;
+                labTestEntity.EnteredDate = DateTime.Now;
+                context.PatientLabTestMasters.Add(labTestEntity);
+                context.SaveChanges();
+                context.Database.ExecuteSqlInterpolated(
+                    $"UPDATE dbo.PatientLabTestMaster SET EnteredBy = {userID} WHERE PatientLabTestId = {labTestEntity.PatientLabTestId}");
+                Message = "Lab test saved successfully";
+            }
+            else
+            {
+                var labTestEntity = context.PatientLabTestMasters.FirstOrDefault(x => x.PatientLabTestId == labTestModel.PatientLabTestId);
+                if (labTestEntity != null)
+                {
+                    labTestEntity.LabTestName = labTestModel.LabTestName;
+                    labTestEntity.Description = labTestModel.Description;
+                    labTestEntity.DeleteStatus = false;
+                    labTestEntity.ChangedDate = DateTime.Now;
+                    context.SaveChanges();
+                    context.Database.ExecuteSqlInterpolated(
+                        $"UPDATE dbo.PatientLabTestMaster SET ChangedBy = {userID} WHERE PatientLabTestId = {labTestEntity.PatientLabTestId}");
+                    Message = "Lab test updated successfully";
+                }
+            }
+            return Message;
+        }
+
+#nullable restore
+        #endregion
     }
 }

@@ -1732,182 +1732,195 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
         //Current in use
 
         public ClipboardRemedyNewModel GetCommanUnCommanRubricsDetailsBySubsectionIdFinal(
-    List<ClipboardRubricsModel1> lstIntensity,
-    ref ErrorResponseModel errorResponseModel
-)
-{
-    errorResponseModel = new ErrorResponseModel();
-
-    var subsectionIds = lstIntensity.Select(c => c.SubSectionId).Distinct().ToList();
-
-    // Prefetch only relevant RubricRemedyDetails
-    var rubricRemedyDetails = context.RubricRemedyDetails
-        .Where(x => subsectionIds.Contains(x.SubSectionId) && x.DeletedStatus== false)
-        .Select(x => new { x.SubSectionId, x.RemedyId, x.GradeId })
-        .ToList();
-
-    // Compute remedy counts efficiently using grouping
-    var remedyCounts = rubricRemedyDetails
-        .GroupBy(x => x.SubSectionId)
-        .ToDictionary(g => g.Key, g => g.Count());
-
-    // Build intensity inputs
-    var clipboardRubricsRemedyInputs = lstIntensity
-        .Select(item => new ClipboardRubricsRemedyInput
+            List<ClipboardRubricsModel1> lstIntensity,
+            ref ErrorResponseModel errorResponseModel
+        )
         {
-            SubsectionID = (int)item.SubSectionId,
-            Intensity = item.Intensity,
-            RemedyCount = remedyCounts.TryGetValue(item.SubSectionId, out var count) ? count : 0
-        })
-        .ToList();
+            errorResponseModel = new ErrorResponseModel();
 
-    var smallRubricItem = clipboardRubricsRemedyInputs
-        .OrderBy(x => x.RemedyCount)
-        .FirstOrDefault();
+            // Ranking reproduces the Old API exactly: one entry per (input rubric, remedy) row, and the
+            // count/grade/intensity/final positions are taken from lists that still contain those duplicates.
+            var subsectionIds = lstIntensity.Select(c => c.SubSectionId).ToList();
+            var distinctIds = subsectionIds.Distinct().ToList();
 
-    // Prefetch remedies with joined data
-    var remedyData =
-        (from rrd in context.RubricRemedyDetails
-         join rm in context.RemedyMasters on rrd.RemedyId equals rm.RemedyId
-         join rg in context.RemedyGradeMaster on rrd.GradeId equals rg.GradeId
-         join sm in context.SubSectionMasters on rrd.SubSectionId equals sm.SubSectionId
-         where subsectionIds.Contains(rrd.SubSectionId)
-               && rrd.DeletedStatus== false
-               && rm.DeleteStatus== false
-         select new
-         {
-             sm.SubSectionId,
-             sm.SubSectionName,
-             rrd.RemedyId,
-             rm.RemedyName,
-             rm.RemedyAlias,
-             rg.GradeNo,
-             rg.FontName,
-             rg.FontStyle,
-             rg.FontColor,
-             rm.CommonOrUncommon,
-             rm.ThemesOrCharacteristics,
-             rm.Particulars,
-             rm.Generals,
-             rm.Modalities,
-             rm.ThermalId
-         })
-        .ToList();
+            var rubricRemedyDetails = context.RubricRemedyDetails
+                .Where(x => distinctIds.Contains(x.SubSectionId) && x.DeletedStatus == false)
+                .Select(x => new { x.SubSectionId, x.RemedyId })
+                .ToList();
 
-    // Join with intensity data (in memory now)
-    var intensityMap = clipboardRubricsRemedyInputs.ToDictionary(x => x.SubsectionID, x => x.Intensity);
-    var remedyArrayList = remedyData
-        .Select(x => new ClipboardRubricsRemedyViewModel
-        {
-            SubSectionId = x.SubSectionId,
-            SubSectionName = x.SubSectionName,
-            RemedyId = x.RemedyId,
-            RemedyName = x.RemedyName,
-            RemedyAlias = x.RemedyAlias,
-            GradeNo = x.GradeNo,
-            FontName = x.FontName,
-            FontStyle = x.FontStyle,
-            FontColor = x.FontColor,
-            Intensity = intensityMap.TryGetValue(x.SubSectionId, out var intensity) ? intensity : 0,
-            total = (intensityMap.TryGetValue(x.SubSectionId, out var i) ? i : 0) * x.GradeNo,
-            ThermalId = x.ThermalId,
-            CommonOrUncommon = x.CommonOrUncommon,
-            ThemesOrCharacteristics = x.ThemesOrCharacteristics,
-            Particulars = x.Particulars,
-            Generals = x.Generals,
-            Modalities = x.Modalities,
-            score = rubricRemedyDetails
-                .Where(r => r.RemedyId == x.RemedyId)
-                .Select(r => r.SubSectionId)
-                .Distinct()
-                .Count(),
-            SmallRubric = x.SubSectionId == smallRubricItem.SubsectionID ? 1 : 0
-        })
-        .ToList();
+            var remedyCounts = rubricRemedyDetails
+                .GroupBy(x => x.SubSectionId)
+                .ToDictionary(g => g.Key ?? 0, g => g.Count());
 
-    // Group remedies
-    var objRemedyList = remedyArrayList
-        .GroupBy(x => x.RemedyName)
-        .Select(g => new RemedyArrayModel
-        {
-            RemedyId = g.First().RemedyId,
-            RemedyName = g.Key,
-            RemedyAlies = g.First().RemedyAlias,
-            Intensity = g.First().Intensity,
-            IntensitySum = g.Sum(r => r.Intensity),
-            Count = g.Count(),
-            Grade = g.Sum(r => r.GradeNo),
-            final = g.Sum(r => r.total),
-            Generals = g.First().Generals,
-            Particulars = g.First().Particulars,
-            Modalities = g.First().Modalities,
-            ThemesOrCharacteristics = g.First().ThemesOrCharacteristics,
-            ThermalId = g.First().ThermalId,
-            CommonUncommon = g.First().CommonOrUncommon,
-            score = $"{g.First().score}/{subsectionIds.Count}",
-            scoreCount = g.First().score,
-            PresentSubSection = rubricRemedyDetails
-                .Where(r => r.RemedyId == g.First().RemedyId)
-                .Select(r => r.SubSectionId)
-                .Distinct()
-                .ToList(),
-            SmallRubric = g.First().SmallRubric
-        })
-        .ToList();
+            var clipboardRubricsRemedyInputs = lstIntensity
+                .Select(item => new ClipboardRubricsRemedyInput
+                {
+                    SubsectionID = (int)item.SubSectionId,
+                    Intensity = item.Intensity,
+                    RemedyCount = remedyCounts.TryGetValue((int)item.SubSectionId, out var count) ? count : 0
+                })
+                .ToList();
 
-    // Sort orders (cache once)
-    var countOrder = objRemedyList.OrderByDescending(x => x.Count).ToList();
-    var gradeOrder = objRemedyList.OrderByDescending(x => x.Grade).ToList();
-    var intensityOrder = objRemedyList.OrderByDescending(x => x.IntensitySum).ToList();
-    var finalOrder = objRemedyList.OrderByDescending(x => x.final).ToList();
+            var smallRubricItem = clipboardRubricsRemedyInputs.OrderBy(x => x.RemedyCount).FirstOrDefault();
 
-    // Build sorted remedy list
-    var sortedRemedyList = objRemedyList.Select(remedy =>
-    {
-        int maxIndex =
-            countOrder.FindIndex(x => x.RemedyName == remedy.RemedyName) + 1 +
-            gradeOrder.FindIndex(x => x.RemedyName == remedy.RemedyName) + 1 +
-            intensityOrder.FindIndex(x => x.RemedyName == remedy.RemedyName) + 1 +
-            finalOrder.FindIndex(x => x.RemedyName == remedy.RemedyName) + 1;
+            var subsectionsByRemedy = rubricRemedyDetails
+                .GroupBy(x => x.RemedyId)
+                .ToDictionary(g => g.Key ?? 0, g => g.Select(r => r.SubSectionId).Distinct().ToList());
 
-        return new SortedRemedyArrayModel
-        {
-            RemedyId = remedy.RemedyId,
-            RemedyName = remedy.RemedyName,
-            RemedyAlies = remedy.RemedyAlies,
-            Intensity = remedy.Intensity,
-            IntensitySum = remedy.IntensitySum,
-            Count = remedy.Count,
-            Grade = remedy.Grade,
-            final = remedy.final,
-            Generals = remedy.Generals,
-            Particulars = remedy.Particulars,
-            Modalities = remedy.Modalities,
-            ThemesOrCharacteristics = remedy.ThemesOrCharacteristics,
-            ThermalId = remedy.ThermalId,
-            CommonUncommon = remedy.CommonUncommon,
-            score = remedy.score,
-            scoreCount = remedy.scoreCount,
-            MaxIndex = maxIndex,
-            PresentSubSection = remedy.PresentSubSection,
-            SmallRubric = remedy.SmallRubric,
-            progressBar = (1000 - maxIndex) / 10
-        };
-    }).ToList();
+            var remedyData =
+                (from rrd in context.RubricRemedyDetails
+                 join sm in context.SubSectionMasters on rrd.SubSectionId equals sm.SubSectionId
+                 join rm in context.RemedyMasters on rrd.RemedyId equals rm.RemedyId
+                 join rg in context.RemedyGradeMaster on rrd.GradeId equals rg.GradeId
+                 where distinctIds.Contains(rrd.SubSectionId)
+                       && rrd.DeletedStatus == false
+                       && rm.DeleteStatus == false
+                 select new
+                 {
+                     sm.SubSectionId,
+                     sm.SubSectionName,
+                     rrd.RemedyId,
+                     rm.RemedyName,
+                     rm.RemedyAlias,
+                     rg.GradeNo,
+                     rg.FontName,
+                     rg.FontStyle,
+                     rg.FontColor,
+                     rm.ThermalId,
+                     rm.CommonOrUncommon,
+                     rm.ThemesOrCharacteristics,
+                     rm.Particulars,
+                     rm.Generals,
+                     rm.Modalities
+                 })
+                .ToList()
+                .ToLookup(x => x.SubSectionId);
 
-    var rawOrderGroupBy = sortedRemedyList
-        .OrderByDescending(x => x.final)
-        .ThenByDescending(x => x.SmallRubric)
-        .GroupBy(x => x.RemedyId)
-        .Select(x => x.First())
-        .ToList();
+            var remedyArrayList = new List<ClipboardRubricsRemedyViewModel>();
+            foreach (var item in clipboardRubricsRemedyInputs)
+            {
+                remedyArrayList.AddRange(remedyData[item.SubsectionID]
+                    .Select(x => new ClipboardRubricsRemedyViewModel
+                    {
+                        SubSectionId = x.SubSectionId,
+                        SubSectionName = x.SubSectionName,
+                        RemedyId = x.RemedyId,
+                        RemedyName = x.RemedyName,
+                        RemedyAlias = x.RemedyAlias,
+                        GradeNo = x.GradeNo,
+                        FontName = x.FontName,
+                        FontStyle = x.FontStyle,
+                        FontColor = x.FontColor,
+                        Intensity = item.Intensity,
+                        total = item.Intensity * x.GradeNo,
+                        ThermalId = x.ThermalId,
+                        CommonOrUncommon = x.CommonOrUncommon,
+                        ThemesOrCharacteristics = x.ThemesOrCharacteristics,
+                        Particulars = x.Particulars,
+                        Generals = x.Generals,
+                        Modalities = x.Modalities,
+                        score = subsectionsByRemedy.TryGetValue(x.RemedyId ?? 0, out var present) ? present.Count : 0,
+                        SmallRubric = item.SubsectionID == smallRubricItem.SubsectionID ? 1 : 0,
+                    })
+                    .OrderBy(rem => rem.RemedyId));
+            }
 
-    return new ClipboardRemedyNewModel
-    {
-        CommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon.GetValueOrDefault()).ToList(),
-        UnCommonRemedyList = rawOrderGroupBy.Where(x => !x.CommonUncommon.GetValueOrDefault()).ToList()
-    };
-}
+            var totalsByName = remedyArrayList
+                .GroupBy(x => x.RemedyName ?? string.Empty)
+                .ToDictionary(g => g.Key, g => new
+                {
+                    IntensitySum = g.Sum(x => x.Intensity),
+                    Count = g.Count(),
+                    Grade = g.Sum(x => x.GradeNo),
+                    Final = g.Sum(x => x.total)
+                });
+
+            var objRemedyList = remedyArrayList.Select(item1 =>
+            {
+                var totals = totalsByName[item1.RemedyName ?? string.Empty];
+                return new RemedyArrayModel
+                {
+                    RemedyId = item1.RemedyId,
+                    RemedyName = item1.RemedyName,
+                    RemedyAlies = item1.RemedyAlias,
+                    Intensity = item1.Intensity,
+                    IntensitySum = totals.IntensitySum,
+                    Count = totals.Count,
+                    Grade = totals.Grade,
+                    final = totals.Final,
+                    Generals = item1.Generals,
+                    Particulars = item1.Particulars,
+                    Modalities = item1.Modalities,
+                    ThemesOrCharacteristics = item1.ThemesOrCharacteristics,
+                    ThermalId = item1.ThermalId,
+                    CommonUncommon = item1.CommonOrUncommon,
+                    score = item1.score + "/" + subsectionIds.Count,
+                    scoreCount = item1.score,
+                    PresentSubSection = subsectionsByRemedy.TryGetValue(item1.RemedyId ?? 0, out var present) ? present : new List<int?>(),
+                    SmallRubric = item1.SmallRubric,
+                };
+            }).ToList();
+
+            Dictionary<string, int> FirstPositions(IEnumerable<RemedyArrayModel> ordered)
+            {
+                var positions = new Dictionary<string, int>();
+                var index = 0;
+                foreach (var r in ordered)
+                {
+                    positions.TryAdd(r.RemedyName ?? string.Empty, index);
+                    index++;
+                }
+                return positions;
+            }
+
+            var countPositions = FirstPositions(objRemedyList.OrderByDescending(x => x.Count));
+            var gradePositions = FirstPositions(objRemedyList.OrderByDescending(x => x.Grade));
+            var intensityPositions = FirstPositions(objRemedyList.OrderByDescending(x => x.IntensitySum));
+            var finalPositions = FirstPositions(objRemedyList.OrderByDescending(x => x.final));
+
+            var sortedRemedyList = objRemedyList.Select(remedyItem =>
+            {
+                var name = remedyItem.RemedyName ?? string.Empty;
+                int maxIndex = countPositions[name] + 1 + gradePositions[name] + 1
+                    + intensityPositions[name] + 1 + finalPositions[name] + 1;
+                return new SortedRemedyArrayModel
+                {
+                    RemedyId = remedyItem.RemedyId,
+                    RemedyName = remedyItem.RemedyName,
+                    RemedyAlies = remedyItem.RemedyAlies,
+                    Intensity = remedyItem.Intensity,
+                    IntensitySum = remedyItem.IntensitySum,
+                    Count = remedyItem.Count,
+                    Grade = remedyItem.Grade,
+                    final = remedyItem.final,
+                    Generals = remedyItem.Generals,
+                    Particulars = remedyItem.Particulars,
+                    Modalities = remedyItem.Modalities,
+                    ThemesOrCharacteristics = remedyItem.ThemesOrCharacteristics,
+                    ThermalId = remedyItem.ThermalId,
+                    CommonUncommon = remedyItem.CommonUncommon,
+                    score = remedyItem.score,
+                    scoreCount = remedyItem.scoreCount,
+                    MaxIndex = maxIndex,
+                    PresentSubSection = remedyItem.PresentSubSection,
+                    SmallRubric = remedyItem.SmallRubric,
+                    progressBar = (1000 - maxIndex) / 10
+                };
+            }).ToList();
+
+            var rawOrderGroupBy = sortedRemedyList
+                .OrderByDescending(x => x.final)
+                .ThenByDescending(x => x.SmallRubric)
+                .GroupBy(x => x.RemedyId)
+                .Select(x => x.First())
+                .ToList();
+
+            return new ClipboardRemedyNewModel
+            {
+                CommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon == true).ToList(),
+                UnCommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon == false).ToList()
+            };
+        }
 
         public ClipboardRemedyNewModel GetCommanUnCommanEliminationData(
             ClipboardRUbricModel clipboardRUbricModel,

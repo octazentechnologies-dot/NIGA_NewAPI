@@ -33,6 +33,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public bool? IsActive { get; set; }
         public string Src1 { get; set; }
         public string Src2 { get; set; }
+        public int? EnteredBy { get; set; }
+        public DateTime EnteredDate { get; set; }
+        public int? ChangedBy { get; set; }
+        public DateTime? ChangedDate { get; set; }
     }
 
     public class BlogDetailViewModel

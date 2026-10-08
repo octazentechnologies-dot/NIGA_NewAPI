@@ -1,3 +1,5 @@
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
+using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,6 +16,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Master;
 
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
     /// <summary>
@@ -23,7 +26,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     [ApiController]
     [Authorize]
     [DoctorOnly]
-    public class QuestionSectionController : ControllerBase
+    public class QuestionSectionController : BaseAPIController
     {
         private readonly IQuestionSectionService _questionSectionService;
         private readonly IMapper _mapper;
@@ -182,5 +185,75 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             return await _questionSectionService.GetQuestionSectionDD(search);
         }
+
+
+        #region Old API compatible endpoints
+#nullable disable
+
+        /// <summary>
+        /// To add new question section 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [ProducesResponseType(typeof(QuestionSectionModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult SaveQuestionSection([FromServices] IQuestionSectionService questionsectionService, QuestionSectionModel questionSectionModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var questionsectionModel = questionsectionService.SaveQuestionSection(questionSectionModel, ref errorResponseModel);
+
+                if (questionsectionModel != null)
+                {
+                    return Ok(questionsectionModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To delete question section 
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("DeleteQuestionSection")]
+        [ProducesResponseType(typeof(QuestionSectionModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
+        public IActionResult DeleteQuestionSection([FromServices] IQuestionSectionService questionsectionService, QuestionSectionModel questionSectionModel)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var questionsectionModel = questionsectionService.DeleteQuestionSection(questionSectionModel, ref errorResponseModel);
+
+                if (questionsectionModel != null)
+                {
+                    return Ok(questionsectionModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+#nullable restore
+        #endregion
     }
 }

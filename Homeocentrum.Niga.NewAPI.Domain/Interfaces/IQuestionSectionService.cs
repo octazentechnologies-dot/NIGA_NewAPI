@@ -64,6 +64,25 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Interfaces
         /// <param name="search"></param>
         /// <returns></returns>
          Task<List<QuestionSectionModel>> GetQuestionSectionDD(string? search);
+
+        #region Old API compatible overloads
+#nullable disable
+        /// <summary>
+        /// Interface is used to save Question Section
+        /// </summary>
+        /// <param name="questionSectionModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        string SaveQuestionSection(QuestionSectionModel questionSectionModel, ref ErrorResponseModel errorResponseModel);
+        /// <summary>
+        /// Interface is used to deactivate Question Section.
+        /// </summary>
+        /// <param name="questionSectionModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        string DeleteQuestionSection(QuestionSectionModel questionSectionModel, ref ErrorResponseModel errorResponseModel);
+#nullable restore
+        #endregion
     }
 }
 

@@ -381,6 +381,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 join parent in context.SubSectionMasters.AsNoTracking()
                     on ss.ParentSubSectionId equals (int?)parent.SubSectionId into parentJoin
                 from parent in parentJoin.DefaultIfEmpty()
+                orderby ss.SubSectionName
                 select new SubSectionModel
                 {
                     SubSectionId = ss.SubSectionId,
@@ -388,6 +389,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                     SectionName = ss.Section != null ? ss.Section.SectionName : null,
                     ParentSubSectionId = ss.ParentSubSectionId,
                     ParentSubSectionName = parent != null ? parent.SubSectionName : string.Empty,
+                    MainParentSubsection = ss.MainParentSubsection,
                     SubSectionName = ss.SubSectionName,
                     SubSectionNameAlias = ss.SubSectionNameAlias,
                     Description = ss.Description,

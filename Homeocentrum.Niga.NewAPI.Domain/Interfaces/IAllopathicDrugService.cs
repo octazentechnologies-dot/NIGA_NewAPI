@@ -30,5 +30,18 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Interface
             int allopathicDrugId,
             ref ErrorResponseModel errorResponseModel
         );
+
+        #region Old API compatible overloads
+#nullable disable
+        /// <summary>
+        /// Method is used for to get allopathicDrug by allopathicDrugId
+        /// </summary>
+        /// <param name="allopathicDrugId"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        AllopathicDrugModel GetAllopathicDrugById(long allopathicDrugId, ref ErrorResponseModel errorResponseModel);
+        List<AllopathicDrugModel> GetAllopathicDrug(ref ErrorResponseModel errorResponseModel);
+#nullable restore
+        #endregion
     }
 }

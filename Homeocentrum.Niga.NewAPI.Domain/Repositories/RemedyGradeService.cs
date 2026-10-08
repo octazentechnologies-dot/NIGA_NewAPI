@@ -1,3 +1,4 @@
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
@@ -13,7 +14,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
     /// <summary>
     /// Service implementation for remedy grade related operations
     /// </summary>
-    public class RemedyGradeService : IRemedyGradeRepository
+    public class RemedyGradeService : IRemedyGradeRepository, IRemedyGradeService
     {
         private readonly NIGACentrumContext _context;
         private readonly IMapper _mapper;
@@ -149,5 +150,76 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
         {
             return await _context.SaveChangesAsync() > 0;
         }
+
+
+        #region Old API compatible methods
+#nullable disable
+
+        /// <summary>
+        /// Method is used for delete Remedy Grade.
+        /// </summary>
+        /// <param name="remedyGradeModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string DeleteRemedyGrade(RemedyGradeModel remedyGradeModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            var remedyGradeEntity = _context.RemedyGradeMaster.FirstOrDefault(x => x.GradeId == remedyGradeModel.GradeId);
+            if (remedyGradeEntity != null)
+            {
+                remedyGradeEntity.DeleteStatus = remedyGradeModel.DeleteStatus;
+                remedyGradeEntity.ChangedBy = remedyGradeModel.EnteredBy;
+                remedyGradeEntity.ChangedDate = DateTime.Now;
+                _context.SaveChanges();
+                Message = "Remedy Grade Deleted Successfully";
+            }
+            return Message;
+        }
+
+        /// <summary>
+        /// Method implementation for saving new Remedy Grade
+        /// </summary>
+        /// <param name="remedyGradeModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string SaveRemedyGrade(RemedyGradeModel remedyGradeModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            if (remedyGradeModel.GradeId == 0)
+            {
+                RemedyGradeMaster remedyGradeEntity = new RemedyGradeMaster();
+                remedyGradeEntity.GradeNo = remedyGradeModel.GradeNo;
+                remedyGradeEntity.Description = remedyGradeModel.Description;
+                remedyGradeEntity.FontName = remedyGradeModel.FontName;
+                remedyGradeEntity.FontStyle = remedyGradeModel.FontStyle;
+                remedyGradeEntity.FontColor = remedyGradeModel.FontColor;
+                remedyGradeEntity.EnteredBy = remedyGradeModel.EnteredBy;
+                remedyGradeEntity.EnteredDate = DateTime.Now;
+                _context.RemedyGradeMaster.Add(remedyGradeEntity);
+                _context.SaveChanges();
+                Message = "Remedy Grade Saved Successfully";
+            }
+            else
+            {
+                var remedyGradeEntity = _context.RemedyGradeMaster.FirstOrDefault(x => x.GradeId == remedyGradeModel.GradeId);
+                if (remedyGradeEntity !=  null)
+                {
+
+                    remedyGradeEntity.GradeNo = remedyGradeModel.GradeNo;
+                    remedyGradeEntity.Description = remedyGradeModel.Description;
+                    remedyGradeEntity.FontName = remedyGradeModel.FontName;
+                    remedyGradeEntity.FontStyle = remedyGradeModel.FontStyle;
+                    remedyGradeEntity.FontColor = remedyGradeModel.FontColor;
+                    remedyGradeEntity.ChangedBy = remedyGradeModel.EnteredBy;
+                    remedyGradeEntity.ChangedDate = DateTime.Now;
+                    _context.SaveChanges();
+                    Message = "Remedy Grade Updated Successfully";
+                }
+            }
+            return Message;
+        }
+
+#nullable restore
+        #endregion
     }
 } 

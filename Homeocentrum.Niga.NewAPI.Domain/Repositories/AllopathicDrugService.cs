@@ -636,5 +636,169 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             }
             return allopathicDrugEntity;
         }
+
+
+        #region Old API compatible overloads
+#nullable disable
+
+        public List<AllopathicDrugModel> GetAllopathicDrug(ref ErrorResponseModel errorResponseModel)
+        {
+            var allopathicDrugModelList = new List<AllopathicDrugModel>();
+            errorResponseModel = new ErrorResponseModel();
+            var allopathicDrugEntity = _context.AllopathicDrugMasters.AsNoTracking()
+                .Include(x => x.DrugGroup).ThenInclude(x => x.DrugSystem)
+                .Where(x => x.DeleteStatus == false).ToList();
+            if (allopathicDrugEntity.Count == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "AllopathicDrug not found";
+            }
+
+            var adverseReactionLookup = _context.AdverseReactionMasters.AsNoTracking().Where(x => x.DeleteStatus == false).ToLookup(x => x.AllopathicDrugId);
+            var otherSideEffectLookup = _context.OtherSideEffectMasters.AsNoTracking().Where(x => x.DeleteStatus == false).ToLookup(x => x.AllopathicDrugId);
+            var seriousSideEffectLookup = _context.SeriousSideEffectMasters.AsNoTracking().Where(x => x.DeleteStatus == false).ToLookup(x => x.AllopathicDrugId);
+
+            foreach (var item in allopathicDrugEntity)
+            {
+                allopathicDrugModelList.Add(new AllopathicDrugModel
+                {
+                    DrugGroupId = item.DrugGroupId,
+                    DrugGroupName = item.DrugGroup.DrugGroupName,
+                    DrugSystemId = item.DrugGroup.DrugSystemId,
+                    DrugSystemName = item.DrugGroup.DrugSystem?.DrugSystemName,
+                    AllopathicDrugId = item.AllopathicDrugId,
+                    AllopathicDrugName = item.AllopathicDrugName,
+                    DeleteStatus = item.DeleteStatus,
+                    AdverseReactionModelList = adverseReactionLookup[item.AllopathicDrugId].Select(a => new AdverseReactionModel
+                    {
+                        AdverseReactionId = (int)a.AdverseReactionId,
+                        AllopathicDrugId = a.AllopathicDrugId,
+                        AllopathicDrugName = item.AllopathicDrugName,
+                        AdverseReactionName = a.AdverseReactionName,
+                        DeleteStatus = a.DeleteStatus,
+                    }).ToList(),
+                    OtherSideEffectModelList = otherSideEffectLookup[item.AllopathicDrugId].Select(o => new OtherSideEffectModel
+                    {
+                        OtherSideEffectId = (int)o.OtherSideEffectId,
+                        AllopathicDrugId = o.AllopathicDrugId,
+                        AllopathicDrugName = item.AllopathicDrugName,
+                        OtherSideEffectName = o.OtherSideEffectName,
+                        DeleteStatus = o.DeleteStatus,
+                    }).ToList(),
+                    SeriousSideEffectModelList = seriousSideEffectLookup[item.AllopathicDrugId].Select(s => new SeriousSideEffectModel
+                    {
+                        SeriousSideEffectId = (int)s.SeriousSideEffectId,
+                        AllopathicDrugId = s.AllopathicDrugId,
+                        AllopathicDrugName = item.AllopathicDrugName,
+                        SeriousSideEffectName = s.SeriousSideEffectName,
+                        DeleteStatus = s.DeleteStatus,
+                    }).ToList(),
+                });
+            }
+            return allopathicDrugModelList;
+        }
+
+        /// <summary>
+        /// Methood to get AllopathicDrug by adverseReactionId
+        /// </summary>
+        /// <param name="allopathicDrugId"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public AllopathicDrugModel GetAllopathicDrugById(long allopathicDrugId, ref ErrorResponseModel errorResponseModel)
+        {
+            var listAllopathicDrugModel = new AllopathicDrugModel();
+            errorResponseModel = new ErrorResponseModel();
+            //if (allopathicDrugId == 0)
+            //{
+            //    var listSubsectionEntity = _context.SectionMasters.Where(x => x.DeleteStatus == false).ToList();
+            //    if (listSubsectionEntity == null)
+            //    {
+            //        errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+            //        errorResponseModel.Message = "Section not found";
+            //    }
+
+
+            //    listAllopathicDrugModel.SubSectionId = 0;
+            //    listAllopathicDrugModel.SubSectionName = listAllopathicDrugModel.SectionName;
+            //    listAllopathicDrugModel.SectionId = listAllopathicDrugModel.SectionId;
+            //    listAllopathicDrugModel.ParentSubSectionId = listAllopathicDrugModel.ParentSubSectionId;
+
+
+            //}
+
+            //else
+            //{
+                var listSubsectionEntity = _context.AllopathicDrugMasters.Include(x=>x.DrugGroup).ThenInclude(x => x.DrugSystem).Where(x => x.DeleteStatus == false).Where((x => x.AllopathicDrugId == allopathicDrugId)).FirstOrDefault();
+
+                //Get all recodrs from AdverseReactionMaster join with AllopathicDrugMaster on allopathicDrugId
+                var adverseReactionEntity = (from adverseReactionMaster in _context.AdverseReactionMasters
+                                                   join allopathicDrug in _context.AllopathicDrugMasters
+                                                   on adverseReactionMaster.AllopathicDrugId equals allopathicDrug.AllopathicDrugId
+                                                   where allopathicDrug.AllopathicDrugId == allopathicDrugId && adverseReactionMaster.DeleteStatus == false
+                                                   select new AdverseReactionModel
+                                                   {
+                                                       AdverseReactionId = (int)adverseReactionMaster.AdverseReactionId,
+                                                       AllopathicDrugId = adverseReactionMaster.AllopathicDrugId,
+                                                       AllopathicDrugName = allopathicDrug.AllopathicDrugName,
+                                                       AdverseReactionName = adverseReactionMaster.AdverseReactionName,
+                                                       DeleteStatus = adverseReactionMaster.DeleteStatus,
+                                                   }).ToList();
+
+
+                var otherSideEffectEntity = (from otherSideEffect in _context.OtherSideEffectMasters
+                                             join allopathicDrug in _context.AllopathicDrugMasters
+                                             on otherSideEffect.AllopathicDrugId equals allopathicDrug.AllopathicDrugId
+                                             where allopathicDrug.AllopathicDrugId == allopathicDrugId && otherSideEffect.DeleteStatus == false
+                                             select new OtherSideEffectModel
+                                                {
+                                                    OtherSideEffectId = (int)otherSideEffect.OtherSideEffectId,
+                                                    AllopathicDrugId = otherSideEffect.AllopathicDrugId,
+                                                    AllopathicDrugName = allopathicDrug.AllopathicDrugName,
+                                                    OtherSideEffectName = otherSideEffect.OtherSideEffectName,
+                                                    DeleteStatus = otherSideEffect.DeleteStatus,
+
+                                             }).ToList();
+
+                var seriousSideEffectEntity = (from seriousSideEffect in _context.SeriousSideEffectMasters
+                                             join allopathicDrug in _context.AllopathicDrugMasters
+                                             on seriousSideEffect.AllopathicDrugId equals allopathicDrug.AllopathicDrugId
+                                             where allopathicDrug.AllopathicDrugId == allopathicDrugId && seriousSideEffect.DeleteStatus == false
+                                             select new SeriousSideEffectModel
+                                             {
+                                                 SeriousSideEffectId = (int)seriousSideEffect.SeriousSideEffectId,
+                                                 AllopathicDrugId = seriousSideEffect.AllopathicDrugId,
+                                                 AllopathicDrugName = allopathicDrug.AllopathicDrugName,
+                                                 SeriousSideEffectName = seriousSideEffect.SeriousSideEffectName,
+                                                 DeleteStatus = seriousSideEffect.DeleteStatus,
+
+                                             }).ToList();
+
+                if (listSubsectionEntity == null)
+                {
+                    errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                    errorResponseModel.Message = "Section not found";
+                }
+                else
+                {
+                    listAllopathicDrugModel.AllopathicDrugId = listSubsectionEntity.AllopathicDrugId;
+                    listAllopathicDrugModel.AllopathicDrugName = listSubsectionEntity.AllopathicDrugName;
+                    listAllopathicDrugModel.DrugGroupId = listSubsectionEntity.DrugGroupId;
+                    listAllopathicDrugModel.DrugGroupName = listSubsectionEntity.DrugGroup.DrugGroupName;
+                    listAllopathicDrugModel.DrugSystemId = listSubsectionEntity.DrugGroup.DrugSystemId;
+                    listAllopathicDrugModel.DrugSystemName = listSubsectionEntity.DrugGroup.DrugSystem?.DrugSystemName;
+                    listAllopathicDrugModel.DeleteStatus = listSubsectionEntity.DeleteStatus;
+                    listAllopathicDrugModel.AdverseReactionModelList = adverseReactionEntity;
+                    listAllopathicDrugModel.OtherSideEffectModelList = otherSideEffectEntity;
+                    listAllopathicDrugModel.SeriousSideEffectModelList = seriousSideEffectEntity;
+
+
+                }
+            //}
+
+            return listAllopathicDrugModel;
+        }
+
+#nullable restore
+        #endregion
     }
 }

@@ -7,6 +7,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
+using Microsoft.EntityFrameworkCore;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
 {
@@ -30,6 +31,19 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
             return await context.SaveChangesAsync() > 0;
         }
 
+        // EnteredBy/ChangedBy are int columns that the EF model ignores, so they are written directly.
+        private async Task StampAuditUserAsync(string column, int patientLabId, int userId)
+        {
+            if (userId <= 0)
+                return;
+            if (column == "ChangedBy")
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE dbo.PatientLabEntry SET ChangedBy = {userId} WHERE PatientLabId = {patientLabId}");
+            else
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE dbo.PatientLabEntry SET EnteredBy = {userId} WHERE PatientLabId = {patientLabId}");
+        }
+
         /// <summary>
         /// Mthod implementation implementaion for SavePatinetLabOrder
         /// </summary>
@@ -49,8 +63,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 patientLabEntryEntity.ParameterName = patientLabEntryModel.ParameterName;
                 patientLabEntryEntity.ParameterValue = patientLabEntryModel.ParameterValue;
                 patientLabEntryEntity.DeleteStatus = false;
+                context.PatientLabEntries.Add(patientLabEntryEntity);
                 if (await SaveAllAsync())
                 {
+                    await StampAuditUserAsync("EnteredBy", patientLabEntryEntity.PatientLabId, patientLabEntryModel.EnteredBy);
                     Mesaage = "Record saved successfully";
                 }
                 else
@@ -66,9 +82,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 );
                 if (patientLabEntryEntity == null)
                 {
-                    Mesaage = "Not found";
-                    errorResponseModel.Message = "Not found";
-                    errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                    return "Not found";
                 }
                 patientLabEntryEntity.PatientId = patientLabEntryModel.PatientId;
                 patientLabEntryEntity.PatientLabTestId = patientLabEntryModel.PatientLabTestId;
@@ -78,6 +92,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
                 patientLabEntryEntity.DeleteStatus = false;
                 if (await SaveAllAsync())
                 {
+                    await StampAuditUserAsync("ChangedBy", patientLabEntryEntity.PatientLabId, patientLabEntryModel.EnteredBy);
                     Mesaage = "Record updated successfully";
                 }
                 else

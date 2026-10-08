@@ -7,13 +7,14 @@ using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
     [DoctorOnly]
-    public class AllopathicDrugController : ControllerBase
+    public class AllopathicDrugController : BaseAPIController
     {
         private readonly IAllopathicDrugService _allopathicDrugService;
 
@@ -38,19 +39,59 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             }
         }
 
-        [HttpGet("GetAllopathicDrug")]
-        public async Task<List<AllopathicDrugModel>> GetAllopathicDrug([FromQuery] ParameterParams parameterParams)
+        [HttpGet("{allopathicDrugId:long}")]
+        [ProducesResponseType(typeof(AllopathicDrugModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        public IActionResult GetAllopathicDrugDetailsById(long allopathicDrugId)
         {
+            ErrorResponseModel? errorResponseModel = null;
+            try
+            {
+                var allopathicDrugModel = _allopathicDrugService.GetAllopathicDrugById(allopathicDrugId, ref errorResponseModel);
+                if (allopathicDrugModel != null)
+                {
+                    return Ok(allopathicDrugModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        [HttpGet("GetAllopathicDrug")]
+        public async Task<IActionResult> GetAllopathicDrug([FromQuery] ParameterParams parameterParams)
+        {
+            if (!Request.Query.ContainsKey("PageNumber") && !Request.Query.ContainsKey("PageSize"))
+            {
+                ErrorResponseModel? errorResponseModel = null;
+                try
+                {
+                    var allDrugs = _allopathicDrugService.GetAllopathicDrug(ref errorResponseModel);
+                    if (allDrugs != null)
+                    {
+                        return Ok(allDrugs);
+                    }
+                    return ReturnErrorResponse(errorResponseModel);
+                }
+                catch (Exception ex)
+                {
+                    return this.ServerError(ex);
+                }
+            }
             try
             {
                 var drugs = await _allopathicDrugService.GetAllopathicDrugsAsync(parameterParams);
                 Response.AddPaginationHeader(drugs.CurrentPage, drugs.PageSize, drugs.TotalCount, drugs.TotalPages);
-                return drugs;
+                return Ok(drugs);
 
             }
             catch (Exception ex)
             {
-                return null;
+                return NoContent();
             }
         }
         [HttpGet("GetAllAdverseReactions")]
@@ -100,12 +141,20 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
         [HttpPost]
         [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        [OldApiContract]
         public async Task<IActionResult> SaveAllopathicDrug([FromBody] AllopathicDrugModel model)
         {
+            if (model == null || model.DrugGroupId <= 0)
+                return BadRequest("Drug group is required.");
             try
             {
                 var result = await _allopathicDrugService.SaveAllopathicDrug(model);
-                return Ok(new { Status = 200, Data = result });
+                // The admin screens render this response directly, so it stays the Old API's plain message string.
+                return Ok(result);
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.InnerException is Microsoft.Data.SqlClient.SqlException { Number: 547 })
+            {
+                return BadRequest("Selected drug group does not exist.");
             }
             catch (Exception ex)
             {
@@ -115,10 +164,26 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
 
         [HttpPost("DeleteAllopathicDrug")]
         [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
-        public async Task<IActionResult> DeleteAllopathicDrug([FromBody] long allopathicDrugId)
+        [OldApiContract]
+        public async Task<IActionResult> DeleteAllopathicDrug([FromBody] System.Text.Json.JsonElement body)
         {
             try
             {
+                if (body.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    // Old API contract: { allopathicDrugId } in, the posted model echoed back.
+                    var model = System.Text.Json.JsonSerializer.Deserialize<AllopathicDrugModel>(body.GetRawText(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+                    await _allopathicDrugService.DeleteAllopathicDrug(model?.AllopathicDrugId ?? 0);
+                    return Ok(model);
+                }
+                long allopathicDrugId;
+                if (body.ValueKind == System.Text.Json.JsonValueKind.Number && body.TryGetInt64(out var numericId))
+                    allopathicDrugId = numericId;
+                else if (body.ValueKind == System.Text.Json.JsonValueKind.String && long.TryParse(body.GetString(), out var textId))
+                    allopathicDrugId = textId;
+                else
+                    return BadRequest(new { Status = 400, Data = "allopathicDrugId is required" });
+
                 var result = await _allopathicDrugService.DeleteAllopathicDrug(allopathicDrugId);
                 if (result == "Not found")
                     return NotFound(new { Status = 404, Data = result });

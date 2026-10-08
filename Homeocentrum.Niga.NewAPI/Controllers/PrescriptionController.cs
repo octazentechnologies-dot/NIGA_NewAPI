@@ -1,3 +1,7 @@
+using Homeocentrum.Niga.NewAPI.Domain.Master;
+using Homeocentrum.Niga.NewAPI.Domain.Authorization;
+using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
+using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +11,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Security;
+using Homeocentrum.Niga.NewAPI.Domain.Compatibility;
 
 namespace Homeocentrum.Niga.NewAPI.Controllers
 {
@@ -17,7 +22,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     [ApiController]
     [Authorize]
     [DoctorOnly]
-    public class PrescriptionController : ControllerBase
+    public class PrescriptionController : BaseAPIController
     {
         private readonly IPrescriptionService _prescriptionService;
         private readonly ILogger<PrescriptionController> _logger;
@@ -140,5 +145,89 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 .SelectMany(v => v.Errors)
                 .Select(e => e.ErrorMessage));
         }
+
+
+        #region Old API compatible endpoints
+#nullable disable
+
+        /// <summary>
+        /// To get diagnosis by Diagnosis ID 
+        /// </summary>
+        /// <param name="diagnosisId"></param>
+        /// <returns></returns>
+        [HttpPost("SavePrescriptionDetail")]
+        [ProducesResponseType(typeof(string), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
+        public IActionResult SavePrescriptionDetail([FromServices] IPrescriptionService prescriptionService, [FromServices] IPatientAppointmentService patientAppointmentService, PrescriptionDetailModel prescriptionDetail)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var deny = ForbidAppointmentIfNotOwner(patientAppointmentService, prescriptionDetail?.AppointmentId ?? 0);
+                if (deny != null)
+                    return deny;
+
+                var diagnosisModel = prescriptionService.SavePrescriptionDetail(prescriptionDetail, ref errorResponseModel);
+
+                if (diagnosisModel != null)
+                {
+                    return Ok(diagnosisModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
+        /// To get Prescription Remedy by rubric ID 
+        /// </summary>
+        /// <param name="diagnosisId"></param>
+        /// <returns></returns>
+        [HttpPost("GetPrescriptionRemedy")]
+        [ProducesResponseType(typeof(List<PrescriptionRemedyViewModel>), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        [OldApiContract]
+        public IActionResult GetPrescriptionRemedy([FromServices] IPrescriptionService prescriptionService, List<int?> rubricList)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var diagnosisModel = prescriptionService.GetPrescriptionRemedy(rubricList, ref errorResponseModel);
+
+                if (diagnosisModel != null)
+                {
+                    return Ok(diagnosisModel);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        private IActionResult ForbidAppointmentIfNotOwner(IPatientAppointmentService patientAppointmentService, int appointmentId)
+        {
+            if (appointmentId <= 0)
+                return BadRequest("AppointmentId is required.");
+
+            ErrorResponseModel lookupError = null;
+            var appointment = patientAppointmentService.GetPatientAppById(appointmentId, ref lookupError);
+            if (appointment == null)
+                return ReturnErrorResponse(lookupError);
+
+            return DoctorOwnership.ForbidIfNotOwner(User, appointment.DoctorId);
+        }
+
+#nullable restore
+        #endregion
     }
 }
