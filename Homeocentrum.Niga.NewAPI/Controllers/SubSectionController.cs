@@ -6,7 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using API.Extensions;
-using AutoMapper;
+using API.Mapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -30,12 +30,10 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     public class SubSectionController : BaseAPIController
     {
         private readonly ISubSectionRepository _subSectionService;
-        private readonly IMapper _mapper;
 
-        public SubSectionController(ISubSectionRepository subSectionService, IMapper mapper)
+        public SubSectionController(ISubSectionRepository subSectionService)
         {
             _subSectionService = subSectionService;
-            _mapper = mapper;
         }
 
         // /// <summary>
@@ -104,7 +102,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             try
             {
-                var Section = _mapper.Map<SubSectionMaster>(subSection);
+                var Section = subSection.ToSubSectionMaster();
                 _subSectionService.SaveSubSection(Section);
                 if (await _subSectionService.SaveAllAsync())
                 {
@@ -112,7 +110,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     {
                         foreach (var languageDetail in subSection.SubLanguageDetail)
                         {
-                            var language = _mapper.Map<SubSectionLanguageDetail>(languageDetail);
+                            var language = languageDetail.ToSubSectionLanguageDetail();
                             _subSectionService.SaveSubsectionlanguage(language);
                         }
                         await _subSectionService.SaveAllAsync();
@@ -164,7 +162,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             try
             {
                 var data = await _subSectionService.GetSubSectionById(updatesubsection.SubSectionId);
-                _mapper.Map(updatesubsection, data);
+                updatesubsection.CopyTo(data);
                 _subSectionService.UpdateSubSection(data);
                 if (await _subSectionService.SaveAllAsync())
                 {
@@ -173,7 +171,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                         foreach (var languageDetail in updatesubsection.SubLanguageDetail)
                         {
                             var languageDetails = await _subSectionService.GetSubLanguageById(languageDetail.SubSectionLanguageId);
-                            _mapper.Map(languageDetail, languageDetails);
+                            languageDetail.CopyTo(languageDetails);
                             _subSectionService.UpdateSubsectionlanguage(languageDetails);
                         }
                         await _subSectionService.SaveAllAsync();
@@ -186,7 +184,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                             foreach (var refSubSectionId in rubric.RefSubSectionId)
                             {
                                 var referencerubricDetails = await _subSectionService.GetReferenceRubricById((int)refSubSectionId);
-                                _mapper.Map(rubric, referencerubricDetails);
+                                rubric.CopyTo(referencerubricDetails);
                                 _subSectionService.UpdateReferenceRubric(referencerubricDetails);
                             }
                         }

@@ -1,7 +1,6 @@
 using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using System.Net;
 using API.Helpers;
-using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using ClosedXML.Excel;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
@@ -18,17 +17,14 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
     public class RemedyService : IRemedyService
     {
         private readonly NIGACentrumContext _context;
-        private readonly IMapper _mapper;
 
         /// <summary>
         /// Constructor for RemedyService
         /// </summary>
         /// <param name="_context">Database _context</param>
-        /// <param name="mapper">AutoMapper instance</param>
-        public RemedyService(NIGACentrumContext context, IMapper mapper)
+        public RemedyService(NIGACentrumContext context)
         {
             _context = context;
-            _mapper = mapper;
         }
 
         /// <summary>

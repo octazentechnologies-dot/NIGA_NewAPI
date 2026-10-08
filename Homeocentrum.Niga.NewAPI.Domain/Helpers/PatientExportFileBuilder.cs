@@ -116,7 +116,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Helpers
             document.Add(
                 new Paragraph(title)
                     .SetFontSize(12)
-                    .SetBold()
+                    .SimulateBold()
                     .SetMarginBottom(10)
             );
 
@@ -130,7 +130,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Helpers
                     new Cell()
                         .Add(new Paragraph(header))
                         .SetBackgroundColor(ColorConstants.LIGHT_GRAY)
-                        .SetBold()
+                        .SimulateBold()
                 );
             }
 

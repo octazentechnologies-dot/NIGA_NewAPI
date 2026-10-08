@@ -7,20 +7,15 @@ using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using API.Helpers;
-using AutoMapper;
-
 namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
 {
 
     public class SectionService : ISectionRepository, ISectionService
     {
         private readonly NIGACentrumContext _context;
-        private readonly IMapper _mapper;
-
-        public SectionService(NIGACentrumContext context, IMapper mapper)
+        public SectionService(NIGACentrumContext context)
         {
             _context = context;
-            _mapper = mapper;
         }
         public async Task<SectionMaster> GetSectionById(long sectionId)
         {

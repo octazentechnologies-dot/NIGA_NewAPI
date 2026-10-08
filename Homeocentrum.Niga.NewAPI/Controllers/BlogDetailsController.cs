@@ -1,5 +1,5 @@
 using API.Extensions;
-using AutoMapper;
+using API.Mapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
@@ -15,13 +15,11 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     public class BlogController : ControllerBase
     {
         private readonly IBlogDetailService _blogService;
-        private readonly IMapper _mapper;
         private readonly IWebHostEnvironment _env;
 
-        public BlogController(IBlogDetailService blogService, IMapper mapper, IWebHostEnvironment env)
+        public BlogController(IBlogDetailService blogService, IWebHostEnvironment env)
         {
             _blogService = blogService;
-            _mapper = mapper;
             _env = env;
         }
 
@@ -96,7 +94,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     blogDetail.BlogImage1 = await SaveBase64Image(blogDetail.Src1, UploadedMedia.Blogs);
                 if (!string.IsNullOrEmpty(blogDetail.Src2))
                     blogDetail.BlogImage2 = await SaveBase64Image(blogDetail.Src2, UploadedMedia.Blogs);
-                var Blog = _mapper.Map<BlogDetail>(blogDetail);
+                var Blog = blogDetail.ToBlogDetail();
                 _blogService.SaveBlog(Blog);
                 if (await _blogService.SaveAllAsync())
                 {
@@ -161,7 +159,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 }
 
                 // Map the updated fields into the existing entity
-                _mapper.Map(updateBlogDto, existingBlog);
+                updateBlogDto.CopyTo(existingBlog);
 
                 _blogService.UpdateBlog(existingBlog);
 

@@ -4,8 +4,6 @@ using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using System.IO;
 using System.Net;
 using API.Helpers;
-using AutoMapper;
-using AutoMapper.QueryableExtensions;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -28,18 +26,16 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
     public class SubSectionService : ISubSectionRepository, ISubSectionService
     {
         private readonly NIGACentrumContext _context;
-        private readonly IMapper _mapper;
         private readonly IWebHostEnvironment _env;
         private readonly IMemoryCache _cache;
         private readonly ILogger<SubSectionService> _logger;
         /// <summary>-1 unknown, 0 missing, 1 SearchNormalized is on the table FTS index.</summary>
         private static int _searchNormalizedFtsState = -1;
 
-        public SubSectionService(NIGACentrumContext centrumContext, IMapper mapper, IWebHostEnvironment env,
+        public SubSectionService(NIGACentrumContext centrumContext, IWebHostEnvironment env,
             IMemoryCache cache, ILogger<SubSectionService> logger)
         {
             _context = centrumContext;
-            _mapper = mapper;
             _env = env;
             _cache = cache;
             _logger = logger;
@@ -243,8 +239,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
             {
                 query = query.Where(x => x.SectionId == parameter.SectionId);
             }
-            return await PagedList<SubSectionList>.CreateAsync(query.ProjectTo<SubSectionList>(_mapper.ConfigurationProvider)
-                                   .AsNoTracking(), parameter.PageNumber, parameter.PageSize);
+            return await PagedList<SubSectionList>.CreateAsync(query.AsNoTracking(), parameter.PageNumber, parameter.PageSize);
         }
 
         public async Task<RubricKeywordSearchPagedResponse> SearchRubricsByKeywordAsync(

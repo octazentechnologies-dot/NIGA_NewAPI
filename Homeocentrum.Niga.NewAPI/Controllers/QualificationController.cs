@@ -1,5 +1,5 @@
 using API.Extensions;
-using AutoMapper;
+using API.Mapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Homeocentrum.Niga.NewAPI.Domain.Authorization;
@@ -18,12 +18,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     public class QualificationController : ControllerBase
     {
         private readonly IQualificationService _qualificationService;
-        private readonly IMapper _mapper;
-
-        public QualificationController(IQualificationService qualificationService, IMapper mapper)
+        public QualificationController(IQualificationService qualificationService)
         {
             _qualificationService = qualificationService;
-            _mapper = mapper;
         }
 
         /// <summary>
@@ -94,7 +91,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                     qualificationMasterDto.QualificationAlias = qualificationMasterDto.QualificationName;
                 }
 
-                var qualification = _mapper.Map<QualificationMaster>(qualificationMasterDto);
+                var qualification = qualificationMasterDto.ToQualificationMaster();
                 qualification.QualificationId = 0;
                 qualification.EnteredDate = DateTime.Now;
                 qualification.DeleteStatus = false;

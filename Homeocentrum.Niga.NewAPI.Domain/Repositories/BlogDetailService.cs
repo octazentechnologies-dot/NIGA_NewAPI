@@ -1,5 +1,4 @@
 using API.Helpers;
-using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
@@ -14,12 +13,9 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
     public class BlogService : IBlogDetailService
     {
         private readonly NIGACentrumContext _context;
-        private readonly IMapper _mapper;
-
-        public BlogService(NIGACentrumContext context, IMapper mapper)
+        public BlogService(NIGACentrumContext context)
         {
             _context = context;
-            _mapper = mapper;
         }
         public async Task<BlogDetail> GetBlogById(long blogId)
         {

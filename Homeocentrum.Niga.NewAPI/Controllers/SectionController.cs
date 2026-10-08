@@ -2,7 +2,7 @@ using Homeocentrum.Niga.NewAPI.Domain.Security;
 using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using API.Extensions;
-using AutoMapper;
+using API.Mapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
@@ -23,12 +23,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     public class SectionController : BaseAPIController
     {
         private readonly ISectionRepository _sectionService;
-        private readonly IMapper _mapper;
-
-        public SectionController(ISectionRepository sectionService, IMapper mapper)
+        public SectionController(ISectionRepository sectionService)
         {
             _sectionService = sectionService;
-            _mapper = mapper;
         }
 
         /// <summary>
@@ -85,7 +82,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             try
             {
-                var Section = _mapper.Map<SectionMaster>(SectionMasterDto);
+                var Section = SectionMasterDto.ToSectionMaster();
                 _sectionService.SaveSection(Section);
                 if (await _sectionService.SaveAllAsync())
                 {
@@ -120,7 +117,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             try
             {
                 var data = await _sectionService.GetSectionById(updateSectionDto.SectionId);
-                _mapper.Map(updateSectionDto, data);
+                updateSectionDto.CopyTo(data);
                 _sectionService.UpdateSection(data);
                  if (await _sectionService.SaveAllAsync())
                 {

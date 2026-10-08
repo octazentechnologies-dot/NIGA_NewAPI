@@ -6,19 +6,14 @@ using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using API.Helpers;
-using AutoMapper;
-
 namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
 {
     public class QualificationService : IQualificationService
     {
          private readonly NIGACentrumContext _context;
-        private readonly IMapper _mapper;
-
-        public QualificationService(NIGACentrumContext context, IMapper mapper)
+        public QualificationService(NIGACentrumContext context)
         {
             _context = context;
-            _mapper = mapper;
         }        public async Task<QualificationMaster> GetQualificationById(long qualificationId)
         {
             var errorResponseModel = new ErrorResponseModel();

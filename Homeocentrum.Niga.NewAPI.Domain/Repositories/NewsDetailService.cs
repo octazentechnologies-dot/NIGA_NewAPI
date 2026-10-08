@@ -3,7 +3,6 @@ using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
-using AutoMapper;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
 using API.Helpers;
 
@@ -12,12 +11,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
     public class NewsDetailService : INewsDetailService
     {
         private readonly NIGACentrumContext _context;
-        private readonly IMapper _mapper;
 
-        public NewsDetailService(NIGACentrumContext context, IMapper mapper)
+        public NewsDetailService(NIGACentrumContext context)
         {
             _context = context;
-            _mapper = mapper;
         }
 
         public async Task<NewsDetail> GetNewsById(long newsId)
@@ -67,12 +64,6 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Business.Implementation
         {
             news.IsActive = false;
             _context.Entry(news).State = EntityState.Modified;
-        }
-
-        public async Task<NewDetailModel1> GetNewsDetailsById(long newsId)
-        {
-            var news = await _context.NewsDetails.FirstOrDefaultAsync(x => x.NewsId == newsId && x.IsActive == true);
-            return _mapper.Map<NewDetailModel1>(news);
         }
 
         public async Task<bool> SaveAllAsync()

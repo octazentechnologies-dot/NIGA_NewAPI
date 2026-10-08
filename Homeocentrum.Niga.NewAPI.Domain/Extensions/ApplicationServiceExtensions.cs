@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using API.Mapper;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
 using Homeocentrum.Niga.NewAPI.Domain.Services;
 using Homeocentrum.Niga.NewAPI.Domain.Implementation;
@@ -54,7 +53,6 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Extensions
         public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration config)
         {
 
-            services.AddAutoMapper(typeof(AutoMapperProfiles).Assembly);
             services.AddScoped<ITokenService, TokenService>();
             services.AddSingleton<IJwtDenylistService, JwtDenylistService>();
             services.AddScoped<IAuditEventWriter, AuditEventWriter>();
@@ -330,8 +328,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Extensions
             services.AddHostedService<SmsOutboxWorker>();
             services.AddHostedService<DailyIssueMatrixEmailService>();
             services.AddHostedService<Logging.DiskSpaceMonitor>();
-            services.AddMvc()
-        .AddRazorRuntimeCompilation();
+            services.AddMvc();
 
 
             return services;

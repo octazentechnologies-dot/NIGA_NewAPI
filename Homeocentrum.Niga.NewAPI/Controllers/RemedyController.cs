@@ -2,7 +2,6 @@ using Homeocentrum.Niga.NewAPI.Domain.Security;
 using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using API.Extensions;
-using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
@@ -24,12 +23,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     public class RemedyController : BaseAPIController
     {
         private readonly IRemedyService _remedyService;
-        private readonly IMapper _mapper;
-
-        public RemedyController(IRemedyService remedyService, IMapper mapper)
+        public RemedyController(IRemedyService remedyService)
         {
             _remedyService = remedyService;
-            _mapper = mapper;
         }
 
         /// <summary>
@@ -86,7 +82,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             try
             {
-                var Remedy = _mapper.Map<RemedyMaster>(RemedyMaster);
+                var Remedy = RemedyMaster;
                 _remedyService.SaveRemedy(Remedy);
                 if (await _remedyService.SaveAllAsync())
                 {
@@ -121,7 +117,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             try
             {
                 var data = await _remedyService.GetRemedyById(updateRemedyDto.RemedyId);
-                _mapper.Map(updateRemedyDto, data);
                 _remedyService.UpdateRemedy(data);
                  if (await _remedyService.SaveAllAsync())
                 {

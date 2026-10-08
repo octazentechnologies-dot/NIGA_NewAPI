@@ -1,6 +1,6 @@
 using System;
 using System.Threading.Tasks;
-using AutoMapper;
+using API.Mapper;
 using Microsoft.Extensions.Logging;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
@@ -13,18 +13,15 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
     {
         private readonly IReceptionStaffRepository _repository;
         private readonly ITokenService _tokenService;
-        private readonly IMapper _mapper;
         private readonly ILogger<ReceptionStaffService> _logger;
 
         public ReceptionStaffService(
             IReceptionStaffRepository repository,
             ITokenService tokenService,
-            IMapper mapper,
             ILogger<ReceptionStaffService> logger)
         {
             _repository = repository;
             _tokenService = tokenService;
-            _mapper = mapper;
             _logger = logger;
         }
 
@@ -59,7 +56,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
                 return (false, "Contact number already exists.", null);
             }
 
-            var entity = _mapper.Map<DoctorReceptionStaff>(request);
+            var entity = request.ToDoctorReceptionStaff();
             entity.DoctorId = doctor.DoctorId;
             entity.UserId = request.UserID.Trim();
             entity.Password = ReceptionStaffPasswordHelper.HashPassword(request.Password);

@@ -7,7 +7,6 @@ using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using API.Helpers;
-using AutoMapper;
 
 namespace Homeocentrum.Niga.NewAPI.Domain.Services
 {
@@ -17,17 +16,14 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Services
     public class RemedyGradeService : IRemedyGradeRepository, IRemedyGradeService
     {
         private readonly NIGACentrumContext _context;
-        private readonly IMapper _mapper;
 
         /// <summary>
         /// Constructor for RemedyGradeService
         /// </summary>
         /// <param name="context">Database context</param>
-        /// <param name="mapper">AutoMapper instance</param>
-        public RemedyGradeService(NIGACentrumContext context, IMapper mapper)
+        public RemedyGradeService(NIGACentrumContext context)
         {
             _context = context;
-            _mapper = mapper;
         }
 
         /// <summary>

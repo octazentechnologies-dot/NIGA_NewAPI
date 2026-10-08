@@ -6,19 +6,14 @@ using Homeocentrum.Niga.NewAPI.Domain.Data;
 using Homeocentrum.Niga.NewAPI.Domain.Master;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using API.Helpers;
-using AutoMapper;
-
 namespace Homeocentrum.Niga.NewAPI.Domain.Repositories
 {
     public class QuestionSubGroupService : IQuestionSubGroupService
     {
         private readonly NIGACentrumContext _context;
-        private readonly IMapper _mapper;
-
-        public QuestionSubGroupService(NIGACentrumContext context, IMapper mapper)
+        public QuestionSubGroupService(NIGACentrumContext context)
         {
             _context = context;
-            _mapper = mapper;
         }
 
         public async Task<QuestionSubgroup> GetQuestionSubGroupById(long questionSubGroupId)

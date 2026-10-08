@@ -2,7 +2,6 @@ using Homeocentrum.Niga.NewAPI.Domain.Security;
 using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using API.Extensions;
-using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
@@ -23,12 +22,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     public class RemedyGradeController : BaseAPIController
     {
         private readonly IRemedyGradeRepository _remedyGradeService;
-        private readonly IMapper _mapper;
-
-        public RemedyGradeController(IRemedyGradeRepository remedyGradeService, IMapper mapper)
+        public RemedyGradeController(IRemedyGradeRepository remedyGradeService)
         {
             _remedyGradeService = remedyGradeService;
-            _mapper = mapper;
         }
 
         /// <summary>
@@ -85,7 +81,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             try
             {
-                var RemedyGrade = _mapper.Map<RemedyGradeMaster>(RemedyGradeMaster);
+                var RemedyGrade = RemedyGradeMaster;
                 _remedyGradeService.SaveRemedyGrade(RemedyGrade);
                 if (await _remedyGradeService.SaveAllAsync())
                 {
@@ -120,7 +116,6 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             try
             {
                 var data = await _remedyGradeService.GetRemedyGradeById(updateRemedyGradeDto.GradeId);
-                _mapper.Map(updateRemedyGradeDto, data);
                 _remedyGradeService.UpdateRemedyGrade(data);
                  if (await _remedyGradeService.SaveAllAsync())
                 {

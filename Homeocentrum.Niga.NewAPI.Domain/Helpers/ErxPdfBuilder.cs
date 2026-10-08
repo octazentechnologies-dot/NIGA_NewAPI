@@ -45,8 +45,8 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Helpers
             document.SetMargins(36, 36, 36, 36);
 
             document.Add(new Paragraph(string.IsNullOrWhiteSpace(header.ClinicName) ? "Niga Homeocentrum" : header.ClinicName)
-                .SetFontSize(16).SetBold().SetFontColor(Brand).SetMarginBottom(0));
-            document.Add(new Paragraph(header.DoctorName).SetFontSize(11).SetBold().SetMarginBottom(0));
+                .SetFontSize(16).SimulateBold().SetFontColor(Brand).SetMarginBottom(0));
+            document.Add(new Paragraph(header.DoctorName).SetFontSize(11).SimulateBold().SetMarginBottom(0));
             if (!string.IsNullOrWhiteSpace(header.ClinicContact))
                 document.Add(new Paragraph(header.ClinicContact).SetFontSize(9).SetMarginBottom(6));
 
@@ -58,10 +58,10 @@ namespace Homeocentrum.Niga.NewAPI.Domain.Helpers
                 .SetTextAlignment(TextAlignment.RIGHT));
             document.Add(meta);
 
-            document.Add(new Paragraph("Rx").SetFontSize(14).SetBold().SetMarginBottom(4));
+            document.Add(new Paragraph("Rx").SetFontSize(14).SimulateBold().SetMarginBottom(4));
             var table = new Table(UnitValue.CreatePercentArray(new float[] { 0.5f, 3, 1.2f, 1.6f, 1.4f, 2.6f })).UseAllAvailableWidth();
             foreach (var h in new[] { "#", "Remedy", "Potency", "Frequency", "Duration", "Instructions" })
-                table.AddHeaderCell(new Cell().Add(new Paragraph(h).SetBold().SetFontSize(9)).SetBackgroundColor(HeadFill));
+                table.AddHeaderCell(new Cell().Add(new Paragraph(h).SimulateBold().SetFontSize(9)).SetBackgroundColor(HeadFill));
             if (lines.Count == 0)
             {
                 table.AddCell(new Cell(1, 6).Add(new Paragraph("No remedies").SetFontSize(9)));

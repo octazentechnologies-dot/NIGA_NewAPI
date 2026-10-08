@@ -1,7 +1,7 @@
 using Homeocentrum.Niga.NewAPI.Domain.Business.Interface;
 using Homeocentrum.Niga.NewAPI.Domain.Errors;
 using API.Extensions;
-using AutoMapper;
+using API.Mapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -26,12 +26,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     public class QuestionSubGroupController : BaseAPIController
     {
         private readonly IQuestionSubGroupService _questionSubGroupService;
-        private readonly IMapper _mapper;
-
-        public QuestionSubGroupController(IQuestionSubGroupService questionSubGroupService, IMapper mapper)
+        public QuestionSubGroupController(IQuestionSubGroupService questionSubGroupService)
         {
             _questionSubGroupService = questionSubGroupService;
-            _mapper = mapper;
         }
 
         /// <summary>
@@ -88,7 +85,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             try
             {
-                var questionSubGroup = _mapper.Map<QuestionSubgroup>(questionSubGroupModel);
+                var questionSubGroup = questionSubGroupModel.ToQuestionSubgroup();
                 _questionSubGroupService.SaveQuestionSubGroup(questionSubGroup);
                 if (await _questionSubGroupService.SaveAllAsync())
                 {
@@ -120,7 +117,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             try
             {
                 var data = await _questionSubGroupService.GetQuestionSubGroupById(updateQuestionSubGroupModel.QuestionSubgroupId);
-                _mapper.Map(updateQuestionSubGroupModel, data);
+                updateQuestionSubGroupModel.CopyTo(data);
                 _questionSubGroupService.UpdateQuestionSubGroup(data);
                 if (await _questionSubGroupService.SaveAllAsync())
                 {

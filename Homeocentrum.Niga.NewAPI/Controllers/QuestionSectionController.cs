@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using API.Extensions;
-using AutoMapper;
+using API.Mapper;
 using Homeocentrum.Niga.NewAPI.Domain.DTOs;
 using Homeocentrum.Niga.NewAPI.Domain.Helpers;
 using Homeocentrum.Niga.NewAPI.Domain.Interfaces;
@@ -29,12 +29,9 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
     public class QuestionSectionController : BaseAPIController
     {
         private readonly IQuestionSectionService _questionSectionService;
-        private readonly IMapper _mapper;
-
-        public QuestionSectionController(IQuestionSectionService questionSectionService, IMapper mapper)
+        public QuestionSectionController(IQuestionSectionService questionSectionService)
         {
             _questionSectionService = questionSectionService;
-            _mapper = mapper;
         }
 
         /// <summary>
@@ -91,7 +88,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
         {
             try
             {
-                var questionSection = _mapper.Map<QuestionSectionMaster>(questionSectionModel);
+                var questionSection = questionSectionModel.ToQuestionSectionMaster();
                 _questionSectionService.SaveQuestionSection(questionSection);
                 if (await _questionSectionService.SaveAllAsync())
                 {
@@ -123,7 +120,7 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
             try
             {
                 var data = await _questionSectionService.GetQuestionSectionById(updateQuestionSectionModel.QuestionSectionId);
-                _mapper.Map(updateQuestionSectionModel, data);
+                updateQuestionSectionModel.CopyTo(data);
                 _questionSectionService.UpdateQuestionSection(data);
                 if (await _questionSectionService.SaveAllAsync())
                 {

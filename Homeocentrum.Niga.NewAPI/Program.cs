@@ -9,7 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using System.Threading.RateLimiting;
 using System.Security.Claims;
 using Homeocentrum.Niga.NewAPI.Domain.Data;
@@ -159,20 +159,9 @@ builder.Services.AddSwaggerGen(opt =>
     Scheme = "Bearer"
 });
 
-opt.AddSecurityRequirement(new OpenApiSecurityRequirement
+opt.AddSecurityRequirement(document => new OpenApiSecurityRequirement
 {
-    {
-        new OpenApiSecurityScheme
-        {
-            Reference = new OpenApiReference
-            {
-                Type = ReferenceType.SecurityScheme,
-                Id = "Bearer"
-            },
-            In = ParameterLocation.Header,
-        },
-        new string[] {}
-    }
+    [new OpenApiSecuritySchemeReference("Bearer", document)] = []
 });
 
 });
