@@ -11,7 +11,7 @@ namespace Homeocentrum.Niga.NewAPI.Domain.DTOs
         public long UserId { get; set; }
         [Required(ErrorMessage = "UserName is Required")]
         public string UserName { get; set; }
-        [Required(ErrorMessage = "User Password is Required")]
+        /// <summary>Required for a new user. On update, empty keeps the stored password (GET never returns it).</summary>
         public string UserPassword { get; set; }
         public bool UserStatus { get; set; }
         public string UserPhoto { get; set; }

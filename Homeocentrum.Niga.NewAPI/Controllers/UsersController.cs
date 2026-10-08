@@ -313,6 +313,12 @@ namespace Homeocentrum.Niga.NewAPI.Controllers
                 return BadRequest("Invalid request, please verify details");
             }
 
+            if (model.UserId <= 0 && string.IsNullOrWhiteSpace(model.UserPassword))
+            {
+                ModelState.AddModelError(nameof(UserModel.UserPassword), "User Password is Required");
+                return Homeocentrum.Niga.NewAPI.Domain.Logging.ApiProblem.Validation(ControllerContext);
+            }
+
             try
             {
                 var errorMessage = new ErrorResponseModel();

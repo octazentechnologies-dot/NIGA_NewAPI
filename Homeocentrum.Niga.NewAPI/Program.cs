@@ -334,6 +334,22 @@ app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Homeocentrum New API");
+    // Browsers keep swagger-ui files from older Swashbuckle releases without revalidating, and those reject
+    // "openapi": "3.0.4". Versioned asset URLs make every browser load the files that match this release.
+    var swaggerUiVersion = typeof(Swashbuckle.AspNetCore.SwaggerUI.SwaggerUIOptions).Assembly.GetName().Version?.ToString() ?? "0";
+    c.StylesPath = "./swagger-ui.css?v=" + swaggerUiVersion;
+    c.ScriptBundlePath = "./swagger-ui-bundle.js?v=" + swaggerUiVersion;
+    c.ScriptPresetsPath = "./swagger-ui-standalone-preset.js?v=" + swaggerUiVersion;
+    var defaultIndexStream = c.IndexStream;
+    c.IndexStream = () =>
+    {
+        using var reader = new StreamReader(defaultIndexStream());
+        var html = System.Text.RegularExpressions.Regex.Replace(
+            reader.ReadToEnd(),
+            @"((?:src|href)=""(?:\./)?index\.(?:js|css))""",
+            "$1?v=" + swaggerUiVersion + "\"");
+        return new MemoryStream(Encoding.UTF8.GetBytes(html));
+    };
     c.DocumentTitle = "Homeocentrum New API";
     c.HeadContent =
         "<link rel=\"icon\" type=\"image/png\" href=\"/favicon.png\" />" +
