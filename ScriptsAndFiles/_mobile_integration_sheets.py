@@ -12,7 +12,7 @@ from openpyxl.utils import get_column_letter
 
 HERE = Path(__file__).resolve().parent
 XLSX = HERE / "Homeocentrum_All_New_And_Updated+APIs.xlsx"
-NEW_CTRL = HERE.parents[0] / "Homeocentrum.Niga.NewAPI" / "Controllers"
+NEW_CTRL = HERE.parents[0] / "Homeocentrum.Niga.API" / "Controllers"
 OLD_CTRL = HERE.parents[1] / "NIGA_OldAPI" / "Homeocentrum.Niga.OldAPI" / "Controllers"
 
 spec = importlib.util.spec_from_file_location("devcols", HERE / "_add_developer_columns.py")
@@ -163,7 +163,7 @@ def load_enum_lists() -> dict[str, str]:
 def action_bodies(ctrl_dir: Path) -> tuple[dict[tuple[str, str], str], dict[tuple[str, str], list[tuple[str, str]]]]:
     found: dict[tuple[str, str], str] = {}
     produced: dict[tuple[str, str], list[tuple[str, str]]] = {}
-    for path in sorted(ctrl_dir.glob("*Controller.cs")):
+    for path in sorted(ctrl_dir.rglob("*Controller.cs")):
         if path.name == "BaseAPIController.cs":
             continue
         text = dev.strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
@@ -322,16 +322,16 @@ def catalog_rows(wb) -> list[dict]:
 def start_here_rows() -> list[list[str]]:
     return [
         ["Topic", "Confirmed from code", "Mobile handling"],
-        ["Which host", "Rows in All_APIs with Host = New-API are NIGA_NewAPI. Host = Old-API are NIGA_OldAPI. Use the host on the row. Do not switch a New API row to the Old API.", "Do not pick a host that the row does not name."],
-        ["Base URL in this file", "The Base URL column already on All_APIs. Local developers also run New API on http://127.0.0.1:5002 and Old API on http://127.0.0.1:5001.", "Use the Base URL column. Do not hard-code a host that is not in that column for the environment you were given."],
+        ["Which host", "Rows in All_APIs with Host = API are NIGA_API. Host = Old-API are NIGA_OldAPI. Use the host on the row. Do not switch a API row to the Old API.", "Do not pick a host that the row does not name."],
+        ["Base URL in this file", "The Base URL column already on All_APIs. Local developers also run API on http://127.0.0.1:5002 and Old API on http://127.0.0.1:5001.", "Use the Base URL column. Do not hard-code a host that is not in that column for the environment you were given."],
         ["Authorization header", "Protected actions use [Authorize]. Send Authorization: Bearer <token>.", "On 401, log in again. Do not reuse an expired token."],
-        ["Mobile login", "POST New API /api/Otp/RequestOtp with action Login, entityType Mobile, entityId and destination = the mobile. Then POST /api/Account/LoginWithOtp with otpChallengeId, code, and mobileNo. Success data.token is the JWT. CreateToken is called with 7 x 24 x 60 minutes.", "Do not call /api/Otp/VerifyOtp before LoginWithOtp. That uses the code up."],
-        ["Password login", "All_APIs lists POST /api/Account/Login on the New API. userName and password are required. CreateToken is called with 7 x 24 x 60 minutes. The Old API has the same path; it is not a separate row in this workbook. Mobile uses the New API base URL on that row.", "Same header after login: Authorization: Bearer <data.token>."],
+        ["Mobile login", "POST API /api/Otp/RequestOtp with action Login, entityType Mobile, entityId and destination = the mobile. Then POST /api/MobileDoctor/LoginWithOtp with otpChallengeId, code, and mobileNo. Success data.token is the JWT. CreateToken is called with 7 x 24 x 60 minutes.", "Do not call /api/Otp/VerifyOtp before LoginWithOtp. That uses the code up."],
+        ["Password login", "All_APIs lists POST /api/Account/Login on the API. userName and password are required. CreateToken is called with 7 x 24 x 60 minutes. The Old API has the same path; it is not a separate row in this workbook. Mobile uses the API base URL on that row.", "Same header after login: Authorization: Bearer <data.token>."],
         ["Refresh token", "LoginWithOtp returns AuthModel.Token. That action does not return a refresh token.", "Not Defined in Code for a refresh call. On 401, log in again."],
         ["Logout", "POST /api/Account/Logout exists on both APIs. The website calls both.", "Call the logout on the host that issued the token you are holding."],
-        ["Forgot password", "POST New API /api/Account/ForgotPasswordAccounts with email, then POST /api/Account/ForgotPassword with email and userId when more than one role exists.", "userId is the login id, not the role name."],
-        ["Patient created by doctor or reception", "POST New API /api/patient. patientID 0. patientName required. DoctorID is taken from the token for doctor and reception.", "This does not create a mobile app login."],
-        ["Patient from public booking", "POST /api/PatientAuth/RequestOtp then /api/PatientAuth/VerifyOtp, then POST /api/Public/Doctors/{id}/Bookings. If that mobile is not already a patient, the booking inserts a Patient row. VerifyOtp returns bookingSessionId, not a JWT.", "This is not app registration. There is no separate mobile register-account API in the New API controllers."],
+        ["Forgot password", "POST API /api/Account/ForgotPasswordAccounts with email, then POST /api/Account/ForgotPassword with email and userId when more than one role exists.", "userId is the login id, not the role name."],
+        ["Patient created by doctor or reception", "POST API /api/patient. patientID 0. patientName required. DoctorID is taken from the token for doctor and reception.", "This does not create a mobile app login."],
+        ["Patient from public booking", "POST /api/PatientAuth/RequestOtp then /api/PatientAuth/VerifyOtp, then POST /api/Public/Doctors/{id}/Bookings. If that mobile is not already a patient, the booking inserts a Patient row. VerifyOtp returns bookingSessionId, not a JWT.", "This is not app registration. There is no separate mobile register-account API in the API controllers."],
         ["401", "No token, bad token, or LoginWithOtp found no active user for the mobile.", "Show a login screen. Do not show a raw exception."],
         ["403", "Token is valid and the role or doctor ownership check failed.", "Do not retry with the same token. The message may name the rule."],
         ["Dates", "Patient save uses DateTime on dateOfBirth. The website sends YYYY-MM-DDT00:00:00.000Z. Age uses DateTime.Today. Several OTP and booking expiries use DateTime.UtcNow.", "Do not assume every date field is UTC. If a field's timezone is not in the action, it is Not Defined in Code."],
@@ -372,7 +372,7 @@ def enrich_actions(ctrl_dir: Path, actions: dict) -> None:
     """Fill method names and parameters when the nested-generic signature was missed."""
     if not ctrl_dir.exists():
         return
-    for path in sorted(ctrl_dir.glob("*Controller.cs")):
+    for path in sorted(ctrl_dir.rglob("*Controller.cs")):
         if path.name == "BaseAPIController.cs":
             continue
         text = dev.strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
@@ -461,7 +461,7 @@ def stacked_aliases(ctrl_dir: Path) -> list[tuple[tuple[str, str], tuple[str, st
     pairs = []
     if not ctrl_dir.exists():
         return pairs
-    for path in sorted(ctrl_dir.glob("*Controller.cs")):
+    for path in sorted(ctrl_dir.rglob("*Controller.cs")):
         if path.name == "BaseAPIController.cs":
             continue
         text = dev.strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
@@ -546,7 +546,7 @@ def append_model_fields(rows, method, path, classes, enum_first, type_name, pare
 
 def append_responses(rows, method, path, classes, enum_first, overlay, produced):
     key = (method, path.lower())
-    if key in {("POST", "/api/account/loginwithotp"), ("POST", "/api/account/login")}:
+    if key in {("POST", "/api/mobiledoctor/loginwithotp"), ("POST", "/api/account/login")}:
         otp = key[1].endswith("loginwithotp")
         rows.append([method, path, "object", "success", "bool", "Non-Nullable", "Set true on success.", "true", "Field", "Read Only", "Check before reading data."])
         rows.append([method, path, "object", "message", "string", "Nullable", "Login successful on the success path.", "Login successful", "Field", "Read Only", "May be shown."])
@@ -591,7 +591,7 @@ def append_responses(rows, method, path, classes, enum_first, overlay, produced)
 def main() -> None:
     classes, enum_first = dev.load_types()
     enum_lists = load_enum_lists()
-    new_actions = dev.extract_actions(NEW_CTRL, "New-API")
+    new_actions = dev.extract_actions(NEW_CTRL, "API")
     old_actions = dev.extract_actions(OLD_CTRL, "Old-API")
     enrich_actions(NEW_CTRL, new_actions)
     enrich_actions(OLD_CTRL, old_actions)
@@ -612,7 +612,7 @@ def main() -> None:
         method = method_of(raw_ep, item.get("Method Type", ""))
         path = dev.normalize_path(raw_ep)
         key = (method, path.lower())
-        host = item.get("Host", "New-API")
+        host = item.get("Host", "API")
         is_old = "old" in host.lower()
         action = (old_actions if is_old else new_actions).get(dev.path_key(method, path))
         body = (old_bodies if is_old else new_bodies).get(key, "")
@@ -675,7 +675,7 @@ def main() -> None:
             path,
             base,
             full_url(base, path),
-            "Old API" if "old" in host.lower() else "New API",
+            "Old API" if "old" in host.lower() else "API",
             item.get("New / Existing / Updated", ""),
             use,
             patient,
@@ -751,7 +751,7 @@ def main() -> None:
 
     contract_headers = [
         "API Name", "API Description", "Module", "Controller file", "HTTP Method", "Endpoint",
-        "Base URL", "Full URL", "Old API / New API", "Catalog status", "Mobile should use",
+        "Base URL", "Full URL", "Old API / API", "Catalog status", "Mobile should use",
         "Patient app", "Doctor mobile app", "Clinic web", "Purpose / When to call", "Who can call",
         "Authentication required", "Authorization / token note", "Deprecated", "Replacement API",
         "Required body fields", "Optional body fields", "Conditional body fields",
@@ -777,12 +777,12 @@ def main() -> None:
     write_sheet(wb, "Mobile_Response_Fields", response_headers, responses)
     write_sheet(wb, "Mobile_Status_Codes", status_headers, statuses)
     flows = [
-        ["1", "Mobile OTP login", "POST /api/Otp/RequestOtp", "Anonymous. action=Login, entityType=Mobile, entityId and destination = the mobile.", "otpChallengeId", "POST /api/Account/LoginWithOtp"],
-        ["2", "Mobile OTP login", "POST /api/Account/LoginWithOtp", "Send otpChallengeId, code, mobileNo. Do not call VerifyOtp first.", "data.token", "Any New API row whose Authentication required is Yes"],
-        ["3", "Password login", "POST /api/Account/Login", "New API row in this workbook. userName and password are both required. Token lifetime in this action is 7 days.", "data.token", "Protected calls on the same host."],
-        ["4", "Forgot password", "POST /api/Account/ForgotPasswordAccounts", "New API. Anonymous. Body email.", "userId when more than one account", "POST /api/Account/ForgotPassword"],
+        ["1", "Mobile OTP login", "POST /api/Otp/RequestOtp", "Anonymous. action=Login, entityType=Mobile, entityId and destination = the mobile.", "otpChallengeId", "POST /api/MobileDoctor/LoginWithOtp"],
+        ["2", "Mobile OTP login", "POST /api/MobileDoctor/LoginWithOtp", "Send otpChallengeId, code, mobileNo. Do not call VerifyOtp first.", "data.token", "Any API row whose Authentication required is Yes"],
+        ["3", "Password login", "POST /api/Account/Login", "API row in this workbook. userName and password are both required. Token lifetime in this action is 7 days.", "data.token", "Protected calls on the same host."],
+        ["4", "Forgot password", "POST /api/Account/ForgotPasswordAccounts", "API. Anonymous. Body email.", "userId when more than one account", "POST /api/Account/ForgotPassword"],
         ["5", "Forgot password", "POST /api/Account/ForgotPassword", "userId is Conditional: required only when that email has more than one login.", "Not Applicable", "POST /api/Account/ResetPassword with the token from the link"],
-        ["6", "Doctor or reception adds a patient", "POST /api/patient", "New API. patientID 0 and patientName required. Does not create an app login.", "patientID", "Not Defined in Code"],
+        ["6", "Doctor or reception adds a patient", "POST /api/patient", "API. patientID 0 and patientName required. Does not create an app login.", "patientID", "Not Defined in Code"],
         ["7", "Public booking can insert a patient", "POST /api/PatientAuth/RequestOtp", "Anonymous. This is booking, not app registration.", "otp challenge", "POST /api/PatientAuth/VerifyOtp"],
         ["8", "Public booking can insert a patient", "POST /api/PatientAuth/VerifyOtp", "Returns bookingSessionId. It does not return a JWT.", "bookingSessionId", "POST /api/Public/Doctors/{id}/Bookings"],
         ["9", "Logout", "POST /api/Account/Logout", "Call the host that issued the token.", "Not Applicable", "Not Applicable"],
@@ -829,7 +829,7 @@ EXTRA_HEADERS = [
     "API action name",
     "Controller",
     "Full URL",
-    "Old API or New API",
+    "Old API or API",
     "Mobile should use",
     "Authentication required",
     "Authorization",
@@ -931,8 +931,8 @@ def format_statuses(rows: list) -> str:
 def sequence_for(method: str, path: str) -> str:
     key = (method, path.lower())
     known = {
-        ("POST", "/api/otp/requestotp"): "Conditional. action Login then POST /api/Account/LoginWithOtp. Do not call VerifyOtp before LoginWithOtp.",
-        ("POST", "/api/account/loginwithotp"): "Previous: POST /api/Otp/RequestOtp. Pass otpChallengeId, code, and mobileNo. Next: protected APIs with data.token.",
+        ("POST", "/api/otp/requestotp"): "Conditional. action Login then POST /api/MobileDoctor/LoginWithOtp. Do not call VerifyOtp before LoginWithOtp.",
+        ("POST", "/api/mobiledoctor/loginwithotp"): "Previous: POST /api/Otp/RequestOtp. Pass otpChallengeId, code, and mobileNo. Next: protected APIs with data.token.",
         ("POST", "/api/account/login"): "No previous API. Next: protected APIs with data.token.",
         ("POST", "/api/account/forgotpasswordaccounts"): "Next: POST /api/Account/ForgotPassword. Pass userId when more than one account is returned.",
         ("POST", "/api/account/forgotpassword"): "Previous: POST /api/Account/ForgotPasswordAccounts. Next: POST /api/Account/ResetPassword with the token from the link.",
@@ -957,7 +957,7 @@ def extra_cells(contract_row: list, request_rows: list, response_rows: list, sta
     file_note = contract_row[27]
     query = contract_row[24]
     if auth_required == "Yes":
-        how = f"Authorization: Bearer <data.token>. Obtain the token from {host} POST /api/Account/Login or POST /api/Account/LoginWithOtp."
+        how = f"Authorization: Bearer <data.token>. Obtain the token from {host} POST /api/Account/Login or POST /api/MobileDoctor/LoginWithOtp."
     else:
         how = "No token. Do not send Authorization."
     role = (

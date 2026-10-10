@@ -14,11 +14,11 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = Path(__file__).resolve().parent / "Homeocentrum_All_New_And_Updated+APIs.xlsx"
 
 CTRL_DIRS = [
-    ROOT / "NIGA_NewAPI" / "Homeocentrum.Niga.NewAPI" / "Controllers",
+    ROOT / "NIGA_API" / "Homeocentrum.Niga.API" / "Controllers",
     ROOT / "NIGA_OldAPI" / "Homeocentrum.Niga.OldAPI" / "Controllers",
 ]
 SCAN_ROOTS = [
-    ROOT / "NIGA_NewAPI",
+    ROOT / "NIGA_API",
     ROOT / "NIGA_OldAPI",
 ]
 
@@ -38,14 +38,14 @@ Body:
 
 No text message is sent. The Msg91 key is empty, so there is no OTP provider. data.delivered can still be true: the API only queues the SMS and continues. Do not wait for a phone message. Do not read the code from the database. The database stores a hash, not the digits.
 
-The 6-digit code is data.devCode in this same JSON. The server adds data.devCode only when that New API process is running with ASPNETCORE_ENVIRONMENT=Development. Use data.otpChallengeId and data.devCode within 10 minutes.
+The 6-digit code is data.devCode in this same JSON. The server adds data.devCode only when that API process is running with ASPNETCORE_ENVIRONMENT=Development. Use data.otpChallengeId and data.devCode within 10 minutes.
 
-Then POST {NEW_HOST}/api/Account/LoginWithOtp
+Then POST {NEW_HOST}/api/MobileDoctor/LoginWithOtp
 {{"otpChallengeId": <data.otpChallengeId>, "code": "<data.devCode>", "mobileNo": "{MOBILE}"}}
 data.token is the JWT. Header after that: Authorization: Bearer <data.token>
 
 If POST {NEW_HOST}/api/Otp/RequestOtp returns 404, that published site does not have this action yet. Open {NEW_HOST}/swagger and use only the paths listed there. Account/Login on that host is the password login, not the mobile OTP login.
-If the response is 200 and data.devCode is missing, that host is Production. The code is not in the JSON and not on the phone, so LoginWithOtp cannot be completed on that host until the New API is started as Development or the Msg91 key is filled.
+If the response is 200 and data.devCode is missing, that host is Production. The code is not in the JSON and not on the phone, so LoginWithOtp cannot be completed on that host until the API is started as Development or the Msg91 key is filled.
 Do not call /api/Otp/VerifyOtp before LoginWithOtp. That uses the code up.
 Do not use /api/PatientAuth/RequestOtp or /api/PatientAuth/VerifyOtp. Those return bookingSessionId for public booking, not a JWT.
 """
@@ -101,7 +101,7 @@ THIN = Border(
     bottom=Side(style="thin", color="D9E2F3"),
 )
 
-LOGIN_HOWTO = f"""MOBILE APP LOGIN (patient app and doctor app). New API only.
+LOGIN_HOWTO = f"""MOBILE APP LOGIN (patient app and doctor app). API only.
 
 Step 1. POST {NEW_HOST}/api/Otp/RequestOtp
 Header: Content-Type: application/json
@@ -114,7 +114,7 @@ Success JSON: success true, data.otpChallengeId, data.expiresAt, data.channel, d
 The code is valid for 10 minutes. More than 3 requests in 1 minute returns 429. Wait and try again.
 5 wrong codes lock the challenge for 15 minutes.
 
-Step 2. POST {NEW_HOST}/api/Account/LoginWithOtp
+Step 2. POST {NEW_HOST}/api/MobileDoctor/LoginWithOtp
 Header: Content-Type: application/json
 Do not send Authorization.
 Body:
@@ -155,7 +155,7 @@ Send JSON with a lowercase first letter on each name (mobileNo, not MobileNo). I
 
 NO_TOKEN = """No Authorization header.
 This action is anonymous. Sending a leftover Bearer token is harmless on most of these actions, but do not require a login before calling it.
-App login, when you need it later, is New API POST /api/Otp/RequestOtp with action Login, then POST /api/Account/LoginWithOtp. See the login rows.
+App login, when you need it later, is API POST /api/Otp/RequestOtp with action Login, then POST /api/MobileDoctor/LoginWithOtp. See the login rows.
 POST /api/PatientAuth/RequestOtp and /api/PatientAuth/VerifyOtp do not log the app in. They only create a bookingSessionId.
 """
 
@@ -479,7 +479,7 @@ def extract_actions(ctrl_dir: Path, host: str) -> dict[tuple[str, str], dict]:
     found: dict[tuple[str, str], dict] = {}
     if not ctrl_dir.exists():
         return found
-    for path in sorted(ctrl_dir.glob("*Controller.cs")):
+    for path in sorted(ctrl_dir.rglob("*Controller.cs")):
         if path.name == "BaseAPIController.cs":
             continue
         raw = path.read_text(encoding="utf-8", errors="ignore")
@@ -678,9 +678,9 @@ def special_case(method: str, path: str) -> dict | None:
             "body": {"otpChallengeId": 1, "code": "123456"},
             "fields": "otpChallengeId number required. From RequestOtp data.otpChallengeId.\ncode string required. The 6-digit devCode or SMS code.",
             "success": {"success": True, "message": "OTP verified."},
-            "notes": "Do not use this as the mobile app login. It only marks the challenge used and returns no JWT. After this, LoginWithOtp rejects the same code as already used. Mobile login is RequestOtp (action Login) then Account/LoginWithOtp.",
+            "notes": "Do not use this as the mobile app login. It only marks the challenge used and returns no JWT. After this, LoginWithOtp rejects the same code as already used. Mobile login is RequestOtp (action Login) then MobileDoctor/LoginWithOtp.",
         },
-        ("POST", "/api/account/loginwithotp"): {
+        ("POST", "/api/mobiledoctor/loginwithotp"): {
             "body": login_otp_req,
             "fields": "otpChallengeId number required. data.otpChallengeId from RequestOtp.\ncode string required. data.devCode from RequestOtp. Max length 12.\nmobileNo string required. 7768046064. Must be the same mobile used in RequestOtp. Max length 20.",
             "success": login_otp_ok,
@@ -690,12 +690,12 @@ def special_case(method: str, path: str) -> dict | None:
             "body": {"userName": "Tufan_Patient", "password": "123456"},
             "fields": "userName string required. One of Tufan_Admin, Tufan_Doctor, Tufan_Reception, Tufan_Account, Tufan_Pharmacy, Tufan_Patient, Tufan_Caregiver.\npassword string required. Seed password on the Users sheet is 123456.",
             "success": login_otp_ok,
-            "notes": f"Password login. Same JSON on both hosts: POST {NEW_HOST}/api/Account/Login and POST {OLD_HOST}/api/Account/Login. The clinic website uses {OLD_HOST}. JSON names are userName and password. Mobile apps do not use this for the OTP screen. They call Otp/RequestOtp then Account/LoginWithOtp on {NEW_HOST}. Change userName to Tufan_Doctor, Tufan_Reception, Tufan_Admin, Tufan_Account, Tufan_Pharmacy, or Tufan_Caregiver when you need that role. Password for each is 123456.",
+            "notes": f"Password login. Same JSON on both hosts: POST {NEW_HOST}/api/Account/Login and POST {OLD_HOST}/api/Account/Login. The clinic website uses {OLD_HOST}. JSON names are userName and password. Mobile apps do not use this for the OTP screen. They call Otp/RequestOtp then MobileDoctor/LoginWithOtp on {NEW_HOST}. Change userName to Tufan_Doctor, Tufan_Reception, Tufan_Admin, Tufan_Account, Tufan_Pharmacy, or Tufan_Caregiver when you need that role. Password for each is 123456.",
         },
         ("GET", "/health"): {
             "body": None,
             "fields": "No body.",
-            "success": {"success": True, "status": "Healthy", "api": "New API"},
+            "success": {"success": True, "status": "Healthy", "api": "API"},
             "notes": f"No login. GET {NEW_HOST}/health and the same path on Old API {OLD_HOST}/health. Old API returns api = Old API. This is not counted by the rate limit. If the published host returns 404, that build does not expose /health; use {NEW_HOST}/swagger to see the live paths.",
         },
         ("POST", "/api/patientauth/requestotp"): {
@@ -708,13 +708,13 @@ def special_case(method: str, path: str) -> dict | None:
                 "destinationMasked": "******6064",
                 "devCode": "123456",
             },
-            "notes": "PUBLIC BOOKING ONLY. This does not log in the patient app or the doctor app. There is no token in this response. The challenge Action stored is PatientAuth, and Account/LoginWithOtp will reject it. Use it only before PatientAuth/VerifyOtp when the public site books a visit.",
+            "notes": "PUBLIC BOOKING ONLY. This does not log in the patient app or the doctor app. There is no token in this response. The challenge Action stored is PatientAuth, and MobileDoctor/LoginWithOtp will reject it. Use it only before PatientAuth/VerifyOtp when the public site books a visit.",
         },
         ("POST", "/api/patientauth/verifyotp"): {
             "body": {"mobile": MOBILE, "code": "123456"},
             "fields": "mobile string required. 7768046064.\ncode string required. devCode from PatientAuth/RequestOtp.",
             "success": {"success": True, "bookingSessionId": 1, "mobile": MOBILE},
-            "notes": "PUBLIC BOOKING ONLY. bookingSessionId is the OTP challenge id. It is not a JWT. Do not send it as Authorization. The patient app must not call this to enter the app. App entry is Otp/RequestOtp action Login, then Account/LoginWithOtp, then Authorization: Bearer data.token.",
+            "notes": "PUBLIC BOOKING ONLY. bookingSessionId is the OTP challenge id. It is not a JWT. Do not send it as Authorization. The patient app must not call this to enter the app. App entry is Otp/RequestOtp action Login, then MobileDoctor/LoginWithOtp, then Authorization: Bearer data.token.",
         },
     }
     return table.get(key)
@@ -912,7 +912,7 @@ def build_row(cells: dict[str, str], action: dict | None, classes: dict, enums: 
     howto = LOGIN_HOWTO if token else NO_TOKEN
     if special and special.get("notes") and path.lower() in {
         "/api/account/login",
-        "/api/account/loginwithotp",
+        "/api/mobiledoctor/loginwithotp",
         "/api/otp/requestotp",
         "/api/otp/verifyotp",
         "/api/patientauth/requestotp",
@@ -1090,8 +1090,8 @@ def fill_users(ws) -> None:
             f"Patient app and doctor app login host is {NEW_HOST}. Step 1 then Step 2. Do not use the Old API password URL for the mobile OTP screen. {OTP_TEST}",
             f"POST {NEW_HOST}/api/Otp/RequestOtp",
             dumps({"action": "Login", "entityType": "Mobile", "entityId": MOBILE, "destination": MOBILE}),
-            "HTTP 200. Save data.otpChallengeId. The 6-digit code is data.devCode, and only when the New API environment is Development. No SMS is sent while the Msg91 key is empty. data.delivered true does not mean the phone received a message. No JWT yet. 404 means this path is not on the published site; check /swagger.",
-            f"POST {NEW_HOST}/api/Account/LoginWithOtp",
+            "HTTP 200. Save data.otpChallengeId. The 6-digit code is data.devCode, and only when the API environment is Development. No SMS is sent while the Msg91 key is empty. data.delivered true does not mean the phone received a message. No JWT yet. 404 means this path is not on the published site; check /swagger.",
+            f"POST {NEW_HOST}/api/MobileDoctor/LoginWithOtp",
             dumps({"otpChallengeId": 1, "code": "<data.devCode>", "mobileNo": MOBILE}),
             f"HTTP 200. data.token is the JWT. data.userName is the display name ({NAME} when that is the user). Header after this: Authorization: Bearer <data.token>. Token lasts 7 days.",
             dumps({"userName": username, "password": "123456"}),
@@ -1115,9 +1115,9 @@ def readme_lines() -> list[str]:
     return [
         "Developer columns added 02-Oct-2026",
         "Columns to the right of the old Source doc column were added for web and mobile developers. Existing cells stay. Hosts in this workbook are the public API hosts.",
-        f"New API base: {NEW_HOST}/api    Old API base: {OLD_HOST}/api",
+        f"API base: {NEW_HOST}/api    Old API base: {OLD_HOST}/api",
         f"Sample person: {NAME}. Email: {EMAIL}. Mobile: {MOBILE}.",
-        f"Mobile app login: POST {NEW_HOST}/api/Otp/RequestOtp with action Login, then POST {NEW_HOST}/api/Account/LoginWithOtp. The JWT is data.token.",
+        f"Mobile app login: POST {NEW_HOST}/api/Otp/RequestOtp with action Login, then POST {NEW_HOST}/api/MobileDoctor/LoginWithOtp. The JWT is data.token.",
         OTP_TEST,
         f"Clinic web password login: POST {OLD_HOST}/api/Account/Login. Usernames and password 123456 are on Users & Login Details. JSON fields are userName and password.",
         "POST /api/PatientAuth/RequestOtp and POST /api/PatientAuth/VerifyOtp are public booking. They return bookingSessionId, not a JWT.",
@@ -1150,7 +1150,7 @@ def swap_published_hosts(wb) -> None:
         ("http://localhost:5001", OLD_HOST),
         ("https://127.0.0.1:5001", OLD_HOST),
         ("Old-API :5001", f"Old-API {OLD_HOST}"),
-        ("New-API :5002", f"New-API {NEW_HOST}"),
+        ("API :5002", f"API {NEW_HOST}"),
     )
     for ws in wb.worksheets:
         for row in ws.iter_rows():
@@ -1179,7 +1179,7 @@ def main() -> None:
     classes, enums = load_types()
     actions: dict[tuple[str, str], dict] = {}
     for folder in CTRL_DIRS:
-        parsed = extract_actions(folder, NEW_HOST if "NewAPI" in str(folder) else OLD_HOST)
+        parsed = extract_actions(folder, NEW_HOST if "NIGA_API" in str(folder) else OLD_HOST)
         for key, info in parsed.items():
             prev = actions.get(key)
             if prev is None or (info.get("body_type") and not prev.get("body_type")):

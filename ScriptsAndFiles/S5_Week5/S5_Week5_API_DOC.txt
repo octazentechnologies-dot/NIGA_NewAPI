@@ -1,10 +1,10 @@
 API documentation is only in:
 
-  NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
+  NIGA_API/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
 
 This .txt file is not an API catalog. Open the Excel workbook and filter column Week = S5_Week5.
 
-Rebuild: python NIGA_NewAPI/ScriptsAndFiles/_rebuild_api_catalog_xlsx.py
+Rebuild: python NIGA_API/ScriptsAndFiles/_rebuild_api_catalog_xlsx.py
 
 Week 5 database scripts (run in order on HomeoCentrum_Dev):
 

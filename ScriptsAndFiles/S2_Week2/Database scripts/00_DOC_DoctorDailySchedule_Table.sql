@@ -4,7 +4,7 @@ Author       : Tufan Powar
 Created      : 07-10-2026
 Script       : 00_DOC_DoctorDailySchedule_Table.sql
 Purpose      : Per-day working hours and slot interval for a doctor.
-               Read by New API slots (Public/Doctors/{id}/Slots, reception and
+               Read by API slots (Public/Doctors/{id}/Slots, reception and
                doctor schedule). Script 10 and S3 01 expect this table to exist.
 Use          : Run first in S2_Week2, before 01–28. Safe on any environment.
                S3_Week3 01_S3_Week3_Schema.sql adds BreakStartTime / BreakEndTime.

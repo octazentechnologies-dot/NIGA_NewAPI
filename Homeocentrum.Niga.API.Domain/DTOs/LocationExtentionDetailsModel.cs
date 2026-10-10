@@ -1,0 +1,23 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Homeocentrum.Niga.API.Domain.DTOs
+{
+    public class LocationExtentionDetailsModel
+    {
+        public LocationExtentionDetailsModel()
+        {
+            LocationExtentionRubricDetails = new List<LocationExtentionRubricDetailsModel>();
+        }
+
+        public int LocationExtentionDetailsId { get; set; }
+        public string LocationExtentionDetailsKeyword { get; set; }
+        public int DiagnosisId { get; set; }
+        public bool? DeletedStatus { get; set; }
+
+        public virtual List<LocationExtentionRubricDetailsModel> LocationExtentionRubricDetails { get; set; }
+        public List<int>? SectionIds { get; set; }
+        public List<SectionViewModel>? Sections { get; set; }
+    }
+}

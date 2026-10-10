@@ -1,0 +1,231 @@
+using API.Extensions;
+using API.Mapper;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Homeocentrum.Niga.API.Domain.Authorization;
+using Homeocentrum.Niga.API.Domain.DTOs;
+using Homeocentrum.Niga.API.Domain.Helpers;
+using Homeocentrum.Niga.API.Domain.Interfaces;
+using Homeocentrum.Niga.API.Domain.Master;
+
+namespace Homeocentrum.Niga.API.Controllers
+{
+    /// <summary>
+    /// APIs for Qualification entity 
+    /// </summary>
+    [Route("api/qualification")]
+    [ApiController]
+    public class QualificationController : ControllerBase
+    {
+        private readonly IQualificationService _qualificationService;
+        public QualificationController(IQualificationService qualificationService)
+        {
+            _qualificationService = qualificationService;
+        }
+
+        /// <summary>
+        /// To get qualification by Qualification ID 
+        /// </summary>
+        /// <param name="qualificationId"></param>
+        /// <returns></returns>
+        [HttpGet("GetQualificationDetailsById/{qualificationId}")]
+        public async Task<object> GetQualificationById(long qualificationId)
+        {
+            try
+            {
+                var qualificationModel = await _qualificationService.GetQualificationDetailsById(qualificationId);
+
+                if (qualificationModel != null)
+                {
+                    return new
+                    {
+                        Status = 200,
+                        Data = qualificationModel
+                    };
+                }
+                else
+                {
+                    return new
+                    {
+                        Status = 400,
+                        Data = "No Data Found"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                return SafeError.Capture(ex, HttpContext);
+            }
+        }
+
+        /// <summary>
+        /// To get all Qualifications
+        /// </summary>
+        /// <returns></returns>
+        [HttpGet("GetQualificationList")]
+        public async Task<List<QualificationModel>> ShowQualificationList([FromQuery] ParameterParams parameterParams)
+        {
+            var qualificationList = await _qualificationService.GetAllQualifications(parameterParams);
+            Response.AddPaginationHeader(qualificationList.CurrentPage, qualificationList.PageSize,
+                    qualificationList.TotalCount, qualificationList.TotalPages);
+            return qualificationList;
+        }
+
+        [HttpPost("AddQualification")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        public async Task<object> AddNewQualification(QualificationModel qualificationMasterDto)
+        {
+            try
+            {
+                if (qualificationMasterDto == null || string.IsNullOrWhiteSpace(qualificationMasterDto.QualificationName))
+                {
+                    return new
+                    {
+                        Status = 400,
+                        Message = "Qualification Name is required"
+                    };
+                }
+
+                if (string.IsNullOrWhiteSpace(qualificationMasterDto.QualificationAlias))
+                {
+                    qualificationMasterDto.QualificationAlias = qualificationMasterDto.QualificationName;
+                }
+
+                var qualification = qualificationMasterDto.ToQualificationMaster();
+                qualification.QualificationId = 0;
+                qualification.EnteredDate = DateTime.Now;
+                qualification.DeleteStatus = false;
+                _qualificationService.SaveQualification(qualification);
+                if (await _qualificationService.SaveAllAsync())
+                {
+                    return new
+                    {
+                        Status = 200,
+                        Message = "Data Added Successfully"
+                    };
+                }
+                else
+                {
+                    return new
+                    {
+                        Status = 400,
+                        Message = "Failed To Add Data"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                return SafeError.Capture(ex, HttpContext);
+            }
+        }
+
+        [HttpPost("UpdateQualificationDetails")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        public async Task<object> UpdateQualificationDetails(QualificationModel updateQualificationDto)
+        {
+            try
+            {
+                var data = await _qualificationService.GetQualificationById(updateQualificationDto.QualificationId);
+                if (data == null)
+                {
+                    return new
+                    {
+                        Status = 404,
+                        Message = "Qualification not found"
+                    };
+                }
+
+                if (string.IsNullOrWhiteSpace(updateQualificationDto.QualificationAlias))
+                {
+                    updateQualificationDto.QualificationAlias = updateQualificationDto.QualificationName;
+                }
+
+                data.QualificationName = updateQualificationDto.QualificationName;
+                data.QualificationAlias = updateQualificationDto.QualificationAlias;
+                data.Description = updateQualificationDto.Description;
+                data.DegreeLevel = updateQualificationDto.DegreeLevel;
+                data.ChangedBy = updateQualificationDto.ChangedBy;
+                data.ChangedDate = DateTime.Now;
+                _qualificationService.UpdateQualification(data);
+                if (await _qualificationService.SaveAllAsync())
+                {
+                    return new
+                    {
+                        Status = 200,
+                        Message = "Data Updated Successfully"
+                    };
+                }
+                else
+                {
+                    return new
+                    {
+                        Status = 400,
+                        Message = "Failed To Update Data"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                return Ok(SafeError.Capture(ex, HttpContext));
+            }
+        }
+
+        [HttpPost("DeleteQualificationDetails/{Id}")]
+        [Authorize(Policy = AdminAuthorizationPolicies.AdminPortal)]
+        public async Task<object> DeleteQualificationDetails(int Id)
+        {
+            var data = await _qualificationService.GetQualificationById(Id);
+            try
+            {
+                _qualificationService.DeleteQualification(data);
+                if (await _qualificationService.SaveAllAsync())
+                {
+                    return new
+                    {
+                        Status = 200,
+                        Message = "Data Deleted Successfully"
+                    };
+                }
+                else
+                {
+                    return new
+                    {
+                        Status = 400,
+                        Message = "Failed To Delete Data"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        [HttpGet]
+        [Route("GetAllQualificationsByFilter")]
+        [ProducesResponseType(typeof(QualificationModel), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        public IActionResult GetAllQualificationsByFilter(string search)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var qualificationModel = _qualificationService.GetAllQualificationsByFilter(search, ref errorResponseModel);
+
+                if (qualificationModel != null)
+                {
+                    return Ok(qualificationModel);
+                }
+                return BadRequest(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+       
+    }
+}

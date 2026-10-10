@@ -2,9 +2,9 @@
 
 Week 1 / 2 / 3 / 4 / 5 SQL lives under ScriptsAndFiles. Address location scripts are `S4_Week4/Database scripts/05` through `11`.
 
-**`NIGA_NewAPI/ScriptsAndFiles/S1_Week1`**  
-**`NIGA_NewAPI/ScriptsAndFiles/S2_Week2`**  
-**`NIGA_NewAPI/ScriptsAndFiles/S3_Week3`**
+**`NIGA_API/ScriptsAndFiles/S1_Week1`**  
+**`NIGA_API/ScriptsAndFiles/S2_Week2`**  
+**`NIGA_API/ScriptsAndFiles/S3_Week3`**
 
 See `../ScriptsAndFiles/README.md` for run order.
 

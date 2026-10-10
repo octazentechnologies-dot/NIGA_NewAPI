@@ -1,6 +1,6 @@
 # Incident response and key rotation runbook
 
-Applies to the Homeocentrum UI, New API (`newapi`, port 5002), Old API (`oldapi`, port 5001) and the SQL Server databases.
+Applies to the Homeocentrum UI, API (`newapi`, port 5002), Old API (`oldapi`, port 5001) and the SQL Server databases.
 Keep a printed copy. Never paste secret values into tickets, chat, email or AI tools. Refer to secrets by their configuration name.
 
 ## 1. Contacts (fill in and keep current)
@@ -89,14 +89,14 @@ Edit `appsettings.json` on the server (`C:\inetpub\homeocentrum\newapi` and `...
 
 | # | Secret (configuration name) | Where | Effect of rotating | Steps |
 |---|---|---|---|---|
-| 5.1 | `TokenKey` (New API signing key) **and** `JWT:Secret` (Old API signing key) | New and Old `appsettings.json` | Every signed-in user must sign in again | These two must hold the **same value**: the UI uses Old API tokens on the New API, and both APIs derive the default audit key (`tk1`) from it. First do 5.2 if `SecurityAudit:HmacKey` is not set yet. Then put the old value in New `SecurityAudit:PreviousKeys:tk1`, set the new value in both files, recycle both pools, sign in, and check audit Verify is `intact` |
+| 5.1 | `TokenKey` (API signing key) **and** `JWT:Secret` (Old API signing key) | New and Old `appsettings.json` | Every signed-in user must sign in again | These two must hold the **same value**: the UI uses Old API tokens on the API, and both APIs derive the default audit key (`tk1`) from it. First do 5.2 if `SecurityAudit:HmacKey` is not set yet. Then put the old value in New `SecurityAudit:PreviousKeys:tk1`, set the new value in both files, recycle both pools, sign in, and check audit Verify is `intact` |
 | 5.2 | `SecurityAudit:HmacKey` with `SecurityAudit:KeyId` | Both `appsettings.json` | None for users | Same value and id in both APIs. Choose a new id (`k2`, `k3`...). Move the previous key to New `SecurityAudit:PreviousKeys:<oldId>`; never delete retired keys while their rows exist, or Verify reports an unknown key |
 | 5.3 | `Razorpay:KeyId`, `Razorpay:KeySecret`, `Razorpay:WebhookSecret` | Both APIs (Old API now reads `Razorpay:*` instead of a hardcoded value) and the UI checkout key id | Payments fail until both sides use the new pair | Regenerate in the Razorpay dashboard, update both APIs and the UI key id, redeploy the UI, make a test payment in test mode first |
 | 5.4 | `ConnectionStrings:DefaultConnection` passwords | Both APIs, any scripts, backups jobs | API down for the minutes between change and recycle | Change the SQL login password, update both files, recycle. Prefer Windows/managed identity over SQL passwords |
 | 5.5 | `smtp` passwords (mail and ErrorAlert) | Both APIs | Mail stops until updated | Change at the mail provider (use an app password), update, recycle, send a test alert |
 | 5.6 | `SwaggerAuth:Password` | Both APIs | Developers sign in to Swagger again | Update and recycle |
-| 5.7 | `WhatsAppMeta:AccessToken`, `WhatsAppMeta:AppSecret` | New API | WhatsApp sends and receipts stop until updated | Regenerate in Meta Business; the receipt webhook stays closed (503) while `AppSecret` is empty |
-| 5.8 | `Sms:AuthKey`, `Twilio:AccountSid`/`AuthToken`, `TeleVideo:*` keys (Twilio API key, Daily, 100ms) | New API | SMS / video calls fail until updated | Regenerate at each provider and update |
+| 5.7 | `WhatsAppMeta:AccessToken`, `WhatsAppMeta:AppSecret` | API | WhatsApp sends and receipts stop until updated | Regenerate in Meta Business; the receipt webhook stays closed (503) while `AppSecret` is empty |
+| 5.8 | `Sms:AuthKey`, `Twilio:AccountSid`/`AuthToken`, `TeleVideo:*` keys (Twilio API key, Daily, 100ms) | API | SMS / video calls fail until updated | Regenerate at each provider and update |
 
 Old `GlobalConstants.AuthKey` was removed from the code on 2026-10-07 together with the retired `/api/login/authenticate` endpoint. It remains in git history and must be treated as public.
 

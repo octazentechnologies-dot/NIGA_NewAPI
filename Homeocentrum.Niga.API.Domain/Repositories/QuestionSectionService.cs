@@ -1,0 +1,174 @@
+using Microsoft.EntityFrameworkCore;
+using Homeocentrum.Niga.API.Domain.Interfaces;
+using Homeocentrum.Niga.API.Domain.DTOs;
+using System.Net;
+using Homeocentrum.Niga.API.Domain.Data;
+using Homeocentrum.Niga.API.Domain.Master;
+using Homeocentrum.Niga.API.Domain.Helpers;
+using API.Helpers;
+namespace Homeocentrum.Niga.API.Domain.Repositories
+{
+    public class QuestionSectionService : IQuestionSectionService
+    {
+        private readonly NIGACentrumContext _context;
+        public QuestionSectionService(NIGACentrumContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<QuestionSectionMaster> GetQuestionSectionById(long questionSectionId)
+        {
+            var errorResponseModel = new ErrorResponseModel();
+            var questionSectionEntity = await _context.QuestionSectionMasters.FirstOrDefaultAsync(x => x.QuestionSectionId == questionSectionId && !x.DeleteStatus);
+            if (questionSectionEntity == null)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "Question section not found";
+            }
+            return questionSectionEntity;
+        }
+
+        public async Task<PagedList<QuestionSectionModel>> GetAllQuestionSections(ParameterParams parameter)
+        {
+            var questionSectionModelQuery = (from x in _context.QuestionSectionMasters
+                                           select new QuestionSectionModel
+                                           {
+                                               QuestionSectionId = x.QuestionSectionId,
+                                               QuestionSectionName = x.QuestionSectionName,
+                                               Description = x.Desciption,
+                                               EnteredBy = x.EnteredBy,
+                                               EnteredDate = x.EnteredDate,
+                                               ChangedBy = x.ChangedBy,
+                                               ChangedDate = x.ChangedDate,
+                                               DeleteStatus = x.DeleteStatus
+                                           }).AsQueryable();
+
+            if (!string.IsNullOrEmpty(parameter.search))
+            {
+                questionSectionModelQuery = questionSectionModelQuery.Where(x => x.QuestionSectionName.ToLower().Contains(parameter.search.ToLower()));
+            }
+
+            return await PagedList<QuestionSectionModel>.CreateAsync(questionSectionModelQuery.AsNoTracking(), parameter.PageNumber, parameter.PageSize);
+        }
+
+       
+        public void SaveQuestionSection(QuestionSectionMaster questionSection)
+        {
+            _context.Entry(questionSection).State = EntityState.Added;
+        }
+
+        public void UpdateQuestionSection(QuestionSectionMaster questionSection)
+        {
+            _context.Entry(questionSection).State = EntityState.Modified;
+        }
+
+        public void DeleteQuestionSection(QuestionSectionMaster questionSection)
+        {
+            questionSection.DeleteStatus = true;
+            _context.Entry(questionSection).State = EntityState.Modified;
+        }
+
+        public async Task<QuestionSectionModel> GetQuestionSectionDetailsById(long questionSectionId)
+        {
+            var questionSectionDetails = await (from q in _context.QuestionSectionMasters
+                                              where q.QuestionSectionId == questionSectionId && q.DeleteStatus == false
+                                              select new QuestionSectionModel
+                                              {
+                                                  QuestionSectionId = q.QuestionSectionId,
+                                                  QuestionSectionName = q.QuestionSectionName,
+                                                  Description = q.Desciption,
+                                                  DeleteStatus = q.DeleteStatus
+                                              })
+                                            .FirstOrDefaultAsync();
+            return questionSectionDetails;
+        }
+
+        public async Task<bool> SaveAllAsync()
+        {
+            return await _context.SaveChangesAsync() > 0;
+        }
+
+        public async Task<List<QuestionSectionModel>> GetQuestionSectionDD(string? search)
+        {
+            var questionSectionModelQuery = await (from x in _context.QuestionSectionMasters
+                                                 select new QuestionSectionModel
+                                                 {
+                                                     QuestionSectionId = x.QuestionSectionId,
+                                                     QuestionSectionName = x.QuestionSectionName,
+                                                     Description = x.Desciption,
+                                                     DeleteStatus = x.DeleteStatus
+                                                 }).ToListAsync();
+
+            if (!string.IsNullOrEmpty(search))
+            {
+                questionSectionModelQuery = questionSectionModelQuery.Where(x => x.QuestionSectionName.ToLower().Contains(search.ToLower())).ToList();
+            }
+
+            return questionSectionModelQuery;
+        }
+
+
+        #region Old API compatible overloads
+#nullable disable
+
+        /// <summary>
+        /// Method is used for delete question Section.
+        /// </summary>
+        /// <param name="diagnosisModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string DeleteQuestionSection(QuestionSectionModel questionSectionModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            var questionsectionEntity = _context.QuestionSectionMasters.FirstOrDefault(x => x.QuestionSectionId == questionSectionModel.QuestionSectionId);
+            if (questionsectionEntity != null)
+            {
+                questionsectionEntity.DeleteStatus = questionSectionModel.DeleteStatus;
+                questionsectionEntity.ChangedBy = questionSectionModel.EnteredBy;
+                questionsectionEntity.ChangedDate = DateTime.Now;
+                _context.SaveChanges();
+                Message = "Question Section Deleted Successfully";
+            }
+            return Message;
+        }
+
+        /// <summary>
+        /// Method implementation for saving new Question Section
+        /// </summary>
+        /// <param name="questionSectionModel"></param>
+        /// <param name="errorResponseModel"></param>
+        /// <returns></returns>
+        public string SaveQuestionSection(QuestionSectionModel questionSectionModel, ref ErrorResponseModel errorResponseModel)
+        {
+            string Message = "";
+            if (questionSectionModel.QuestionSectionId == 0)
+            {
+                QuestionSectionMaster questionsectionEntity = new QuestionSectionMaster();
+                questionsectionEntity.QuestionSectionName = questionSectionModel.QuestionSectionName;
+                questionsectionEntity.Desciption = questionSectionModel.Description;
+                questionsectionEntity.EnteredBy = questionSectionModel.EnteredBy;
+                questionsectionEntity.EnteredDate = DateTime.Now;
+                _context.QuestionSectionMasters.Add(questionsectionEntity);
+                _context.SaveChanges();
+                Message = "Question Section Saved Successfully";
+            }
+            else
+            {
+                var questionsectionEntity = _context.QuestionSectionMasters.FirstOrDefault(x => x.QuestionSectionId == questionSectionModel.QuestionSectionId);
+                if (questionsectionEntity != null)
+                {
+                    questionsectionEntity.QuestionSectionName = questionSectionModel.QuestionSectionName;
+                    questionsectionEntity.Desciption = questionSectionModel.Description;
+                    questionsectionEntity.ChangedBy = questionSectionModel.EnteredBy;
+                    questionsectionEntity.ChangedDate = DateTime.Now;
+                    _context.SaveChanges();
+                    Message = "Question Section Updated Successfully";
+                }
+            }
+            return Message;
+        }
+
+#nullable restore
+        #endregion
+    }
+}

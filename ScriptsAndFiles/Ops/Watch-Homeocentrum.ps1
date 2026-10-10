@@ -7,7 +7,7 @@
   The APIs cannot report IIS itself being stopped, so this script checks from outside:
     - Windows services W3SVC and WAS
     - IIS app pools and sites HomeocentrumUI, HomeocentrumOldAPI, HomeocentrumNewAPI
-    - HTTP: UI on port 80, Old API on 5001, New API on 5002
+    - HTTP: UI on port 80, Old API on 5001, API on 5002
     - Free disk space: DOWN when a fixed drive has DiskSpaceAlert:MinFreePercent (default 10) or less free.
       DiskSpaceAlert:Drives in the same appsettings.json limits the drives; -MinFreePercent overrides the percentage.
     - New IIS / ASP.NET Core Module error events since the last run
@@ -15,7 +15,7 @@
   -Mode Startup (scheduled at boot) mails "server restarted", including whether the previous shutdown was unexpected
   (power loss or crash), since that cannot be mailed from this machine while it is off.
 
-  SMTP settings and recipients are read at run time from the deployed New API appsettings.json (smtp + ErrorAlert:Recipients).
+  SMTP settings and recipients are read at run time from the deployed API appsettings.json (smtp + ErrorAlert:Recipients).
   Secrets are never printed or logged.
 
 .EXAMPLE

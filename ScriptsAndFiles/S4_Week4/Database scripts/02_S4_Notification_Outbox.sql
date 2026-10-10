@@ -1,7 +1,7 @@
 /*
 S4 Week 4 — step 2 of 4. Run after 01_S4_Week4_Schema.sql and before 03_S4_Week4_Menus.sql.
 PAY-04.04 / APT notify outbox.
-SMS and WhatsApp rows wait here until Msg91 / WhatsAppMeta keys are filled in New-API appsettings.
+SMS and WhatsApp rows wait here until Msg91 / WhatsAppMeta keys are filled in API appsettings.
 Idempotent. A missing provider does not roll back a cancel or reschedule.
 */
 SET NOCOUNT ON;

@@ -15,7 +15,7 @@
   3. Execute entire script (F5) — takes 2-10 minutes
 
   AFTER SQL:
-  - Deploy New_API (publish to server)
+  - Deploy NIGA_API (publish to server)
   - Deploy NigaHomeopathy-UI (npm run build)
   - Run post-deploy API calls (embeddings build, KG bootstrap) — see deployment guide
 ================================================================================
@@ -3014,6 +3014,6 @@ GO
 PRINT '';
 PRINT '================================================================';
 PRINT ' V4 ENTERPRISE ALL-IN-ONE SQL DEPLOY — FINISHED OK';
-PRINT ' Next: deploy New_API + UI, then run embedding/KG API calls.';
+PRINT ' Next: deploy NIGA_API + UI, then run embedding/KG API calls.';
 PRINT '================================================================';
 GO

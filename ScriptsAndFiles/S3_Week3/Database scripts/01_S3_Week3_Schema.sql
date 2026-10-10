@@ -5,7 +5,7 @@ Created      : 22-09-2026
 Script       : 01_S3_Week3_Schema.sql
 Purpose      : S3 Week 3 schema. Does not rewrite existing VisitType / ConsultMode.
                Does not touch Razorpay tables. No SMS / WhatsApp config.
-Use          : HomeoCentrum_Dev. Idempotent. Run before the New-API restart.
+Use          : HomeoCentrum_Dev. Idempotent. Run before the API restart.
 ================================================================================
 */
 SET NOCOUNT ON;

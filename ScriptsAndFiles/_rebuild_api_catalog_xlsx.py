@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Rebuild NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
+Rebuild NIGA_API/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx
 as the single API documentation source (controllers + preserved sample payloads).
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 ROOT = Path(__file__).resolve().parents[2]
-NEW_CTRL = ROOT / "NIGA_NewAPI" / "Homeocentrum.Niga.NewAPI" / "Controllers"
+NEW_CTRL = ROOT / "NIGA_API" / "Homeocentrum.Niga.API" / "Controllers"
 OUT = Path(__file__).resolve().parent / "Homeocentrum_All_New_And_Updated+APIs.xlsx"
 EXISTING = OUT
 
@@ -96,7 +96,7 @@ def strip_source_comments(text: str) -> str:
 
 def extract_controllers(ctrl_dir: Path) -> list[dict]:
     rows: list[dict] = []
-    for path in sorted(ctrl_dir.glob("*Controller.cs")):
+    for path in sorted(ctrl_dir.rglob("*Controller.cs")):
         if path.name == "BaseAPIController.cs":
             continue
         text = strip_source_comments(path.read_text(encoding="utf-8", errors="ignore"))
@@ -137,7 +137,7 @@ def extract_controllers(ctrl_dir: Path) -> list[dict]:
                     "file": path.name,
                     "controller": ctrl_name,
                     "token": "no" if anon else "yes",
-                    "host": "New-API",
+                    "host": "API",
                 }
             )
     return rows
@@ -354,7 +354,7 @@ def sample_response(path: str, preserved: str) -> str:
     if preserved:
         return preserved
     if path.lower().endswith("/health") or path.lower() == "/health":
-        return '{"success":true,"status":"Healthy","api":"New API"}'
+        return '{"success":true,"status":"Healthy","api":"API"}'
     if "/login" in path.lower():
         return '{"success":true,"data":{"token":"<jwt>","userName":"Tufan_Doctor","role":"Doctor"}}'
     return '{"success":true,"message":"OK","data":{}}'
@@ -677,7 +677,7 @@ def apply_guide(row: dict) -> None:
     row["errors"] = g["errors"]
     row["when"] = g["when"]
     row["avoid"] = g["avoid"]
-    if row.get("developed_note", "").startswith("HTTP on New-API"):
+    if row.get("developed_note", "").startswith("HTTP on API"):
         row["developed_note"] = g["use"]
 
 
@@ -692,7 +692,7 @@ def build_rows() -> list[dict]:
             "file": "Program.cs",
             "controller": "Health",
             "token": "no",
-            "host": "New-API",
+            "host": "API",
         }
     )
     rows: list[dict] = []
@@ -714,10 +714,10 @@ def build_rows() -> list[dict]:
         if flags["patient_app"] not in ("Yes", "No"):
             flags = classify_apps(c["endpoint"], c["controller"])
         token = prev.get("Token required") or c["token"]
-        host = "New-API"
-        developed = prev.get("New / Existing / Updated") or "New API developed"
+        host = "API"
+        developed = prev.get("New / Existing / Updated") or "API developed"
         developed_note = prev.get("What was developed this week") or (
-            "HTTP on New-API (catalog regenerated from controllers)."
+            "HTTP on API (catalog regenerated from controllers)."
         )
         use = prev.get("What it is used for") or f"{c['controller']} — {c['method']} {c['endpoint']}"
         section = prev.get("MD section") or c["controller"]
@@ -762,7 +762,7 @@ def build_rows() -> list[dict]:
             "clinic_web": prev.get("Clinic web") or "Yes",
             "common_all": prev.get("Common for all") or "Yes",
         }
-        host = "Old-API" if "old" in host_prev else "New-API"
+        host = "Old-API" if "old" in host_prev else "API"
         endpoint = path if path.startswith("/") else "/" + path
         # restore original casing from sample if possible
         md = f"{meth} {endpoint}"
@@ -789,7 +789,7 @@ def build_rows() -> list[dict]:
         )
         apply_guide(rows[-1])
 
-    # Platform health on New-API
+    # Platform health on API
     hk = path_key("GET", "/health")
     if hk not in seen:
         rows.append(
@@ -797,8 +797,8 @@ def build_rows() -> list[dict]:
                 "method": "GET",
                 "endpoint": "/health",
                 "md_endpoint": "GET /health",
-                "developed": "New API developed",
-                "developed_note": "Health check on New-API and Old-API.",
+                "developed": "API developed",
+                "developed_note": "Health check on API and Old-API.",
                 "section": "Platform",
                 "user": "Public",
                 "week": "Platform",
@@ -807,12 +807,12 @@ def build_rows() -> list[dict]:
                 "doctor_mobile": "Yes",
                 "clinic_web": "Yes",
                 "common_all": "Yes",
-                "host": "New-API and Old-API",
+                "host": "API and Old-API",
                 "token": "no",
                 "tasks": "",
                 "use": "Process health. No login.",
                 "sample_request": f"GET {NEW_HOST}/health",
-                "sample_response": '{"success":true,"status":"Healthy","api":"New API"}',
+                "sample_response": '{"success":true,"status":"Healthy","api":"API"}',
                 "source": "Program.cs / Startup.cs",
             }
         )
@@ -899,14 +899,14 @@ def main() -> None:
     today = date.today().strftime("%d-%b-%Y")
     readme = [
         ["Homeocentrum — APIs (single documentation file)"],
-        [f"File: NIGA_NewAPI/ScriptsAndFiles/{OUT.name}"],
-        [f"Updated: {today}. Regenerated from New-API controllers + preserved sample payloads."],
-        ["New-API host: http://127.0.0.1:5002/api   Old-API host: http://127.0.0.1:5001/api"],
+        [f"File: NIGA_API/ScriptsAndFiles/{OUT.name}"],
+        [f"Updated: {today}. Regenerated from API controllers + preserved sample payloads."],
+        ["API host: http://127.0.0.1:5002/api   Old-API host: http://127.0.0.1:5001/api"],
         ["Swagger login: Homeocentrum_Developer / HomeocentrumDeveloper@12345"],
         ["This Excel is the only API documentation handoff. Do not rely on separate .md/.txt API docs."],
-        ["Sheets: All_APIs, S1–S5, Platform, New_APIs, Patient_App, Doctor_Mobile, Clinic_Web, Common_For_All, Week4_Week5_Developer, Users & Login Details."],
+        ["Sheets: All_APIs, S1–S5, Platform, NIGA_APIs, Patient_App, Doctor_Mobile, Clinic_Web, Common_For_All, Week4_Week5_Developer, Users & Login Details."],
         ["Week 4 and Week 5: use columns When to call it, Do not call this for, Auth, Sample request, and Sample response. Login is POST http://127.0.0.1:5001/api/Account/Login with username and password 123456."],
-        ["Database scripts: NIGA_NewAPI/ScriptsAndFiles/S4_Week4/Database scripts and S5_Week5/Database scripts. Run 01 then 02 then 03. S5 also has 03 demo templates."],
+        ["Database scripts: NIGA_API/ScriptsAndFiles/S4_Week4/Database scripts and S5_Week5/Database scripts. Run 01 then 02 then 03. S5 also has 03 demo templates."],
         ["Sample request/response: carried forward from prior catalog when present; otherwise template from method/path."],
     ]
     for line in readme:
@@ -932,7 +932,7 @@ def main() -> None:
         )
     ws_sum.append([])
     ws_sum.append(["Grand total", len(rows)])
-    ws_sum.append(["New-API host", NEW_HOST])
+    ws_sum.append(["API host", NEW_HOST])
     ws_sum.append(["Old-API host", OLD_HOST])
 
     write_sheet(wb, "All_APIs", rows)
@@ -941,7 +941,7 @@ def main() -> None:
         if subset:
             write_sheet(wb, week, subset)
 
-    write_sheet(wb, "New_APIs", [r for r in rows if str(r["host"]).startswith("New")])
+    write_sheet(wb, "NIGA_APIs", [r for r in rows if str(r["host"]).startswith("New")])
     write_sheet(wb, "Patient_App", [r for r in rows if r["patient_app"] == "Yes"])
     write_sheet(wb, "Doctor_Mobile", [r for r in rows if r["doctor_mobile"] == "Yes"])
     write_sheet(wb, "Clinic_Web", [r for r in rows if r["clinic_web"] == "Yes"])

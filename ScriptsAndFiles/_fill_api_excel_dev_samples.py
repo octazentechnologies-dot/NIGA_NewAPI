@@ -309,7 +309,7 @@ def main():
         method = str(ws.cell(r, col["Method Type"]).value or "GET").upper()
         if method == "SEE DOC":
             method = "GET"
-        host = str(ws.cell(r, col["Host"]).value or "New-API")
+        host = str(ws.cell(r, col["Host"]).value or "API")
         key = (method, str(ep).strip(), host)
         if key in built:
             continue
@@ -439,7 +439,7 @@ def main():
             method = str(sheet.cell(r, idx["Method Type"]).value or "GET").upper()
             if method == "SEE DOC":
                 method = "GET"
-            host = str(sheet.cell(r, idx["Host"]).value or "New-API")
+            host = str(sheet.cell(r, idx["Host"]).value or "API")
             key = (method, str(ep).strip(), host)
             if key not in packed:
                 continue

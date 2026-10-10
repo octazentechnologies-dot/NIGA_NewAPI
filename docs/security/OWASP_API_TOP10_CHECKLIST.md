@@ -1,16 +1,16 @@
-# OWASP API Security Top 10 (2023) checklist — Homeocentrum New API and Old API
+# OWASP API Security Top 10 (2023) checklist — Homeocentrum API and Old API
 
 How to re-check locally (both APIs running):
 
 ```powershell
-cd NIGA_NewAPI\ScriptsAndFiles\Security
+cd NIGA_API\ScriptsAndFiles\Security
 .\Test-OwaspApiTop10.ps1 -ReportPath .\owasp-report.md   # runs Test-CrossTenantAccess.ps1 too
 .\Test-UploadGuard.ps1
 ```
 
 Dynamic scan of staging: `ZAP\Run-ZapStaging.ps1` with `ZAP\zap-staging-plan.yaml` (needs Docker; refuses production hosts).
 
-Last local run: 2026-10-07, Development, New API 5002 and Old API 5001. 57 pass, 0 fail, 4 informational. Cross-tenant suite 66/66. Upload suite 6/6.
+Last local run: 2026-10-07, Development, API 5002 and Old API 5001. 57 pass, 0 fail, 4 informational. Cross-tenant suite 66/66. Upload suite 6/6.
 
 | Risk | Control in the code | Evidence | Status | Remaining work |
 |---|---|---|---|---|
@@ -22,7 +22,7 @@ Last local run: 2026-10-07, Development, New API 5002 and Old API 5001. 57 pass,
 | API6 Unrestricted Access to Sensitive Business Flows | Subscriptions require a valid Razorpay signature, an unused payment id and a matching amount; payout OTP is audited; OTP verify locks after 5 attempts | Probe: fake payment returns 400; Old subscription save returns 403 | Pass | Add bot protection (captcha) on public patient sign-up and OTP request if abuse is seen |
 | API7 Server Side Request Forgery | No endpoint fetches a caller-supplied URL; outbound hosts (Razorpay, Meta, SMS, mail, video, AI) come from configuration | Code review | Info | Re-review if a "fetch from URL" or link-preview feature is added |
 | API8 Security Misconfiguration | CORS open to any origin (Bearer tokens only, credentials never allowed; `Cors:AllowedOrigins` can restrict it); `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, CSP on API responses; no `Server` banner; TRACE refused; Swagger behind sign-in; generic 500 with `errorId`; developer exception page only in Development outside IIS; no console logging; forwarded headers behind IIS | Probe API8 rows (both APIs) | Pass | Serve HTTPS only with HSTS at IIS; set `Cors:AllowedOrigins` if CORS should be narrowed to real UI hosts |
-| API9 Improper Inventory Management | Retired endpoint returns 410; Swagger gated; this checklist and the QA matrix list the surface | Probe API9 rows | Partial | Old API runs ASP.NET Core 2.2, which is end of life and has an unpatched Critical Kestrel advisory. Plan its migration into the New API |
+| API9 Improper Inventory Management | Retired endpoint returns 410; Swagger gated; this checklist and the QA matrix list the surface | Probe API9 rows | Partial | Old API runs ASP.NET Core 2.2, which is end of life and has an unpatched Critical Kestrel advisory. Plan its migration into the API |
 | API10 Unsafe Consumption of APIs | WhatsApp receipts need a Meta `X-Hub-Signature-256` HMAC (closed with 503 when no secret is set); Razorpay payments verified by signature and amount lookup | Probe: unsigned and wrongly signed receipts refused | Pass | Set `WhatsAppMeta:AppSecret` on every environment that should receive receipts |
 
 ## Not covered by the scripted probe

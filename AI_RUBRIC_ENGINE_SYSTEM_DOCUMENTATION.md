@@ -228,7 +228,7 @@ Unrelated theme project. No AI Rubric Engine.
 
 API bases (hardcoded in `src/config.js`, not `.env` for NIGA APIs):
 
-- `API_URL_NIGAHOMEOPATHY` → New API (audio/AI)  
+- `API_URL_NIGAHOMEOPATHY` → API (audio/AI)  
 - `API_URL` → Centrum/legacy patient-board repertory APIs  
 
 ### Important pages / components

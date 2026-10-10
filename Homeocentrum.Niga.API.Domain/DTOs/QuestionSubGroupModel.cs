@@ -1,0 +1,25 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Homeocentrum.Niga.API.Domain.DTOs
+{
+  public class QuestionSubGroupModel
+    {
+        public int QuestionSubgroupId { get; set; }
+        public string QuestionSubGroupName { get; set; }
+        public int? QuestionGroupId { get; set; }
+        public string QuestionGroupName { get; set; }
+        public string Description { get; set; }
+        public bool? DeleteStatus { get; set; }
+        public List<int>? SectionIds { get; set; }
+        public List<SectionViewModel>? Sections { get; set; }
+    }
+
+    public class QuestionSubGroupModelDDL
+    {
+        public int QuestionSubgroupId { get; set; }
+        public string QuestionSubgroup1 { get; set; }
+        public List<int>? SectionIds { get; set; }
+    }
+}

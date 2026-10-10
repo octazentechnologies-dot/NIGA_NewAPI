@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Runs the OWASP ZAP API scan (zap-staging-plan.yaml) against the STAGING New API and Old API.
+  Runs the OWASP ZAP API scan (zap-staging-plan.yaml) against the STAGING API and Old API.
 
   Needs Docker. Uses the official ghcr.io/zaproxy/zaproxy:stable image.
   Refuses production hosts. Run only against a staging database that can be restored.
