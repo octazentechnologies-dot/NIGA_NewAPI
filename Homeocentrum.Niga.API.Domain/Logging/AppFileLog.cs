@@ -49,7 +49,7 @@ namespace Homeocentrum.Niga.API.Domain.Logging
         private static readonly ConcurrentDictionary<string, DateTime> LastAlert = new();
         private static readonly AsyncLocal<Dictionary<string, string>?> RequestSnapshot = new();
         private static string _root = Path.Combine(AppContext.BaseDirectory, "Logs");
-        private static string _application = "NIGA API";
+        private static string _application = "Homeocentrum API";
         private static ErrorAlertOptions _alert = new();
         private static FileLogOptions _file = new();
         private static SmtpSettingsModel? _smtp;
@@ -83,7 +83,7 @@ namespace Homeocentrum.Niga.API.Domain.Logging
 
         public static void Initialize(string contentRoot, IConfiguration config, string? applicationName = null)
         {
-            _application = string.IsNullOrWhiteSpace(applicationName) ? "NIGA API (Niga-Web)" : applicationName;
+            _application = string.IsNullOrWhiteSpace(applicationName) ? "Homeocentrum API" : applicationName;
             _root = Path.Combine(contentRoot ?? AppContext.BaseDirectory, "Logs");
             _file = config.GetSection("FileLog").Get<FileLogOptions>() ?? new FileLogOptions();
             _alert = config.GetSection("ErrorAlert").Get<ErrorAlertOptions>() ?? new ErrorAlertOptions();
@@ -308,7 +308,7 @@ namespace Homeocentrum.Niga.API.Domain.Logging
 
             var source = string.Equals(category, "UI", StringComparison.OrdinalIgnoreCase) ? "UI" : "API";
             merged["Source"] = source;
-            var subject = "Homeocentrum Runtime ERROR - " + source + " - " + DateTime.Now.ToString("dd-MMM-yyyy HH:mm:ss");
+            var subject = "Homeocentrum Runtime " + (level ?? "ERROR").ToUpperInvariant() + " - " + source + " - " + DateTime.Now.ToString("dd-MMM-yyyy HH:mm:ss");
 
             var body = BuildAlertHtml(level, category, message, ex, merged);
             var sender = new EmailSenderService();
@@ -331,10 +331,6 @@ namespace Homeocentrum.Niga.API.Domain.Logging
         }
 
         /// <summary>
-        /// Midnight matrix. Subject stays "Homeocentrum Runtime ERROR - {host} - {local time}".
-        /// The type split (UI vs this API) and the counts are in the body.
-        /// </summary>
-        /// <summary>
         /// IIS app-pool start mail. phase is "started" when the process loads and "ready" when it is listening.
         /// Local dotnet run does not send this. APP_POOL_ID is set only by IIS.
         /// </summary>
@@ -346,8 +342,8 @@ namespace Homeocentrum.Niga.API.Domain.Logging
                 return;
             var ready = string.Equals(phase, "ready", StringComparison.OrdinalIgnoreCase);
             var subject = ready
-                ? "Homeocentrum IIS API deployment done - " + _application
-                : "Homeocentrum IIS API deployment started - " + _application;
+                ? _application + " deployment done on IIS"
+                : _application + " deployment started on IIS";
             var body = "<p>" + WebUtility.HtmlEncode(subject) + "</p><p>Machine " + WebUtility.HtmlEncode(Environment.MachineName)
                 + " pool " + WebUtility.HtmlEncode(Environment.GetEnvironmentVariable("APP_POOL_ID"))
                 + " at " + DateTime.Now.ToString("dd-MMM-yyyy HH:mm:ss") + ".</p>";
@@ -379,7 +375,7 @@ namespace Homeocentrum.Niga.API.Domain.Logging
             if (!IsDeployNoticeEnabled || !IsIisHosted)
                 return;
             var uptime = DateTime.Now - Process.GetCurrentProcess().StartTime;
-            var subject = "Homeocentrum IIS API stopping - " + _application;
+            var subject = _application + " stopping on IIS";
             SendToRecipients(subject, OpsHtml(subject, new Dictionary<string, string>
             {
                 ["What"] = "The API process is shutting down (app pool stop, recycle, IIS stop, deploy, or server restart).",
@@ -404,7 +400,7 @@ namespace Homeocentrum.Niga.API.Domain.Logging
                 if (cooldownMinutes > 0 && LastAlert.TryGetValue("ops|" + key, out var prev) && now - prev < TimeSpan.FromMinutes(cooldownMinutes))
                     return;
                 LastAlert["ops|" + key] = now;
-                var subject = "Homeocentrum ALERT - " + title + " - " + _application;
+                var subject = _application + " ALERT - " + title;
                 var body = OpsHtml(title, safeFacts);
                 if (wait)
                     SendToRecipients(subject, body, "OpsAlert", TimeSpan.FromSeconds(7));
@@ -457,6 +453,9 @@ namespace Homeocentrum.Niga.API.Domain.Logging
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Midnight matrix for the day that just ended. The split (UI vs this API) and the counts are in the body.
+        /// </summary>
         public static void SendDailyMatrix(DateTime day, string hostSource)
         {
             if (!IsDailyMatrixEnabled || _alert.Recipients == null || _alert.Recipients.Length == 0 || _smtp == null)
@@ -464,7 +463,7 @@ namespace Homeocentrum.Niga.API.Domain.Logging
 
             var rows = DailyIssueMatrix.Read(_root, day, hostSource);
             var body = DailyIssueMatrix.ToHtml(day, hostSource, rows);
-            var subject = "Homeocentrum Runtime ERROR - " + hostSource + " - " + DateTime.Now.ToString("dd-MMM-yyyy HH:mm:ss");
+            var subject = _application + " daily issue matrix - " + day.ToString("dd-MMM-yyyy") + " - " + rows.Sum(row => row.Count) + " issues";
             var sender = new EmailSenderService();
             foreach (var to in _alert.Recipients.Where(x => !string.IsNullOrWhiteSpace(x)))
             {

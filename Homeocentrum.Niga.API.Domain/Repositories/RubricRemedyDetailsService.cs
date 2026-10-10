@@ -22,11 +22,6 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
 {
     public class RubricRemedyDetailsService : IRubricRemedyDetailsService
     {
-        private static readonly MemoryCacheEntryOptions RubricDetailsCacheOptions = new()
-        {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1),
-        };
-
         // The aliases of one remedy come from every rubric that lists it (300k+ rows for common remedies),
         // so they are kept per remedy. Writes in this service start a new generation; other writers wait out the expiry.
         private static readonly MemoryCacheEntryOptions GlobalAuthorAliasCacheOptions = new()
@@ -426,24 +421,6 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                 .ToList();
         }
 
-        private string GetAuthorAlies(int remedyId)
-        {
-            var authorAlies = (
-                from authorMaster in context.AuthorMasters.AsNoTracking()
-                join remedyRubricAuthorDetails in context.RemedyRubricAuthorDetails.AsNoTracking()
-                    on authorMaster.AuthorId equals remedyRubricAuthorDetails.AuthorId
-                join rubricRemedyDetail in context.RubricRemedyDetails.AsNoTracking()
-                    on remedyRubricAuthorDetails.RubricRemedyId equals rubricRemedyDetail.RubricRemedyId
-                where
-                    rubricRemedyDetail.RemedyId == remedyId
-                    && rubricRemedyDetail.DeletedStatus == false
-                    && remedyRubricAuthorDetails.DeletedStatus == false
-                select new { authorMaster.AuthorAlias }
-            ).ToList();
-
-            return string.Join(",", authorAlies.Distinct().Select(x => x.AuthorAlias));
-        }
-
         private Dictionary<int, string> BuildAuthorAliasMapForSubSection(int subSectionId)
         {
             var authorRows = (
@@ -647,15 +624,14 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
             ref ErrorResponseModel errorResponseModel
         )
         {
-            var remedyModel = new List<RemedyModel>();
             errorResponseModel = new ErrorResponseModel();
             var remedyEntities = (
-                from rubricRemedyDetails in context.RubricRemedyDetails
-                join subSectionMaster in context.SubSectionMasters
+                from rubricRemedyDetails in context.RubricRemedyDetails.AsNoTracking()
+                join subSectionMaster in context.SubSectionMasters.AsNoTracking()
                     on rubricRemedyDetails.SubSectionId equals subSectionMaster.SubSectionId
-                join gradeMaster in context.RemedyGradeMaster
+                join gradeMaster in context.RemedyGradeMaster.AsNoTracking()
                     on rubricRemedyDetails.GradeId equals gradeMaster.GradeId
-                join remedyMaster in context.RemedyMasters
+                join remedyMaster in context.RemedyMasters.AsNoTracking()
                     on rubricRemedyDetails.RemedyId equals remedyMaster.RemedyId
                 where
                     rubricRemedyDetails.SubSectionId == subSectionId
@@ -665,7 +641,7 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                 {
                     rubricRemedyDetails.RubricRemedyId,
                     subSectionMaster.SectionId,
-                    subSectionMaster.SubSectionId,
+                    subSectionMaster.SubSectionName,
                     gradeMaster.GradeId,
                     rubricRemedyDetails.RemedyId,
                     remedyMaster.RemedyName,
@@ -679,42 +655,54 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                 return null;
             }
 
+            var remedyIds = remedyEntities.Select(item => item.RubricRemedyId).Distinct().ToList();
+            var authorsByRemedy = context.RemedyRubricAuthorDetails.AsNoTracking()
+                .Where(link =>
+                    link.RubricRemedyId != null
+                    && remedyIds.Contains(link.RubricRemedyId.Value)
+                    && link.DeletedStatus != true)
+                .Join(
+                    context.AuthorMasters.AsNoTracking(),
+                    link => link.AuthorId,
+                    author => author.AuthorId,
+                    (link, author) => new
+                    {
+                        RubricRemedyId = link.RubricRemedyId.Value,
+                        link.RemedyRubricAuthorId,
+                        link.AuthorId,
+                        author.AuthorName,
+                    })
+                .ToList()
+                .GroupBy(row => row.RubricRemedyId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(row => new RubricAuthorModel
+                    {
+                        RemedyRubricAuthorId = row.RemedyRubricAuthorId,
+                        AuthorId = row.AuthorId,
+                        AuthorName = row.AuthorName,
+                    }).ToList());
+
             RubricRemedyDetailModel rubricRemedyDetailModel = new RubricRemedyDetailModel();
 
             var remedyDetail = remedyEntities.FirstOrDefault();
 
             rubricRemedyDetailModel.SubSectionId = subSectionId;
+            rubricRemedyDetailModel.SubSectionName = remedyDetail.SubSectionName;
             rubricRemedyDetailModel.GradeId = greadId;
             rubricRemedyDetailModel.SectionId = Convert.ToInt32(remedyDetail.SectionId);
 
-            List<RubricRemedyAuthorModel> rubricRemedyAuthorsList =
-                new List<RubricRemedyAuthorModel>();
-
-            foreach (var item in remedyEntities)
-            {
-                RubricRemedyAuthorModel rubricRemedyAuthor = new RubricRemedyAuthorModel();
-
-                rubricRemedyAuthor.RubricRemedyId = item.RubricRemedyId;
-                rubricRemedyAuthor.RemedyId = item.RemedyId;
-                rubricRemedyAuthor.RemedyName = item.RemedyName;
-                var rubricAutorData = (
-                    from remedyRubricAuthorDetails in context.RemedyRubricAuthorDetails
-                    join auther in context.AuthorMasters
-                        on remedyRubricAuthorDetails.AuthorId equals auther.AuthorId
-                    where
-                        remedyRubricAuthorDetails.RubricRemedyId == item.RubricRemedyId
-                        && remedyRubricAuthorDetails.DeletedStatus == false
-                    select new RubricAuthorModel
-                    {
-                        RemedyRubricAuthorId = remedyRubricAuthorDetails.RemedyRubricAuthorId,
-                        AuthorId = remedyRubricAuthorDetails.AuthorId,
-                        AuthorName = auther.AuthorName,
-                    }
-                ).ToList();
-                rubricRemedyAuthor.RubricAuthorList = rubricAutorData;
-                rubricRemedyAuthorsList.Add(rubricRemedyAuthor);
-            }
-            rubricRemedyDetailModel.RubricRemedyAuthorList = rubricRemedyAuthorsList;
+            rubricRemedyDetailModel.RubricRemedyAuthorList = remedyEntities
+                .Select(item => new RubricRemedyAuthorModel
+                {
+                    RubricRemedyId = item.RubricRemedyId,
+                    RemedyId = item.RemedyId,
+                    RemedyName = item.RemedyName,
+                    RubricAuthorList = authorsByRemedy.TryGetValue(item.RubricRemedyId, out var authors)
+                        ? authors
+                        : new List<RubricAuthorModel>(),
+                })
+                .ToList();
 
             return rubricRemedyDetailModel;
         }
@@ -1011,12 +999,7 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
         {
             errorResponseModel = new ErrorResponseModel();
 
-            var cacheKey = $"RubricDetails:v10:{subSectionId}";
-            if (_cache.TryGetValue(cacheKey, out RubricDetailModel cached))
-            {
-                return cached;
-            }
-
+            // Not cached: rubric, remedy, grade and author edits must show on the next request.
             var rubricDetails = context
                 .SubSectionMasters.AsNoTracking()
                 .Where(subSection =>
@@ -1122,10 +1105,6 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                         subsectionAuthors,
                         globalAuthors
                     );
-                    if (string.IsNullOrWhiteSpace(mergedAuthors))
-                    {
-                        mergedAuthors = GetAuthorAlies(grade.Key);
-                    }
 
                     var remedy = new RemediesModel
                     {
@@ -1152,8 +1131,6 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
             rubricDetails.SubSectionLanguageDetails = subsectionlanguageList;
             rubricDetails.RemdeyCount = remediesList.Count;
             rubricDetails.RemediesList = remediesList;
-
-            _cache.Set(cacheKey, rubricDetails, RubricDetailsCacheOptions);
 
             return rubricDetails;
         }

@@ -245,7 +245,7 @@ builder.Services.AddAuthorization(options =>
 var app = builder.Build();
 AdminAuthorizationPolicies.DevPrivilegedDoctorEnabled =
     app.Environment.IsDevelopment() && app.Configuration.GetValue("Security:DevPrivilegedDoctor", true);
-AppFileLog.Initialize(app.Environment.ContentRootPath, app.Configuration, "NIGA API (Niga-Web :5002)");
+AppFileLog.Initialize(app.Environment.ContentRootPath, app.Configuration, "Homeocentrum API");
 // Upload folders live under ContentRootPath/Data/UploadedMedia; a fresh publish may not contain them yet.
 Homeocentrum.Niga.API.Domain.Helpers.UploadedMedia.EnsureFolders(
     app.Environment.ContentRootPath,

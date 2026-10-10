@@ -25,6 +25,15 @@ namespace Homeocentrum.Niga.API.Controllers
             _env = env;
         }
 
+        /// <summary>The file name changes on every upload, so ?v= makes browsers fetch a replaced photo.</summary>
+        private string? PhotoUrlFor(Doctor doctor)
+        {
+            if (string.IsNullOrWhiteSpace(doctor.PhotoPath))
+                return null;
+            var version = Uri.EscapeDataString(Path.GetFileNameWithoutExtension(doctor.PhotoPath));
+            return PublicApiUrl.For(Request, $"/api/Profile/Photo/{doctor.DoctorId}?v={version}");
+        }
+
         [HttpGet("Me")]
         public async Task<IActionResult> Me()
         {
@@ -191,7 +200,7 @@ namespace Homeocentrum.Niga.API.Controllers
             doctor.PhotoPath = UploadedMedia.MediaRelative(UploadedMedia.DoctorPhotos, name);
             doctor.ChangedDate = DateTime.UtcNow;
             await _context.SaveChangesAsync();
-            return Ok(new { success = true, data = new { doctor.PhotoPath, photoUrl = $"/api/Profile/Photo/{doctor.DoctorId}" } });
+            return Ok(new { success = true, data = new { doctor.PhotoPath, photoUrl = PhotoUrlFor(doctor) } });
         }
 
         [HttpGet("Me/Credentials")]
@@ -615,6 +624,7 @@ namespace Homeocentrum.Niga.API.Controllers
                 ConsultFeeInClinic = doctor.ConsultFeeInClinic,
                 ConsultFeeTele = doctor.ConsultFeeTele,
                 PhotoPath = doctor.PhotoPath,
+                PhotoUrl = PhotoUrlFor(doctor),
                 WorkingHoursNote = doctor.WorkingHoursNote,
                 FollowUpFeeInClinic = doctor.FollowUpFeeInClinic,
                 FollowUpFeeTele = doctor.FollowUpFeeTele,

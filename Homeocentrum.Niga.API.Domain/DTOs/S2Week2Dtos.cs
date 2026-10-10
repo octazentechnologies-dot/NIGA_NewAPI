@@ -101,6 +101,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public decimal? ConsultFeeInClinic { get; set; }
         public decimal? ConsultFeeTele { get; set; }
         public string? PhotoPath { get; set; }
+        /// <summary>Absolute URL of the photo (GET /api/Profile/Photo/{doctorId}); null when the doctor has no photo.</summary>
+        public string? PhotoUrl { get; set; }
         public string? WorkingHoursNote { get; set; }
         public decimal? FollowUpFeeInClinic { get; set; }
         public decimal? FollowUpFeeTele { get; set; }

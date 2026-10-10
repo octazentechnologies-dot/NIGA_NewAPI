@@ -1,6 +1,7 @@
 using Homeocentrum.Niga.API.Domain.Business.Interface;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.DTOs;
+using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -293,23 +294,26 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 return new List<SubSectionDDLModel>();
             var sectionIdValue = (int)sectionId;
             OldApiCommandTimeout.Apply(context);
-            var subsectionEntityList =(from subSection in context.SubSectionMasters
-                                       where subSection.SectionId==sectionIdValue && subSection.DeleteStatus==false
-                                       orderby subSection.SubSectionName
-                                       select new SubSectionDDLModel
-                                       {
-                                           SubSectionId = subSection.SubSectionId,
-                                           SubSectionName = subSection.SubSectionName,
-                                           MainParentSubsection = subSection.MainParentSubsection
-                                       }).ToList();
-            if (!string.IsNullOrEmpty(Desc))
+            var query = context.SubSectionMasters.AsNoTracking()
+                .Where(subSection => subSection.SectionId == sectionIdValue && subSection.DeleteStatus == false);
+            // A typed search stays in SQL and returns 20 rows. Loading the whole section (MIND is huge)
+            // and filtering afterwards is what made the edit page time out.
+            if (!string.IsNullOrWhiteSpace(Desc))
             {
-                subsectionEntityList = subsectionEntityList.Where(s => s.SubSectionName.ToLower().Contains(Desc.ToLower())).ToList();
+                var term = Desc.Trim();
+                query = query.Where(subSection => subSection.SubSectionName.Contains(term));
             }
-            if (!string.IsNullOrEmpty(Desc))
-            {
-                subsectionEntityList = subsectionEntityList.Take(20).ToList();
-            }
+            var projected = query
+                .OrderBy(subSection => subSection.SubSectionName)
+                .Select(subSection => new SubSectionDDLModel
+                {
+                    SubSectionId = subSection.SubSectionId,
+                    SubSectionName = subSection.SubSectionName,
+                    MainParentSubsection = subSection.MainParentSubsection
+                });
+            var subsectionEntityList = string.IsNullOrWhiteSpace(Desc)
+                ? projected.ToList()
+                : projected.Take(20).ToList();
             if (subsectionEntityList.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
