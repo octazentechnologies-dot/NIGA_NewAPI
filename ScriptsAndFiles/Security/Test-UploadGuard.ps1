@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Live check of upload screening (content signature, executable/script block, antivirus) on the New API.
+  Live check of upload screening (content signature, executable/script block, antivirus) on the API.
   Uses POST /api/SecureDocument/Upload as the signed-in doctor. The EICAR string is the industry-standard,
   harmless antivirus test file; it is assembled in memory and never written to disk.
   Exit code = number of failed checks.

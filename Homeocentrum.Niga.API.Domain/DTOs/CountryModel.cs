@@ -1,0 +1,22 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Text;
+
+namespace Homeocentrum.Niga.API.Domain.DTOs
+{
+    public class CountryModel
+    {
+        public int CountryId { get; set; }
+        [Required(ErrorMessage ="Country Name is required")]
+        public string CountryName { get; set; }
+        public string CountryCode { get; set; }
+        public string Iso2Code { get; set; }
+        public string Iso3Code { get; set; }
+        public string EnteredBy { get; set; }
+        public DateTime? EnteredDate { get; set; }
+        public string ChangedBy { get; set; }
+        public DateTime? ChangedDate { get; set; }
+        public bool DeleteStatus  { get; set; }
+}
+}

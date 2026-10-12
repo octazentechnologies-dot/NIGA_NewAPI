@@ -521,7 +521,7 @@ def enrich_sheet(ws) -> int:
         if not ep:
             continue
         method = ws.cell(r, col_method).value or ""
-        host = ws.cell(r, col_host).value if col_host else "New-API"
+        host = ws.cell(r, col_host).value if col_host else "API"
         token = ws.cell(r, col_token).value if col_token else "yes"
         text = three_real_requests(str(method), str(ep), str(host or ""), str(token or ""))
         cell = ws.cell(r, col_real, text)

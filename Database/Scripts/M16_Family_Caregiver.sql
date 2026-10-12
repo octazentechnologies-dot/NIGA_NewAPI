@@ -1,4 +1,4 @@
--- M16 CON-01 / CON-02 — Family members + Caregiver authorization (New-API / shared DB).
+-- M16 CON-01 / CON-02 — Family members + Caregiver authorization (API / shared DB).
 -- Patient clinical rows have no UserId; PatientUserMap links Patient-role logins to a primary PatientId.
 
 SET NOCOUNT ON;

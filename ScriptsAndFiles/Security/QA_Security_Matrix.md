@@ -14,7 +14,7 @@ One clinic. Each doctor's patients, cases and staff are private to that doctor. 
 | Ops email alerts | `ErrorAlert:Recipients` + `smtp`. API alerts: `OpsAlert:Enabled` (default: on under IIS, off locally). Watchdog: `ScriptsAndFiles\Ops\Watch-Homeocentrum.ps1` scheduled task | Deploy started/ready and API stopping (IIS only); API crash; sign-in blocked for a user name or IP; malware upload; antivirus unavailable; audit trail failed verification (daily). Watchdog: W3SVC/WAS, app pool, site or HTTP down / still down (hourly) / recovered, low disk, IIS or ASP.NET Core Module error events, server restarted (flags power loss). `-DryRun` sends nothing |
 | Forwarded headers | `UseForwardedHeaders` behind IIS | Audit rows and the login throttle see the client IP, not 127.0.0.1 |
 | CSRF | Cookie-only POST/PUT/PATCH/DELETE | A Bearer call is allowed. A cookie call without Bearer is 403 |
-| Timeout | Five minutes on the New API. Keep-alive two minutes. Header timeout 30 seconds | A hung request ends with 408 |
+| Timeout | Five minutes on the API. Keep-alive two minutes. Header timeout 30 seconds | A hung request ends with 408 |
 | Input validation | Model validation returns `success`, `message`, `traceId`, `errors` | A blank required field returns 400 in that shape. JSON nested deeper than 64 returns 400 |
 | Security headers | Every response except Swagger's content policy | `nosniff`, `DENY`, `no-referrer`, `X-Trace-Id`; no `Server` banner |
 | SQL | EF and parameterized SQL | Queries do not concatenate user text into SQL |
@@ -37,6 +37,6 @@ One clinic. Each doctor's patients, cases and staff are private to that doctor. 
 | Deploy mail | IIS only, same recipients as ErrorAlert | App-pool start sends "deployment started", then "deployment done" |
 | Dependencies | `dotnet list package --vulnerable`, `npm audit`, `dependency-audit.yml` | AutoMapper 13.0.1 is the accepted high finding (fixed versions need a commercial licence) |
 | Static and secret scanning | `codeql.yml`, `gitleaks.yml` in each repo | A new secret in a push or PR fails the build |
-| Tests | `Homeocentrum.Niga.NewAPI.Domain.Tests`, `Test-OwaspApiTop10.ps1` | `HostSecurityTests` and `SecurityHardeningTests` pass; the probe reports 0 failures |
+| Tests | `Homeocentrum.Niga.API.Domain.Tests`, `Test-OwaspApiTop10.ps1` | `HostSecurityTests` and `SecurityHardeningTests` pass; the probe reports 0 failures |
 
 The cross-tenant tests use a second doctor, patient and reception user created by `10_Security_Test_Tenant_LOCAL_ONLY.sql`. Never run that script on production.

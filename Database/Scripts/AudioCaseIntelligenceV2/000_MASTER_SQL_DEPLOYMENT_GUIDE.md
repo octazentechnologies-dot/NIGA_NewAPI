@@ -2,7 +2,7 @@
 
 **Database:** `HomeoCentrum_Production`  
 **Policy:** Execute scripts **manually** in SSMS. Do not auto-apply from the application.  
-**Folder:** `New_API/Database/Scripts/AudioCaseIntelligenceV2/`
+**Folder:** `NIGA_API/Database/Scripts/AudioCaseIntelligenceV2/`
 
 **One-click deploy (Phases 0–6):** run **`000_DEPLOY_ALL_Phases_0_to_6.sql`** — consolidates all 21 scripts below in order (~1000 lines). Individual scripts remain available if you prefer step-by-step execution.
 
@@ -196,7 +196,7 @@ No new SQL required. Deploy API + UI, then use admin controls.
 
 **Production checklist:**
 1. Phase 0–7 SQL applied
-2. Deploy New_API + NigaHomeopathy-UI
+2. Deploy NIGA_API + NigaHomeopathy-UI
 3. `POST /api/AudioCaseIntelligence/embeddings/reindex?maxRubrics=500`
 4. Pilot with `EnableV2: false`, use runtime toggle for selected testing
 5. When gates pass → Enable V2 for all doctors

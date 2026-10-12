@@ -12,7 +12,7 @@
         -- must return 500
 
     Then: existing plaintext passwords stay as-is until next Login (lazy PBKDF2),
-    or Admin calls POST /api/Account/MigratePlaintextPasswords on New-API.
+    or Admin calls POST /api/Account/MigratePlaintextPasswords on API.
 */
 
 -- SEC-01.01 — allow PBKDF2$v1$… hashes (was NVARCHAR(50))
@@ -192,7 +192,7 @@ GO
 -- T-SQL cannot produce PBKDF2$v1$ hashes compatible with the APIs.
 -- After ALTER UserPassword NVARCHAR(500):
 --   A) Prefer: each user is upgraded automatically on successful Login (lazy migrate).
---   B) Or call New-API POST /api/Account/MigratePlaintextPasswords as AdminPortal once.
+--   B) Or call API POST /api/Account/MigratePlaintextPasswords as AdminPortal once.
 -- Do NOT blank or overwrite existing UserPassword values with manual "encryption".
 --
 -- RECOVERY if login returns 401 after a bad/manual/truncated hash:

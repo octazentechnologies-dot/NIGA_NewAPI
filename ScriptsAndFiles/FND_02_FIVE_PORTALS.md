@@ -16,4 +16,4 @@ PDF count is **five web portals**. Pharmacy console is HomeoMeds, not a sixth po
 - New portal routes declare `allowedRoles` and deny other roles (redirect to that role’s home).
 - Admin `/dashboard` and `/admin/*` use `AdminProtected`.
 - Doctor case-taking `/doctor/patientboard` is Doctor only (not Reception).
-- Velzon demo URLs (`/apps-*`, `/dashboard-crm`, …) are unregistered unless `REACT_APP_SHOW_VELZON_DEMO=true`.
+- Template demo URLs (`/apps-*`, `/dashboard-crm`, …) are unregistered unless `REACT_APP_SHOW_TEMPLATE_DEMO=true`.

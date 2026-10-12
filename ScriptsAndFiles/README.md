@@ -15,14 +15,15 @@ Run on `HomeoCentrum_Dev` in numbered order.
 
 **Only file to share for APIs:**
 
-`NIGA_NewAPI/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx`
+`NIGA_API/ScriptsAndFiles/Homeocentrum_All_New_And_Updated+APIs.xlsx`
 
-- Regenerated from New-API controllers (+ Old-API rows kept where marked).
+- Regenerated from API controllers (+ Old-API rows kept where marked).
 - Includes Sample request / Sample Real request / Sample response columns.
 - Sample Real request: 3 copy-paste examples with real HomeoCentrum_Dev ids (no `:id`).
-- Samples in the Excel use New API `https://devapi2.homeocentrum.com/api` and Old API `https://devapi1.homeocentrum.com/api`
+- Samples in the Excel use API `https://devapi2.homeocentrum.com/api` and Old API `https://devapi1.homeocentrum.com/api`
 - Rebuild catalog: `python ScriptsAndFiles/_rebuild_api_catalog_xlsx.py`
 - Enrich real samples: `python ScriptsAndFiles/_enrich_sample_real_requests.py`
+- Mobile-only endpoints (`/api/MobilePatient`, `/api/MobileDoctor`) and the `API_Audience_Map` sheet: run `python ScriptsAndFiles/_mobile_controller_split.py` after any rebuild. The shared-endpoint list comes from `Homeocentrum.Niga.API/Hosting/ApiAudience.cs`.
 
 Do not maintain separate `.md` / `.txt` API documentation copies for handoff.
 

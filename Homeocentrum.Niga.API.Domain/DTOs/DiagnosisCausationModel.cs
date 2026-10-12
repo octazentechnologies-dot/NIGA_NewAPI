@@ -1,0 +1,22 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Homeocentrum.Niga.API.Domain.DTOs
+{
+    public class DiagnosisCausationModel
+    {
+        public DiagnosisCausationModel()
+        {
+            DiagnosisCausationRubricDetails = new List<DiagnosisCausationRubricDetailsModel>();
+        }
+
+        public int CausationId { get; set; }
+        public int? DiagnosisId { get; set; }
+        public string CausationName { get; set; }
+
+        public List<DiagnosisCausationRubricDetailsModel> DiagnosisCausationRubricDetails { get; set; }
+        public List<int>? SectionIds { get; set; }
+        public List<SectionViewModel>? Sections { get; set; }
+    }
+}

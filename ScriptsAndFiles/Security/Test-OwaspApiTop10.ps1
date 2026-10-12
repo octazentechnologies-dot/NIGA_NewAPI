@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Scripted OWASP API Security Top 10 (2023) probes against the New API (5002) and Old API (5001).
+  Scripted OWASP API Security Top 10 (2023) probes against the API (5002) and Old API (5001).
 
   This is a targeted, repeatable check of the controls built for each risk. It does not replace a
   full dynamic scan (OWASP ZAP / Burp) of staging; see ZAP\zap-staging-plan.yaml for that.
@@ -8,7 +8,7 @@
   API1 (object level authorization) is covered in depth by Test-CrossTenantAccess.ps1, which this
   script runs first unless -SkipIdorSuite is given.
 
-  Forged-token checks need the New API signing key. It is read from -NewAppSettings by regex and is
+  Forged-token checks need the API signing key. It is read from -NewAppSettings by regex and is
   never printed. Tokens are never printed. Exit code = number of failed checks.
 
 .EXAMPLE
@@ -18,7 +18,7 @@
 param(
     [string]$NewBase = 'http://127.0.0.1:5002',
     [string]$OldBase = 'http://127.0.0.1:5001',
-    [string]$NewAppSettings = (Join-Path $PSScriptRoot '..\..\Homeocentrum.Niga.NewAPI\appsettings.json'),
+    [string]$NewAppSettings = (Join-Path $PSScriptRoot '..\..\Homeocentrum.Niga.API\appsettings.json'),
     [string]$SqlServer = 'localhost\MSSQLSERVER25',
     [string]$Database = 'HomeoCentrum_Dev',
     [string]$Password = $(if ($env:NIGA_TEST_PASSWORD) { $env:NIGA_TEST_PASSWORD } else { '123456' }),
@@ -291,7 +291,7 @@ if ($ReportPath) {
     $md = New-Object System.Text.StringBuilder
     [void]$md.AppendLine("# OWASP API Security Top 10 probe - $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
     [void]$md.AppendLine("")
-    [void]$md.AppendLine("New API: $NewBase  |  Old API: $OldBase  |  Passed $passed, Failed $failed")
+    [void]$md.AppendLine("API: $NewBase  |  Old API: $OldBase  |  Passed $passed, Failed $failed")
     [void]$md.AppendLine("")
     [void]$md.AppendLine("| Result | Risk | Check | Detail |")
     [void]$md.AppendLine("|---|---|---|---|")

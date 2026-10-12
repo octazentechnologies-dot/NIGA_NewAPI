@@ -32,10 +32,10 @@ jobs:
           queries: security-extended
 
       - name: Build
-        run: dotnet build Homeocentrum.Niga.NewAPI/Homeocentrum.Niga.NewAPI.csproj -c Release -nologo
+        run: dotnet build Homeocentrum.Niga.API/Homeocentrum.Niga.API.csproj -c Release -nologo
 
       - name: Unit tests
-        run: dotnet test Homeocentrum.Niga.NewAPI.Domain.Tests/Homeocentrum.Niga.NewAPI.Domain.Tests.csproj -c Release -nologo --filter "FullyQualifiedName~Domain.Tests.Security"
+        run: dotnet test Homeocentrum.Niga.API.Domain.Tests/Homeocentrum.Niga.API.Domain.Tests.csproj -c Release -nologo --filter "FullyQualifiedName~Domain.Tests.Security"
 
       - name: Analyze
         uses: github/codeql-action/analyze@v3

@@ -12,7 +12,7 @@
   1. Take a FULL database backup first.
   2. SQL Server Management Studio → Query → SQLCMD Mode  (must be ON)
   3. File → Open → this file:
-       New_API/Database/Scripts/000_DEPLOY_V4_ENTERPRISE_PHASES_1_TO_11.sql
+       NIGA_API/Database/Scripts/000_DEPLOY_V4_ENTERPRISE_PHASES_1_TO_11.sql
   4. Confirm connection points to the correct server/database.
   5. Press F5 to execute.  Watch Messages tab for PRINT output.
 
@@ -191,6 +191,6 @@ GO
 PRINT '';
 PRINT '================================================================';
 PRINT ' HOMEOCENTRUM V4 ENTERPRISE DEPLOY — FINISHED';
-PRINT ' Next: deploy New_API + NigaHomeopathy-UI, then run post-deploy API steps.';
+PRINT ' Next: deploy NIGA_API + NigaHomeopathy-UI, then run post-deploy API steps.';
 PRINT '================================================================';
 GO

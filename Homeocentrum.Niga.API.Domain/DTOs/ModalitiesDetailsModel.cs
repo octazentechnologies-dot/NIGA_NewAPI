@@ -1,0 +1,22 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Homeocentrum.Niga.API.Domain.DTOs
+{
+    public class ModalitiesDetailsModel
+    {
+        public ModalitiesDetailsModel()
+        {
+            ModalitiesRubricDetails = new List<ModalitiesRubricDetailsModel>();
+        }
+
+        public int ModalitiesDetailsId { get; set; }
+        public string ModalitiesDetailsKeyword { get; set; }
+        public int DiagnosisId { get; set; }
+        public bool? DeletedStatus { get; set; }
+        public List<ModalitiesRubricDetailsModel> ModalitiesRubricDetails { get; set; }
+        public List<int>? SectionIds { get; set; }
+        public List<SectionViewModel>? Sections { get; set; }
+    }
+}

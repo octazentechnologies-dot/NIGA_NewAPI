@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Cross-tenant (IDOR) regression tests for the New API (5002) and Old API (5001).
+  Cross-tenant (IDOR) regression tests for the API (5002) and Old API (5001).
 
   Proves that one doctor / patient / reception / pharmacy user cannot read or change another
   tenant's data, and that each user CAN still read their own (so a pass is not vacuous).
@@ -90,7 +90,7 @@ function Check([string]$api, [string]$user, [string]$method, [string]$path, [str
 }
 
 $A = $ids; 
-# --- New API: patient records ---
+# --- API: patient records ---
 Check New Tufan_Doctor  GET "/patient/GetPatientDetailsById/$($A.PatientA)" allow
 Check New Tufan_Doctor  GET "/patient/GetPatientDetailsById/$($A.PatientB)" deny
 Check New Tufan_Doctor2 GET "/patient/GetPatientDetailsById/$($A.PatientB)" allow
@@ -110,7 +110,7 @@ Check New Tufan_Doctor  GET "/PatientLab/GetPatientLabOrder/$($A.PatientB)" deny
 Check New Tufan_Doctor  GET "/PatientLab/GetPatientLabEntry/$($A.PatientB)" deny
 Check New Tufan_Doctor  POST "/PatientLab/SavePatientLabOrder" deny @{ PatientId = $A.PatientB; PatientLabTestId = 1; PatientLabTestName = 'idor-test'; LabName = 'idor-test'; OrderDate = (Get-Date).ToString('s') }
 Check New Tufan_Doctor  GET "/clipboardRubrics/GetClipboardRubricsPatientId/$($A.PatientB)" deny
-# --- New API: users / doctors ---
+# --- API: users / doctors ---
 Check New Tufan_Doctor  GET "/users/$($A.DoctorAUser)" allow
 Check New Tufan_Doctor  GET "/users/$($A.DoctorBUser)" deny
 Check New Tufan_Doctor  GET "/mastersAPI/GetDoctorDetails/$($A.DoctorAUser)" allow
@@ -118,26 +118,26 @@ Check New Tufan_Doctor  GET "/mastersAPI/GetDoctorDetails/$($A.DoctorBUser)" den
 Check New Tufan_Doctor  GET "/subsection/GetSubSectionsByDate/$($A.DoctorBUser)" deny
 Check New Tufan_Doctor2 GET "/users" deny $null 'admin only (list all users)'
 Check New Tufan_Doctor2 POST "/users/DeleteUser" deny @{ UserId = $A.DoctorAUser; UserName = 'x'; UserPassword = 'x' } 'admin only'
-# --- New API: patients ---
+# --- API: patients ---
 Check New Tufan_Patient  GET "/patient/GetPatientDetailsById/$($A.PatientA)" allow
 Check New Tufan_Patient  GET "/patient/GetPatientDetailsById/$($A.PatientB)" deny
 Check New Tufan_Patient2 GET "/patient/GetPatientDetailsById/$($A.PatientA)" deny
 Check New Tufan_Patient  GET "/users/$($A.PatientBUser)" deny
 Check New Tufan_Patient  GET "/patient/GetCaseDetails/$($A.CaseA)" deny $null 'doctor-only endpoint'
-# --- New API: reception (tied to its doctor) ---
+# --- API: reception (tied to its doctor) ---
 Check New Tufan_Reception  GET "/patient/GetPatientDetailsById/$($A.PatientA)" allow $null 'own doctor patient'
 Check New Tufan_Reception  GET "/patient/GetPatientDetailsById/$($A.PatientB)" deny
 Check New Tufan_Reception2 GET "/patient/GetPatientDetailsById/$($A.PatientA)" deny
 Check New Tufan_Reception  GET "/PatientLab/GetPatientLabEntry/$($A.PatientB)" deny
-# --- New API: pharmacy partner ---
+# --- API: pharmacy partner ---
 Check New Tufan_Pharmacy GET "/patient/GetPatientDetailsById/$($A.PatientA)" deny
 Check New Tufan_Pharmacy GET "/users/$($A.DoctorAUser)" deny
-# --- New API: admin-only security endpoints ---
+# --- API: admin-only security endpoints ---
 Check New Tufan_Admin  GET "/Admin/SecurityAudit/Verify" allow
 Check New Tufan_Doctor2 GET "/Admin/SecurityAudit/Verify" deny
 Check New Tufan_Reception GET "/Admin/SecurityAudit/Verify" deny
 Check New Tufan_Patient GET "/Admin/SecurityAudit" deny
-# --- New API: anonymous patient create must never hand out someone else's token ---
+# --- API: anonymous patient create must never hand out someone else's token ---
 Check New anonymous POST "/patient" notoken @{ PatientName = 'IDOR Probe'; MobileNo = $A.MobileB; Gender = 1; DoctorID = $A.DoctorB; EntityType = 'PatientMobile' } 'account takeover via existing mobile'
 Check New anonymous POST "/patient" deny @{ PatientID = $A.PatientB; PatientName = 'IDOR Probe'; MobileNo = $A.MobileB; EntityType = 'PatientMobile' } 'anonymous update by id'
 

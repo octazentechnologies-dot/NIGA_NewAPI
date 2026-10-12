@@ -3,7 +3,7 @@
 Author       : Tufan Powar
 Created      : 17-09-2026
 Script       : 01_SEC_M01_Foundation_Security_Server.sql
-Purpose      : Foundation security schema for New-API (password width, OTP, consent,
+Purpose      : Foundation security schema for API (password width, OTP, consent,
                audit, secure documents) and RoleMaster seeds (Patient / Account / PharmacyPartner).
 Use          : Run first on HomeoCentrum_*. Fixes truncated UserPassword hashes that cause Login 500.
 Prerequisites: dbo.UserMaster and dbo.RoleMaster already exist.

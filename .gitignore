@@ -434,11 +434,11 @@ FodyWeavers.xsd
 publish/
 publish-*/
 
-# Stale solution name after rename to Homeocentrum.Niga.NewAPI.sln
+# Stale solution name after rename to Homeocentrum.Niga.API.sln
 Niga.sln
 
 # Doctor credential uploads stay on the API host. Do not commit the files.
-Homeocentrum.Niga.NewAPI/Data/DoctorCredentials/*
-!Homeocentrum.Niga.NewAPI/Data/DoctorCredentials/.gitkeep
+Homeocentrum.Niga.API/Data/DoctorCredentials/*
+!Homeocentrum.Niga.API/Data/DoctorCredentials/.gitkeep
 
-/Homeocentrum.Niga.NewAPI/App_Data/payouts/payout-2-20260930002354.csv
+/Homeocentrum.Niga.API/App_Data/payouts/payout-2-20260930002354.csv
