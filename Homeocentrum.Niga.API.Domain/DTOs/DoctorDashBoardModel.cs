@@ -33,6 +33,12 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
 
         /// <summary>DOC-01.02 — appointments not Paid/Waived (nullable column until Phase 6/11).</summary>
         public int unpaidCount { get; set; }
+
+        /// <summary>Sum of the doctor's consult fee for today's unpaid, non-cancelled visits.</summary>
+        public decimal unpaidAmount { get; set; }
+
+        /// <summary>Today's appointments whose status is CANCELLED.</summary>
+        public int cancelledCount { get; set; }
     }
 
     public class PatientAppModel

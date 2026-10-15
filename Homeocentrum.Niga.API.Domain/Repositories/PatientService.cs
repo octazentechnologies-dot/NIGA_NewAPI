@@ -622,6 +622,14 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                     ),
                 }
             ).AsQueryable();
+            if (!string.IsNullOrWhiteSpace(parameterParams.search))
+            {
+                var term = parameterParams.search.Trim();
+                patientModelQuery = patientModelQuery.Where(x =>
+                    (x.PatientName != null && x.PatientName.Contains(term))
+                    || (x.MobileNo != null && x.MobileNo.Contains(term))
+                    || (x.Email != null && x.Email.Contains(term)));
+            }
             if (!string.IsNullOrEmpty(parameterParams.Flag) && parameterParams.Flag == "Today")
             {
                 patientModelQuery = patientModelQuery.Where(x =>

@@ -146,6 +146,14 @@ public partial class S4Week4Service
 
     public async Task<S4ActionResult> ListMyReviewsAsync(S4Caller caller)
     {
+        if (caller.IsPatient)
+        {
+            if (!caller.PatientId.HasValue) return Fail(403, "FORBIDDEN", "Patient context is required.");
+            var mine = await _context.Database.SqlQuery<ReviewRow>($@"
+                SELECT ReviewId, PatientAppId, DoctorId, PatientId, Rating, Text, Status, At
+                FROM dbo.Review WHERE PatientId = {caller.PatientId.Value} ORDER BY At DESC").ToListAsync();
+            return Ok(new { success = true, data = mine });
+        }
         if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
         var doctorId = caller.DoctorId.Value;
         var rows = await _context.Database.SqlQuery<ReviewRow>($@"
@@ -156,14 +164,22 @@ public partial class S4Week4Service
 
     public async Task<S4ActionResult> AppealReviewAsync(int reviewId, ReviewAppealRequest request, S4Caller caller)
     {
-        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Only the reviewed doctor can appeal.");
+        var patientAppeal = caller.IsPatient;
+        if (!patientAppeal && !caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Only the reviewed doctor or the patient can appeal.");
         if (request == null || string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 3)
             return Fail(400, "VALIDATION", "An appeal reason is required.");
         var review = await _context.Database.SqlQuery<ReviewRow>($@"
             SELECT ReviewId, PatientAppId, DoctorId, PatientId, Rating, Text, Status, At
             FROM dbo.Review WHERE ReviewId = {reviewId}").FirstOrDefaultAsync();
         if (review == null) return Fail(404, "NOT_FOUND", "Review not found.");
-        if (review.DoctorId != caller.DoctorId) return Fail(403, "FORBIDDEN", "This review is for another doctor.");
+        if (patientAppeal)
+        {
+            if (!caller.PatientId.HasValue || review.PatientId != caller.PatientId) return Fail(403, "FORBIDDEN", "This review belongs to another patient.");
+        }
+        else if (review.DoctorId != caller.DoctorId)
+        {
+            return Fail(403, "FORBIDDEN", "This review is for another doctor.");
+        }
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.ReviewAppeal (ReviewId, DoctorId, Reason, Status, At)
             VALUES ({reviewId}, {review.DoctorId}, {request.Reason.Trim()}, N'OPEN', {DateTime.Now})");
@@ -985,8 +1001,26 @@ public partial class S4Week4Service
 
         var doctor = await _context.Doctors.AsNoTracking()
             .Where(d => d.DoctorId == appointment.DoctorId)
-            .Select(d => new { d.ClinicName, d.City, d.GoogleMapsLink, d.PhotoPath })
+            .Select(d => new { d.ClinicName, d.City, d.GoogleMapsLink, d.PhotoPath, d.ConsultFeeInClinic, d.ConsultFeeTele, d.FeeCurrency, d.MobileNo })
             .FirstOrDefaultAsync();
+        var complaint = await _context.Database.SqlQuery<NoteRow>($@"
+            SELECT TOP 1 cc.ChiefComplaintName AS Text, SYSUTCDATETIME() AS At
+            FROM dbo.PatientAppointment a
+            INNER JOIN dbo.CaseEntryDetails c ON c.PatientId = a.PatientId AND c.DoctorId = a.DoctorId AND c.DeleteStatus = 0
+            INNER JOIN dbo.CaseEntryChiefComplaint cc ON cc.CaseId = c.CaseId
+            WHERE a.PatientAppId = {patientAppId}
+            ORDER BY cc.CaseChiefComplaintId DESC").FirstOrDefaultAsync();
+        var consultFee = appointment.IsTele == true
+            ? doctor?.ConsultFeeTele ?? doctor?.ConsultFeeInClinic
+            : doctor?.ConsultFeeInClinic ?? doctor?.ConsultFeeTele;
+        var paidAmount = await _context.Database.SqlQuery<AmountRow>($@"
+            SELECT TOP 1 Amount
+            FROM dbo.PaymentOrder
+            WHERE Stream = N'CONSULT' AND PatientAppId = {patientAppId}
+            ORDER BY PaymentOrderId DESC").FirstOrDefaultAsync();
+        decimal? platformFee = paidAmount != null && consultFee.HasValue && paidAmount.Amount > consultFee.Value
+            ? paidAmount.Amount - consultFee.Value
+            : null;
         var erx = await LoadSnapshotByAppointmentAsync(patientAppId);
         var cancelled = S3AppointmentRulesCancelled(appointment.Status);
         var completed = appointment.Status is not null
@@ -1016,6 +1050,11 @@ public partial class S4Week4Service
                 clinicCity = doctor?.City,
                 clinicMapLink = doctor?.GoogleMapsLink,
                 doctorPhotoUrl = string.IsNullOrWhiteSpace(doctor?.PhotoPath) ? null : $"/api/Profile/Photo/{appointment.DoctorId}",
+                consultFee,
+                currency = doctor?.FeeCurrency,
+                platformFee,
+                clinicPhone = doctor?.MobileNo,
+                reasonText = complaint?.Text,
                 paymentStatus = appointment.PaymentStatus,
                 paymentMethod = appointment.PaymentMethod,
                 isPaid = paid,
@@ -1246,12 +1285,21 @@ public partial class S4Week4Service
             ORDER BY EntryDate").ToListAsync();
         var visits = await _context.PatientAppointments.AsNoTracking()
             .CountAsync(a => a.PatientId == id && a.DeleteStatus != true && a.Status != "CANCELLED");
+        var follow = await _context.Database.SqlQuery<FollowCountRow>($@"
+            SELECT
+                ISNULL(SUM(CASE WHEN t.Status = N'OPEN' THEN 1 ELSE 0 END), 0) AS OpenCount,
+                ISNULL(SUM(CASE WHEN t.Status IN (N'DONE', N'COMPLETED') THEN 1 ELSE 0 END), 0) AS DoneCount
+            FROM dbo.FollowUpTask t
+            INNER JOIN dbo.FollowUpPlan p ON p.FollowUpPlanId = t.FollowUpPlanId
+            WHERE p.PatientId = {id}").FirstOrDefaultAsync();
         return Ok(new
         {
             success = true,
             data = new
             {
                 visitCount = visits,
+                openFollowUps = follow?.OpenCount ?? 0,
+                completedFollowUps = follow?.DoneCount ?? 0,
                 series = diary.Select(d => new { date = d.EntryDate, severity = d.Severity })
             }
         });
@@ -1777,6 +1825,17 @@ public partial class S4Week4Service
     {
         public string Text { get; set; } = "";
         public DateTime At { get; set; }
+    }
+
+    private sealed class AmountRow
+    {
+        public decimal Amount { get; set; }
+    }
+
+    private sealed class FollowCountRow
+    {
+        public int OpenCount { get; set; }
+        public int DoneCount { get; set; }
     }
 
     private sealed class FollowUpRow

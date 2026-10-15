@@ -245,7 +245,26 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
             appointmentCount.unpaidCount = dayAppts.Count(x =>
                 x.PaymentStatus != null
                 && x.PaymentStatus != "Paid"
+                && x.PaymentStatus != "PAID"
+                && x.PaymentStatus != "COLLECTED"
                 && x.PaymentStatus != "Waived");
+            appointmentCount.cancelledCount = dayAppts.Count(x =>
+                x.Status != null && x.Status.ToUpper() == "CANCELLED");
+
+            if (doctor != null)
+            {
+                var unpaidRows = dayAppts.Where(x =>
+                    x.Status == null || x.Status.ToUpper() != "CANCELLED").Where(x =>
+                    x.PaymentStatus != null
+                    && x.PaymentStatus != "Paid"
+                    && x.PaymentStatus != "PAID"
+                    && x.PaymentStatus != "COLLECTED"
+                    && x.PaymentStatus != "Waived").ToList();
+                appointmentCount.unpaidAmount = unpaidRows.Sum(x =>
+                    x.IsTele == true
+                        ? doctor.ConsultFeeTele ?? doctor.ConsultFeeInClinic ?? 0
+                        : doctor.ConsultFeeInClinic ?? doctor.ConsultFeeTele ?? 0);
+            }
 
             return appointmentCount;
         }

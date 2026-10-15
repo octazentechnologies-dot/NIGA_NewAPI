@@ -8,6 +8,9 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
     {
         public string? Q { get; set; }
         public string? City { get; set; }
+        public string? Qualification { get; set; }
+        /// <summary>fee, name, or online (default).</summary>
+        public string? SortBy { get; set; }
         public bool? IsOnline { get; set; }
         public bool? TeleOnly { get; set; }
         public decimal? MinFee { get; set; }
@@ -30,6 +33,13 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         /// <summary>Same flag as <see cref="Verified"/>. Kept so public clients can read isVerified.</summary>
         public bool IsVerified { get => Verified; set => Verified = value; }
         public string? PhotoPath { get; set; }
+        /// <summary>Absolute URL of GET /api/Profile/Photo/{doctorId}. Null when the doctor has no photo.</summary>
+        public string? PhotoUrl { get; set; }
+        /// <summary>Doctor.PassingCertNo. Null when the profile has no certificate number.</summary>
+        public string? RegistrationNumber { get; set; }
+        public string? PassingUniversity { get; set; }
+        /// <summary>Not stored on the doctor row. Null until the profile has a years-of-practice field.</summary>
+        public int? YearsExperience { get; set; }
         public string RankingSummary { get; set; } = string.Empty;
         public List<string> RankingReasons { get; set; } = new();
         public decimal? AverageRating { get; set; }

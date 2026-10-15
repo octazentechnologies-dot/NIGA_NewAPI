@@ -68,6 +68,12 @@ namespace Homeocentrum.Niga.API.Controllers
                     || (x.Qualification != null && x.Qualification.Contains(term)));
             }
 
+            if (!string.IsNullOrWhiteSpace(request.Qualification))
+            {
+                var qualification = request.Qualification.Trim();
+                q = q.Where(x => x.Qualification != null && x.Qualification.Contains(qualification));
+            }
+
             if (request.IsOnline == true)
                 q = q.Where(x => x.d.IsOnline);
             if (request.TeleOnly == true)
@@ -78,9 +84,14 @@ namespace Homeocentrum.Niga.API.Controllers
                 q = q.Where(x => (x.d.ConsultFeeInClinic ?? x.d.ConsultFeeTele ?? 0) <= request.MaxFee.Value);
 
             var total = await q.CountAsync();
-            var rows = await q
-                .OrderByDescending(x => x.d.IsOnline)
-                .ThenBy(x => x.d.LastName)
+            var sort = (request.SortBy ?? "online").Trim().ToLowerInvariant();
+            var ordered = sort switch
+            {
+                "fee" => q.OrderBy(x => x.d.ConsultFeeInClinic ?? x.d.ConsultFeeTele).ThenBy(x => x.d.LastName),
+                "name" => q.OrderBy(x => x.d.LastName).ThenBy(x => x.d.FirstName),
+                _ => q.OrderByDescending(x => x.d.IsOnline).ThenBy(x => x.d.LastName)
+            };
+            var rows = await ordered
                 .Skip((page - 1) * size)
                 .Take(size)
                 .ToListAsync();
@@ -119,6 +130,10 @@ namespace Homeocentrum.Niga.API.Controllers
                 IsOnline = card.IsOnline,
                 Verified = card.Verified,
                 PhotoPath = card.PhotoPath,
+                PhotoUrl = card.PhotoUrl,
+                RegistrationNumber = card.RegistrationNumber,
+                PassingUniversity = card.PassingUniversity,
+                YearsExperience = card.YearsExperience,
                 RankingSummary = card.RankingSummary,
                 AverageRating = card.AverageRating,
                 ReviewCount = card.ReviewCount,
@@ -528,6 +543,12 @@ namespace Homeocentrum.Niga.API.Controllers
                 IsOnline = d.IsOnline,
                 Verified = string.Equals(d.VerificationStatus, "Verified", StringComparison.OrdinalIgnoreCase),
                 PhotoPath = d.PhotoPath,
+                PhotoUrl = string.IsNullOrWhiteSpace(d.PhotoPath)
+                    ? null
+                    : $"{Request.Scheme}://{Request.Host}{Request.PathBase}/api/Profile/Photo/{d.DoctorId}",
+                RegistrationNumber = string.IsNullOrWhiteSpace(d.PassingCertNo) ? null : d.PassingCertNo,
+                PassingUniversity = string.IsNullOrWhiteSpace(d.PassingUniversity) ? null : d.PassingUniversity,
+                YearsExperience = null,
                 RankingSummary = RankingSummary(d, qualification),
                 RankingReasons = RankingReasons(d, qualification),
                 AverageRating = stats is { ReviewCount: > 0 } ? stats.AverageRating : null,

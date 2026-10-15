@@ -98,6 +98,7 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSingleton<IRubricRemedyImportQueue>(sp => sp.GetRequiredService<RubricRemedyImportQueue>());
             services.AddHostedService<RubricRemedyImportBackgroundService>();
             services.AddScoped<IDoctorDashBoardService, DoctorDashBoardService>();
+            services.AddScoped<MobileClinicQueryService>();
             services.AddScoped<IPatientLabOrderServices, PatientLabOrderServices>();
             services.AddScoped<IPatientLabEntryServices, PatientLabEntryServices>();
             services.AddScoped<ILabTestMasterServices, LabTestMasterServices>();

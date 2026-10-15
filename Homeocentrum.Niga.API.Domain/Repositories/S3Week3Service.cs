@@ -1532,6 +1532,22 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             if (age == null && appt.Patient?.DateOfBirth != null)
                 age = (int)((DateTime.Today - appt.Patient.DateOfBirth.Value.Date).TotalDays / 365.25);
 
+            var feeDoctor = await _context.Doctors.AsNoTracking()
+                .Where(d => d.DoctorId == appt.DoctorId)
+                .Select(d => new { d.ConsultFeeInClinic, d.ConsultFeeTele, d.FeeCurrency })
+                .FirstOrDefaultAsync();
+            var consultFee = appt.IsTele == true
+                ? feeDoctor?.ConsultFeeTele ?? feeDoctor?.ConsultFeeInClinic
+                : feeDoctor?.ConsultFeeInClinic ?? feeDoctor?.ConsultFeeTele;
+            var paidAmount = await _context.Database.SqlQuery<AmountRow>($@"
+                SELECT TOP 1 Amount
+                FROM dbo.PaymentOrder
+                WHERE Stream = N'CONSULT' AND PatientAppId = {patientAppId}
+                ORDER BY PaymentOrderId DESC").FirstOrDefaultAsync();
+            decimal? platformFee = paidAmount != null && consultFee.HasValue && paidAmount.Amount > consultFee.Value
+                ? paidAmount.Amount - consultFee.Value
+                : null;
+
             return S3ActionResult.Ok(new
             {
                 success = true,
@@ -1545,7 +1561,10 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     lastVisit = last,
                     paymentStatus = appt.PaymentStatus,
                     consultMode = appt.ConsultMode,
-                    teleStatus = tele?.Text
+                    teleStatus = tele?.Text,
+                    consultFee,
+                    currency = feeDoctor?.FeeCurrency,
+                    platformFee
                 }
             });
         }
@@ -1720,6 +1739,11 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         private sealed class BitRow
         {
             public bool Value { get; set; }
+        }
+
+        private sealed class AmountRow
+        {
+            public decimal Amount { get; set; }
         }
 
         private sealed class TextRow
