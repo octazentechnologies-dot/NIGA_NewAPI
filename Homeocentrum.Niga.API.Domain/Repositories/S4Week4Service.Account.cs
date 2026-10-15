@@ -530,6 +530,39 @@ public partial class S4Week4Service
                 .ToList();
         }
 
+        string? currency = rows.FirstOrDefault()?.Currency;
+        if (currency == null && doctorId > 0)
+        {
+            currency = await _context.Doctors.AsNoTracking()
+                .Where(d => d.DoctorId == doctorId)
+                .Select(d => d.FeeCurrency)
+                .FirstOrDefaultAsync();
+        }
+
+        decimal unpaidReceivableAmount = 0;
+        if (doctorId > 0)
+        {
+            var feeDoctor = await _context.Doctors.AsNoTracking()
+                .Where(d => d.DoctorId == doctorId)
+                .Select(d => new { d.ConsultFeeInClinic, d.ConsultFeeTele })
+                .FirstOrDefaultAsync();
+            var unpaidVisits = await _context.PatientAppointments.AsNoTracking()
+                .Where(a => a.DoctorId == doctorId
+                    && a.DeleteStatus != true
+                    && (a.Status == null || a.Status.ToUpper() != "CANCELLED")
+                    && (a.PaymentStatus == null
+                        || (a.PaymentStatus != "Paid"
+                            && a.PaymentStatus != "PAID"
+                            && a.PaymentStatus != "COLLECTED"
+                            && a.PaymentStatus != "Waived")))
+                .Select(a => a.IsTele)
+                .ToListAsync();
+            unpaidReceivableAmount = unpaidVisits.Sum(isTele =>
+                isTele == true
+                    ? feeDoctor?.ConsultFeeTele ?? feeDoctor?.ConsultFeeInClinic ?? 0
+                    : feeDoctor?.ConsultFeeInClinic ?? feeDoctor?.ConsultFeeTele ?? 0);
+        }
+
         return Ok(new
         {
             success = true,
@@ -543,7 +576,8 @@ public partial class S4Week4Service
                 onlineCaptured = online,
                 clinicCollected = clinic,
                 pendingPayoutAmount = pendingPayouts.Value,
-                currency = rows.FirstOrDefault()?.Currency ?? "INR",
+                unpaidReceivableAmount,
+                currency,
                 byDoctor,
                 recent = rows.Take(20)
             }

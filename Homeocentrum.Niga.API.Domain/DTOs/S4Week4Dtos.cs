@@ -192,6 +192,42 @@ public class SignErxRequest
     public int PatientAppId { get; set; }
 }
 
+/// <summary>Draft prescription. Sign still requires a potency on every line. An empty items list is rejected.</summary>
+public class ErxDraftRequest
+{
+    [Range(1, int.MaxValue)]
+    public int PatientAppId { get; set; }
+
+    /// <summary>Free-text note stored on the draft. Null when omitted.</summary>
+    [StringLength(1000)]
+    public string? Notes { get; set; }
+
+    public List<ErxDraftItem> Items { get; set; } = new();
+}
+
+public class ErxDraftItem
+{
+    /// <summary>RemedyMaster.RemedyId. The id must exist.</summary>
+    [Range(1, int.MaxValue)]
+    public int RemedyId { get; set; }
+
+    /// <summary>Optional on a draft. Sign rejects a line that has no potency.</summary>
+    [StringLength(40)]
+    public string? PotencyCode { get; set; }
+
+    [StringLength(80)]
+    public string? Dose { get; set; }
+
+    [StringLength(80)]
+    public string? Frequency { get; set; }
+
+    [StringLength(80)]
+    public string? Duration { get; set; }
+
+    [StringLength(500)]
+    public string? Instructions { get; set; }
+}
+
 public class PharmacyAcceptRequest
 {
     /// <summary>Taken from the route; a body value is ignored.</summary>

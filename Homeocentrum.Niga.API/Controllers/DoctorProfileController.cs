@@ -407,7 +407,10 @@ namespace Homeocentrum.Niga.API.Controllers
             Specialization = row.Specialization,
             Institution = row.Institution,
             PassingYear = row.PassingYear,
-            EnteredDate = row.EnteredDate
+            EnteredDate = row.EnteredDate,
+            ValidUntil = null,
+            Verified = null,
+            IssuingCouncil = null
         };
 
         private static string? TrimTo(string? value, int max)
@@ -621,6 +624,10 @@ namespace Homeocentrum.Niga.API.Controllers
                 QualificationName = qual,
                 PassingUniversity = doctor.PassingUniversity,
                 PassingCertNo = doctor.PassingCertNo,
+                RegistrationNo = string.IsNullOrWhiteSpace(doctor.PassingCertNo) ? null : doctor.PassingCertNo,
+                RegistrationValidUntil = null,
+                IssuingCouncil = null,
+                YearsExperience = null,
                 ConsultFeeInClinic = doctor.ConsultFeeInClinic,
                 ConsultFeeTele = doctor.ConsultFeeTele,
                 PhotoPath = doctor.PhotoPath,

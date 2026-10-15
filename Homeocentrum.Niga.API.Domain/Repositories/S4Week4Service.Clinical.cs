@@ -152,7 +152,33 @@ public partial class S4Week4Service
             var mine = await _context.Database.SqlQuery<ReviewRow>($@"
                 SELECT ReviewId, PatientAppId, DoctorId, PatientId, Rating, Text, Status, At
                 FROM dbo.Review WHERE PatientId = {caller.PatientId.Value} ORDER BY At DESC").ToListAsync();
-            return Ok(new { success = true, data = mine });
+            var doctorIds = mine.Select(r => r.DoctorId).Distinct().ToList();
+            var names = await _context.Doctors.AsNoTracking()
+                .Where(d => doctorIds.Contains(d.DoctorId))
+                .Select(d => new { d.DoctorId, d.FirstName, d.LastName })
+                .ToListAsync();
+            return Ok(new
+            {
+                success = true,
+                data = mine.Select(r =>
+                {
+                    var doctor = names.FirstOrDefault(d => d.DoctorId == r.DoctorId);
+                    var doctorName = doctor == null ? null : $"Dr. {doctor.FirstName} {doctor.LastName}".Trim();
+                    return new
+                    {
+                        r.ReviewId,
+                        r.PatientAppId,
+                        r.DoctorId,
+                        doctorName,
+                        r.PatientId,
+                        r.Rating,
+                        r.Text,
+                        r.Status,
+                        r.At,
+                        createdAt = r.At
+                    };
+                })
+            });
         }
         if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
         var doctorId = caller.DoctorId.Value;
@@ -320,7 +346,40 @@ public partial class S4Week4Service
         var access = await EnsureSnapshotAccessAsync(snapshot, caller, patientView);
         if (access != null) return access;
         var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, revealNames: !patientView);
-        return Ok(new { success = true, data = new { snapshot.ErxSnapshotId, snapshot.PatientAppId, snapshot.Status, snapshot.SignedAt, items, notesIncluded = false } });
+        string? notes = null;
+        object itemPayload = items;
+        if (!string.Equals(snapshot.Status, "SIGNED", StringComparison.OrdinalIgnoreCase))
+        {
+            var noteRow = await _context.Database.SqlQuery<ErxNoteRow>($@"
+                SELECT Notes FROM dbo.ErxSnapshot WHERE ErxSnapshotId = {snapshot.ErxSnapshotId}").FirstOrDefaultAsync();
+            notes = noteRow?.Notes;
+            if (items.Count == 0)
+            {
+                var lines = await _context.Database.SqlQuery<RemedyLineRow>($@"
+                    SELECT r.PrescriptionRemedyId, r.RemedyId, m.RemedyName, r.Dose, p.Code AS PotencyCode, r.Frequency, r.Duration, r.Instructions
+                    FROM dbo.PrescriptionRemedyDetail r
+                    INNER JOIN dbo.RemedyMaster m ON m.RemedyId = r.RemedyId
+                    LEFT JOIN dbo.PotencyMaster p ON p.PotencyId = r.PotencyId
+                    WHERE r.AppointmentId = {patientAppId} AND ISNULL(r.DeletedStatus, 0) = 0").ToListAsync();
+                var sequence = 0;
+                itemPayload = lines.Select(line =>
+                {
+                    sequence++;
+                    return new
+                    {
+                        remedyId = line.RemedyId,
+                        remedyCode = "R" + sequence.ToString("D4"),
+                        remedyName = patientView ? "" : line.RemedyName,
+                        potencyCode = line.PotencyCode,
+                        dose = line.Dose,
+                        frequency = line.Frequency,
+                        duration = line.Duration,
+                        instructions = line.Instructions
+                    };
+                }).ToList();
+            }
+        }
+        return Ok(new { success = true, data = new { snapshot.ErxSnapshotId, snapshot.PatientAppId, snapshot.Status, snapshot.SignedAt, items = itemPayload, notes, notesIncluded = notes != null } });
     }
 
     public async Task<S4ActionResult> SignErxAsync(SignErxRequest request, S4Caller caller)
@@ -394,6 +453,77 @@ public partial class S4Week4Service
                     ({snapshotId}, {line.RemedyId}, {code}, {line.RemedyName}, {line.PotencyCode}, {line.Dose}, {line.Frequency}, {line.Duration}, {line.Instructions})");
         }
         return Ok(new { success = true, message = "Prescription signed and locked.", data = new { erxSnapshotId = snapshotId } });
+    }
+
+    public async Task<S4ActionResult> SaveErxDraftAsync(ErxDraftRequest request, S4Caller caller)
+    {
+        if (!caller.IsDoctor && !caller.IsAdmin)
+            return Fail(403, "FORBIDDEN", "Only the treating doctor can save a draft.");
+        if (request == null || request.PatientAppId <= 0 || request.Items == null || request.Items.Count == 0)
+            return Fail(400, "VALIDATION", "patientAppId and at least one item are required.");
+        var appointment = await LoadAppointmentAsync(request.PatientAppId);
+        if (appointment == null) return Fail(404, "NOT_FOUND", "Appointment not found.");
+        if (!caller.OwnsDoctor(appointment.DoctorId))
+            return Fail(403, "FORBIDDEN", "This visit belongs to another clinic.");
+        var existing = await LoadSnapshotByAppointmentAsync(appointment.PatientAppId);
+        if (existing != null && existing.Status == "SIGNED")
+            return Fail(409, "CONFLICT", "This visit is already signed.");
+
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.PrescriptionRemedyDetail
+            SET DeletedStatus = 1
+            WHERE AppointmentId = {appointment.PatientAppId} AND ISNULL(DeletedStatus, 0) = 0");
+
+        foreach (var item in request.Items)
+        {
+            if (item.RemedyId <= 0)
+                return Fail(400, "VALIDATION", "Each item needs a remedyId.");
+            var remedy = await _context.Database.SqlQuery<IdRow>($@"
+                SELECT TOP 1 RemedyId AS Id FROM dbo.RemedyMaster WHERE RemedyId = {item.RemedyId}").FirstOrDefaultAsync();
+            if (remedy == null)
+                return Fail(400, "VALIDATION", "Remedy " + item.RemedyId + " was not found.");
+            int? potencyId = null;
+            if (!string.IsNullOrWhiteSpace(item.PotencyCode))
+            {
+                var potency = await _context.Database.SqlQuery<IdRow>($@"
+                    SELECT TOP 1 PotencyId AS Id FROM dbo.PotencyMaster WHERE Code = {item.PotencyCode.Trim()}").FirstOrDefaultAsync();
+                if (potency == null)
+                    return Fail(400, "VALIDATION", "Potency " + item.PotencyCode.Trim() + " was not found.");
+                potencyId = potency.Id;
+            }
+            _context.PrescriptionRemedyDetails.Add(new Master.PrescriptionRemedyDetail
+            {
+                AppointmentId = appointment.PatientAppId,
+                RemedyId = item.RemedyId,
+                PotencyId = potencyId,
+                Dose = string.IsNullOrWhiteSpace(item.Dose) ? null : item.Dose.Trim(),
+                Frequency = string.IsNullOrWhiteSpace(item.Frequency) ? null : item.Frequency.Trim(),
+                Duration = string.IsNullOrWhiteSpace(item.Duration) ? null : item.Duration.Trim(),
+                Instructions = string.IsNullOrWhiteSpace(item.Instructions) ? null : item.Instructions.Trim(),
+                DeletedStatus = false,
+                CreatedDate = DateTime.Now
+            });
+        }
+        await _context.SaveChangesAsync();
+
+        var notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+        await _context.Database.ExecuteSqlRawAsync("""
+            IF COL_LENGTH(N'dbo.ErxSnapshot', N'Notes') IS NULL
+                ALTER TABLE dbo.ErxSnapshot ADD Notes nvarchar(1000) NULL;
+            """);
+        if (existing == null)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.ErxSnapshot (PatientAppId, PatientId, DoctorId, Status, Notes)
+                VALUES ({appointment.PatientAppId}, {appointment.PatientId}, {appointment.DoctorId}, N'DRAFT', {notes})");
+        }
+        else
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.ErxSnapshot SET Status = N'DRAFT', Notes = {notes}
+                WHERE ErxSnapshotId = {existing.ErxSnapshotId} AND Status <> N'SIGNED'");
+        }
+        return Ok(new { success = true, data = new { patientAppId = appointment.PatientAppId, status = "DRAFT", itemCount = request.Items.Count } });
     }
 
     public async Task<S4ActionResult> ErxHistoryAsync(int? patientId, int? patientAppId, S4Caller caller)
@@ -655,7 +785,23 @@ public partial class S4Week4Service
                     WHERE r.PharmacyPartnerId = p.PharmacyPartnerId
                       AND r.OpenTime IS NOT NULL AND r.CloseTime IS NOT NULL
                       AND (CONVERT(time, GETDATE()) < r.OpenTime OR CONVERT(time, GETDATE()) > r.CloseTime))").ToListAsync();
-        return Ok(new { success = true, data = rows });
+        return Ok(new
+        {
+            success = true,
+            data = rows.Select(r => new
+            {
+                r.PharmacyPartnerId,
+                r.Name,
+                r.Area,
+                r.Status,
+                priceTotal = (decimal?)null,
+                deliveryFee = (decimal?)null,
+                etaMinutes = (int?)null,
+                fulfilPercent = (decimal?)null,
+                distanceKm = (decimal?)null,
+                serviceable = (bool?)null
+            })
+        });
     }
 
     public async Task<S4ActionResult> ListPharmacyPartnersAsync(S4Caller caller)
@@ -972,7 +1118,39 @@ public partial class S4Week4Service
                          WHERE t.PatientAppId = a.PatientAppId ORDER BY t.TeleSessionId DESC) ts
             WHERE a.PatientId = {id} AND ISNULL(a.DeleteStatus, 0) = 0
             ORDER BY a.AppointmentDate DESC, a.AppointmentTime DESC").ToListAsync();
-        return Ok(new { success = true, data = rows });
+        var doctorIds = rows.Where(r => r.DoctorId.HasValue).Select(r => r.DoctorId!.Value).Distinct().ToList();
+        var fees = await _context.Doctors.AsNoTracking()
+            .Where(d => doctorIds.Contains(d.DoctorId))
+            .Select(d => new { d.DoctorId, d.ConsultFeeInClinic, d.ConsultFeeTele, d.FeeCurrency, d.MobileNo, d.PermanantAddress })
+            .ToListAsync();
+        var data = rows.Select(r =>
+        {
+            var fee = fees.FirstOrDefault(d => d.DoctorId == r.DoctorId);
+            decimal? consultFee = fee == null
+                ? null
+                : r.IsTele ? fee.ConsultFeeTele ?? fee.ConsultFeeInClinic : fee.ConsultFeeInClinic ?? fee.ConsultFeeTele;
+            return new
+            {
+                r.PatientAppId,
+                r.AppointmentDate,
+                r.AppointmentTime,
+                r.Status,
+                r.ConsultMode,
+                r.IsTele,
+                r.DoctorId,
+                r.DoctorName,
+                r.TeleSessionId,
+                r.SessionStatus,
+                r.ChatCount,
+                r.HasSummary,
+                consultFee,
+                currency = fee?.FeeCurrency,
+                clinicPhone = fee?.MobileNo,
+                clinicAddress = fee?.PermanantAddress,
+                reasonText = (string?)null
+            };
+        });
+        return Ok(new { success = true, data });
     }
 
     /// <summary>PAT-20.02 — one appointment for the patient app: doctor, slot, payment, tele, eRx and next actions.</summary>
@@ -1300,6 +1478,9 @@ public partial class S4Week4Service
                 visitCount = visits,
                 openFollowUps = follow?.OpenCount ?? 0,
                 completedFollowUps = follow?.DoneCount ?? 0,
+                followUpsCompleted = follow?.DoneCount ?? 0,
+                followUpsTotal = (follow?.OpenCount ?? 0) + (follow?.DoneCount ?? 0),
+                adherencePercent = (decimal?)null,
                 series = diary.Select(d => new { date = d.EntryDate, severity = d.Severity })
             }
         });
@@ -1738,6 +1919,16 @@ public partial class S4Week4Service
         public string? Frequency { get; set; }
         public string? Duration { get; set; }
         public string? Instructions { get; set; }
+    }
+
+    private sealed class ErxNoteRow
+    {
+        public string? Notes { get; set; }
+    }
+
+    private sealed class IdRow
+    {
+        public int Id { get; set; }
     }
 
     private sealed class SnapshotRow

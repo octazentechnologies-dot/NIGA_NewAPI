@@ -189,6 +189,31 @@ public static class ApiAudienceCatalog
         ("POST", "api/Erx/Refills/{id}/Approve", W | D, "DMO-09.02 refills"),
         ("POST", "api/Erx/Refills/{id}/Reject", W | D, "DMO-09.02 refills"),
         ("GET", "api/Earnings/Summary", W | D, "DMO-10.02 earnings"),
+
+        // Shared by both mobile apps
+        ("GET", "api/Public/AppConfig", W | P | D, "App config: site URL and support contacts"),
+        ("GET", "api/App/Config", W | P | D, "App config alias"),
+        ("GET", "api/Notifications/Preferences", P | D, "Notification preferences"),
+        ("PUT", "api/Notifications/Preferences", P | D, "Save notification preferences"),
+        ("POST", "api/Notifications/MarkAllRead", P | D, "Mark every notification read"),
+        ("POST", "api/Tele/Sessions/{teleSessionId}/RunningLate", P | D, "Running-late notice"),
+        ("POST", "api/PatientAppointment/SwitchToTele", P | D, "Switch an in-clinic visit to tele"),
+
+        // Doctor routes the mobile app calls that live on existing controllers
+        ("PUT", "api/Erx/Draft", W | D, "Save an eRx draft"),
+        ("GET", "api/Erx/ByAppointment/{id}", W | D, "eRx for one appointment"),
+        ("POST", "api/Erx/Sign", W | D, "Sign an eRx"),
+        ("GET", "api/Erx/Potencies", W | D, "Potency list"),
+        ("GET", "api/Erx/History", W | D, "eRx history"),
+        ("PUT", "api/Erx/RemedyLines/{id}", W | D, "Update one remedy line"),
+        ("GET", "api/Doctor/Reminders", W | D, "Doctor reminders"),
+        ("POST", "api/Doctor/Reminders", W | D, "Create a doctor reminder"),
+        ("PUT", "api/Doctor/Reminders/{id}", W | D, "Update a doctor reminder"),
+        ("DELETE", "api/Doctor/Reminders/{id}", W | D, "Delete a doctor reminder"),
+        ("GET", "api/Doctor/Reviews", W | D, "Reviews of this doctor"),
+        ("PUT", "api/Doctor/Reviews/{reviewId}/Reply", W | D, "Reply to a review"),
+        ("GET", "api/Reviews/Mine", W | P | D, "Reviews written by the signed-in user"),
+        ("GET", "api/Patient/Payments", W | P, "Patient payment history"),
     };
 
     private static readonly Dictionary<string, (ApiClients Clients, string Use)> Index =
@@ -216,7 +241,9 @@ public static class ApiAudienceCatalog
         {
             ApiAudience.MobilePatient => ApiClients.PatientApp,
             ApiAudience.MobileDoctor => ApiClients.DoctorApp,
-            ApiAudience.Common => Index[Key(api.HttpMethod, api.RelativePath)].Clients,
+            ApiAudience.Common => Index.TryGetValue(Key(api.HttpMethod, api.RelativePath), out var row)
+                ? row.Clients
+                : ApiClients.PatientApp | ApiClients.DoctorApp,
             _ => ApiClients.Web
         };
     }

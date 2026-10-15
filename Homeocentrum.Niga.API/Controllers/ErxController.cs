@@ -36,6 +36,9 @@ public class ErxController : ControllerBase
     [HttpGet("/api/Erx/ByAppointment/{id:int}")]
     public Task<IActionResult> ErxByAppointment(int id) => Done(_s4.GetErxByAppointmentAsync(id, Caller(), false));
 
+    [HttpPut("/api/Erx/Draft")]
+    public Task<IActionResult> Draft([FromBody] ErxDraftRequest request) => Done(_s4.SaveErxDraftAsync(request, Caller()));
+
     [HttpPost("/api/Erx/Sign")]
     public Task<IActionResult> Sign([FromBody] SignErxRequest request) => Done(_s4.SignErxAsync(request, Caller()));
 

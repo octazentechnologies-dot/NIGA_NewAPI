@@ -123,6 +123,14 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public bool IsOnline { get; set; }
         public string VerificationStatus { get; set; } = string.Empty;
         public bool DirectoryVisible { get; set; }
+        /// <summary>Same stored value as PassingCertNo. There is no separate registration-number column.</summary>
+        public string? RegistrationNo { get; set; }
+        /// <summary>Not stored on the doctor row.</summary>
+        public DateTime? RegistrationValidUntil { get; set; }
+        /// <summary>Not stored on the doctor row.</summary>
+        public string? IssuingCouncil { get; set; }
+        /// <summary>Not stored. Account age is on GET /api/Doctor/PracticeStats as accountAgeDays.</summary>
+        public int? YearsExperience { get; set; }
         public DoctorPayeeKycDto? Kyc { get; set; }
     }
 
@@ -153,6 +161,12 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string? Institution { get; set; }
         public int? PassingYear { get; set; }
         public DateTime EnteredDate { get; set; }
+        /// <summary>Not stored on the credential file row.</summary>
+        public DateTime? ValidUntil { get; set; }
+        /// <summary>Not stored per document. Doctor verification is VerificationStatus on the profile.</summary>
+        public bool? Verified { get; set; }
+        /// <summary>Not stored on the credential file row.</summary>
+        public string? IssuingCouncil { get; set; }
         /// <summary>Authorised GET for the stored file (owning doctor or admin JWT).</summary>
         public string DownloadUrl => $"/api/Profile/CredentialDocuments/{DoctorCredentialDocumentId}/File";
     }
@@ -216,6 +230,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string? WorkingHoursNote { get; set; }
         public DoctorDailyScheduleModel? TodaySchedule { get; set; }
         public List<DoctorDailyScheduleModel> WeekSchedules { get; set; } = new();
+        public int? GapMinutes { get; set; }
+        public int? BookingHorizonDays { get; set; }
     }
 
     public class AvailabilityDayHours
@@ -235,6 +251,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public TimeOnly? WorkStartTime { get; set; }
         public TimeOnly? WorkEndTime { get; set; }
         public int? SlotIntervalMinutes { get; set; }
+        public int? GapMinutes { get; set; }
+        public int? BookingHorizonDays { get; set; }
         public List<AvailabilityDayHours>? Days { get; set; }
     }
 

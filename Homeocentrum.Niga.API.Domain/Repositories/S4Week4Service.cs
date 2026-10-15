@@ -590,7 +590,7 @@ public partial class S4Week4Service : IS4Week4Service
             message = gatewayReady
                 ? "Medicine order created. Paid status waits for the webhook."
                 : "Medicine payment stored. Gateway keys are not configured, so the order is not marked paid.",
-            data = new { paymentOrderId = paymentId, amount = order.QuoteAmount, currency = "INR" }
+            data = new { paymentOrderId = paymentId, amount = order.QuoteAmount, currency = "INR", gatewayReady, keyId, gatewayOrderId }
         });
     }
 

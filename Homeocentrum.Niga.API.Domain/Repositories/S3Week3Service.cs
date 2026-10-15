@@ -1539,14 +1539,16 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             var consultFee = appt.IsTele == true
                 ? feeDoctor?.ConsultFeeTele ?? feeDoctor?.ConsultFeeInClinic
                 : feeDoctor?.ConsultFeeInClinic ?? feeDoctor?.ConsultFeeTele;
-            var paidAmount = await _context.Database.SqlQuery<AmountRow>($@"
-                SELECT TOP 1 Amount
+            var paid = await _context.Database.SqlQuery<PaidConsultRow>($@"
+                SELECT TOP 1 Amount, CreatedAt, Status
                 FROM dbo.PaymentOrder
                 WHERE Stream = N'CONSULT' AND PatientAppId = {patientAppId}
                 ORDER BY PaymentOrderId DESC").FirstOrDefaultAsync();
-            decimal? platformFee = paidAmount != null && consultFee.HasValue && paidAmount.Amount > consultFee.Value
-                ? paidAmount.Amount - consultFee.Value
+            var paidCaptured = paid != null && paid.Status is "CAPTURED" or "COLLECTED" or "PAID";
+            decimal? platformFee = paid != null && consultFee.HasValue && paid.Amount > consultFee.Value
+                ? paid.Amount - consultFee.Value
                 : null;
+            decimal? totalAmount = paid != null ? paid.Amount : consultFee;
 
             return S3ActionResult.Ok(new
             {
@@ -1564,7 +1566,9 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     teleStatus = tele?.Text,
                     consultFee,
                     currency = feeDoctor?.FeeCurrency,
-                    platformFee
+                    platformFee,
+                    totalAmount,
+                    paidAt = paidCaptured ? paid!.CreatedAt : (DateTime?)null
                 }
             });
         }
@@ -1744,6 +1748,13 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         private sealed class AmountRow
         {
             public decimal Amount { get; set; }
+        }
+
+        private sealed class PaidConsultRow
+        {
+            public decimal Amount { get; set; }
+            public DateTime CreatedAt { get; set; }
+            public string Status { get; set; } = "";
         }
 
         private sealed class TextRow

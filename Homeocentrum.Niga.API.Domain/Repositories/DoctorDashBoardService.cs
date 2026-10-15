@@ -250,6 +250,9 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                 && x.PaymentStatus != "Waived");
             appointmentCount.cancelledCount = dayAppts.Count(x =>
                 x.Status != null && x.Status.ToUpper() == "CANCELLED");
+            appointmentCount.patientAppCancelled = appointmentCount.cancelledCount;
+            appointmentCount.unpaidAppointmentCount = appointmentCount.unpaidCount;
+            appointmentCount.currency = doctor?.FeeCurrency;
 
             if (doctor != null)
             {

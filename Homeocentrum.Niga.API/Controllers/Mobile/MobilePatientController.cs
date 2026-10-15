@@ -6,6 +6,7 @@ using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Extensions;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Security;
+using Homeocentrum.Niga.API.Domain.Repositories;
 using Homeocentrum.Niga.API.Hosting;
 
 namespace Homeocentrum.Niga.API.Controllers.Mobile;
@@ -23,17 +24,20 @@ public class MobilePatientController : ControllerBase
     private readonly NIGACentrumContext _context;
     private readonly IS4Week4Service _s4;
     private readonly IS3Week3Service _s3;
+    private readonly MobileClinicQueryService _clinic;
     private readonly ILogger<MobilePatientController> _logger;
 
     public MobilePatientController(
         NIGACentrumContext context,
         IS4Week4Service s4,
         IS3Week3Service s3,
+        MobileClinicQueryService clinic,
         ILogger<MobilePatientController> logger)
     {
         _context = context;
         _s4 = s4;
         _s3 = s3;
+        _clinic = clinic;
         _logger = logger;
     }
 
@@ -168,4 +172,32 @@ public class MobilePatientController : ControllerBase
         var result = await _s3.GetWaitlistOffersAsync(contactMobile, doctorId, patientId);
         return StatusCode(result.StatusCode, result.Body);
     }
+
+    [HttpPost("/api/Patient/Visits/{patientAppId:int}/CheckIn")]
+    public Task<IActionResult> CheckIn(
+        int patientAppId,
+        [FromQuery] string? status,
+        [FromBody] CheckInBody? body)
+        => Done(_clinic.CheckInAsync(patientAppId, status ?? body?.Status, Caller()));
+
+    [HttpGet("/api/Patient/Reminders")]
+    public Task<IActionResult> Reminders() => Done(_clinic.ListRemindersAsync(Caller()));
+
+    [HttpPost("/api/Patient/Reminders")]
+    public Task<IActionResult> SaveReminder([FromBody] ReminderWrite request)
+        => Done(_clinic.SaveReminderAsync(request, Caller()));
+
+    [HttpPut("/api/Patient/Reminders/{id:int}")]
+    public Task<IActionResult> UpdateReminder(int id, [FromBody] ReminderWrite request)
+        => Done(_clinic.UpdateReminderAsync(id, request, Caller()));
+
+    [HttpDelete("/api/Patient/Reminders/{id:int}")]
+    public Task<IActionResult> DeleteReminder(int id) => Done(_clinic.DeleteReminderAsync(id, Caller()));
+
+    [HttpPost("/api/Patient/AppointmentRequests")]
+    public Task<IActionResult> CreateAppointmentRequest([FromBody] AppointmentRequestWrite request)
+        => Done(_clinic.CreateAppointmentRequestAsync(request, Caller()));
+
+    private Task<IActionResult> Done(Task<S4ActionResult> work) => this.Respond(work, _logger);
+    private S4Caller Caller() => this.S4Caller(_context);
 }

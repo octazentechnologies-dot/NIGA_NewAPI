@@ -65,6 +65,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> UpdateRemedyLineAsync(int prescriptionRemedyId, RemedyLineUpdateRequest request, S4Caller caller);
     Task<S4ActionResult> GetErxByAppointmentAsync(int patientAppId, S4Caller caller, bool patientView);
     Task<S4ActionResult> SignErxAsync(SignErxRequest request, S4Caller caller);
+    Task<S4ActionResult> SaveErxDraftAsync(ErxDraftRequest request, S4Caller caller);
     Task<S4ActionResult> ErxHistoryAsync(int? patientId, int? patientAppId, S4Caller caller);
     Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller);
     Task<S4ActionResult> RequestRefillAsync(RefillCreateRequest request, S4Caller caller);

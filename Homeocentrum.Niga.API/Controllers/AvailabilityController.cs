@@ -37,6 +37,7 @@ namespace Homeocentrum.Niga.API.Controllers
                 .OrderBy(s => s.ScheduleDate)
                 .ToListAsync();
             var todayRow = week.FirstOrDefault(s => s.ScheduleDate == today);
+            var rule = await ReadBookingRuleAsync(doctor.DoctorId);
 
             DoctorDailyScheduleModel MapRow(DoctorDailySchedule s) => new()
             {
@@ -57,7 +58,9 @@ namespace Homeocentrum.Niga.API.Controllers
                     IsOnline = doctor.IsOnline,
                     WorkingHoursNote = doctor.WorkingHoursNote,
                     TodaySchedule = todayRow == null ? null : MapRow(todayRow),
-                    WeekSchedules = week.Select(MapRow).ToList()
+                    WeekSchedules = week.Select(MapRow).ToList(),
+                    GapMinutes = rule.GapMinutes,
+                    BookingHorizonDays = rule.HorizonDays
                 }
             });
         }
@@ -87,6 +90,8 @@ namespace Homeocentrum.Niga.API.Controllers
                 return daysError;
 
             await _context.SaveChangesAsync();
+            if (request?.GapMinutes != null || request?.BookingHorizonDays != null)
+                await SaveBookingRuleAsync(doctor.DoctorId, request.GapMinutes, request.BookingHorizonDays);
             return await Me();
         }
 
@@ -222,6 +227,51 @@ namespace Homeocentrum.Niga.API.Controllers
                 return await _context.Doctors.FirstOrDefaultAsync(d => d.DoctorId == jwtDoctor.Value && !d.DeleteStatus);
             var userId = User.GetUserId();
             return await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == userId && !d.DeleteStatus);
+        }
+
+        private async Task<(int? GapMinutes, int? HorizonDays)> ReadBookingRuleAsync(int doctorId)
+        {
+            await EnsureBookingRuleTableAsync();
+            var row = await _context.Database.SqlQuery<BookingRuleRow>($@"
+                SELECT GapMinutes, BookingHorizonDays
+                FROM dbo.DoctorBookingRule
+                WHERE DoctorId = {doctorId}").FirstOrDefaultAsync();
+            return (row?.GapMinutes, row?.BookingHorizonDays);
+        }
+
+        private async Task SaveBookingRuleAsync(int doctorId, int? gapMinutes, int? horizonDays)
+        {
+            if (gapMinutes is < 0 or > 240 || horizonDays is < 1 or > 90)
+                return;
+            await EnsureBookingRuleTableAsync();
+            var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.DoctorBookingRule
+                SET GapMinutes = {gapMinutes}, BookingHorizonDays = {horizonDays}
+                WHERE DoctorId = {doctorId}");
+            if (updated == 0)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.DoctorBookingRule (DoctorId, GapMinutes, BookingHorizonDays)
+                    VALUES ({doctorId}, {gapMinutes}, {horizonDays})");
+            }
+        }
+
+        private async Task EnsureBookingRuleTableAsync()
+        {
+            await _context.Database.ExecuteSqlRawAsync("""
+                IF OBJECT_ID(N'dbo.DoctorBookingRule', N'U') IS NULL
+                CREATE TABLE dbo.DoctorBookingRule (
+                    DoctorId int NOT NULL PRIMARY KEY,
+                    GapMinutes int NULL,
+                    BookingHorizonDays int NULL
+                );
+                """);
+        }
+
+        private sealed class BookingRuleRow
+        {
+            public int? GapMinutes { get; set; }
+            public int? BookingHorizonDays { get; set; }
         }
     }
 }

@@ -15,7 +15,7 @@ public class MobileClinicQueryService
 
     public MobileClinicQueryService(NIGACentrumContext context) => _context = context;
 
-    public async Task<S4ActionResult> DoctorFollowUpsAsync(S4Caller caller)
+    public async Task<S4ActionResult> DoctorFollowUpsAsync(S4Caller caller, string? status, DateTime? from, DateTime? to)
     {
         if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
         var rows = await _context.Database.SqlQuery<FollowUpListRow>($@"
@@ -25,6 +25,12 @@ public class MobileClinicQueryService
             INNER JOIN dbo.Patient pt ON pt.PatientId = p.PatientId
             WHERE p.DoctorId = {caller.DoctorId.Value}
             ORDER BY t.DueDate").ToListAsync();
+        if (!string.IsNullOrWhiteSpace(status))
+            rows = rows.Where(r => string.Equals(r.Status, status.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (from.HasValue)
+            rows = rows.Where(r => r.DueDate.Date >= from.Value.Date).ToList();
+        if (to.HasValue)
+            rows = rows.Where(r => r.DueDate.Date <= to.Value.Date).ToList();
         return Ok(rows);
     }
 
@@ -72,8 +78,87 @@ public class MobileClinicQueryService
             signedNoteCount = signedNotes?.Value ?? 0,
             accountAgeDays,
             yearsExperience = (int?)null,
-            punctuality = (decimal?)null
+            punctuality = (decimal?)null,
+            lifetimeConsultCount = completed,
+            attendedPct = completionRate,
+            punctualityPct = (decimal?)null,
+            completionPct = completionRate,
+            noteSigningPct = appointments.Count == 0
+                ? (decimal?)null
+                : Math.Round((decimal)(signedNotes.Value) / appointments.Count, 3)
         });
+    }
+
+    public async Task<S4ActionResult> DoctorActivityAsync(S4Caller caller)
+    {
+        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        var rows = await _context.PatientAppointments.AsNoTracking()
+            .Where(a => a.DoctorId == caller.DoctorId.Value && a.DeleteStatus != true && a.AppointmentDate != null)
+            .OrderByDescending(a => a.AppointmentDate)
+            .ThenByDescending(a => a.PatientAppId)
+            .Take(30)
+            .Select(a => new
+            {
+                kind = "appointment",
+                at = a.AppointmentDate,
+                a.PatientAppId,
+                a.PatientId,
+                patientName = a.Patient.PatientName,
+                a.Status,
+                a.ConsultMode,
+                a.PaymentStatus
+            })
+            .ToListAsync();
+        return Ok(rows);
+    }
+
+    public async Task<S4ActionResult> CheckAvailabilityAsync(string? userName, string? emailId)
+    {
+        var name = string.IsNullOrWhiteSpace(userName) ? null : userName.Trim();
+        var email = string.IsNullOrWhiteSpace(emailId) ? null : emailId.Trim();
+        if (name == null && email == null)
+            return Fail(400, "VALIDATION", "userName or emailId is required.");
+        bool? userNameAvailable = null;
+        bool? emailAvailable = null;
+        if (name != null)
+            userNameAvailable = !await _context.UserMasters.AsNoTracking().AnyAsync(u => u.UserName == name);
+        if (email != null)
+        {
+            var userTaken = await _context.UserMasters.AsNoTracking().AnyAsync(u => u.EmailId == email);
+            var doctorTaken = await _context.Doctors.AsNoTracking().AnyAsync(d => d.EmailId == email && !d.DeleteStatus);
+            emailAvailable = !userTaken && !doctorTaken;
+        }
+        return Ok(new { userNameAvailable, emailAvailable });
+    }
+
+    public async Task<S4ActionResult> GetBookingRuleAsync(S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        var row = await _context.Database.SqlQuery<BookingRuleRow>($@"
+            SELECT GapMinutes, BookingHorizonDays
+            FROM dbo.DoctorBookingRule
+            WHERE DoctorId = {caller.DoctorId.Value}").FirstOrDefaultAsync();
+        return Ok(row ?? new BookingRuleRow());
+    }
+
+    public async Task<S4ActionResult> SaveBookingRuleAsync(int? gapMinutes, int? horizonDays, S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        if (gapMinutes is < 0 or > 240) return Fail(400, "VALIDATION", "gapMinutes must be from 0 to 240.");
+        if (horizonDays is < 1 or > 90) return Fail(400, "VALIDATION", "bookingHorizonDays must be from 1 to 90.");
+        var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.DoctorBookingRule
+            SET GapMinutes = {gapMinutes}, BookingHorizonDays = {horizonDays}
+            WHERE DoctorId = {caller.DoctorId.Value}");
+        if (updated == 0)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.DoctorBookingRule (DoctorId, GapMinutes, BookingHorizonDays)
+                VALUES ({caller.DoctorId.Value}, {gapMinutes}, {horizonDays})");
+        }
+        return await GetBookingRuleAsync(caller);
     }
 
     public async Task<S4ActionResult> AppointmentsByDateRangeAsync(DateTime from, DateTime to, S4Caller caller)
@@ -113,31 +198,43 @@ public class MobileClinicQueryService
         return Ok(rows);
     }
 
-    public async Task<S4ActionResult> CheckInAsync(int patientAppId, S4Caller caller)
+    public async Task<S4ActionResult> CheckInAsync(int patientAppId, string? status, S4Caller caller)
     {
         if (!caller.IsPatient || !caller.PatientId.HasValue)
             return Fail(403, "FORBIDDEN", "Only the patient can check in.");
+        var next = string.IsNullOrWhiteSpace(status) ? "WAITING" : status.Trim().ToUpperInvariant();
+        if (next is not ("EARLY" or "WAITING" or "READY"))
+            return Fail(400, "VALIDATION", "status must be EARLY, WAITING, or READY.");
         var appt = await _context.PatientAppointments
             .FirstOrDefaultAsync(a => a.PatientAppId == patientAppId && a.DeleteStatus != true);
         if (appt == null) return Fail(404, "NOT_FOUND", "Appointment not found.");
         if (appt.PatientId != caller.PatientId) return Fail(403, "FORBIDDEN", "This visit belongs to another patient.");
+        if (appt.IsTele == true)
+            return Fail(400, "VALIDATION", "Check-in is for a clinic visit.");
         if (IsCancelled(appt.Status) || IsCompleted(appt.Status))
             return Fail(400, "VALIDATION", "This visit can no longer be checked in.");
         if (appt.AppointmentDate?.Date != DateTime.Today)
             return Fail(400, "VALIDATION", "Check-in is only for today's visit.");
-        appt.Status = "WAITING";
+        var ahead = await _context.PatientAppointments.CountAsync(a =>
+            a.DoctorId == appt.DoctorId
+            && a.DeleteStatus != true
+            && a.AppointmentDate.HasValue
+            && a.AppointmentDate.Value.Date == DateTime.Today
+            && a.PatientAppId != appt.PatientAppId
+            && a.Status == "WAITING");
+        appt.Status = next;
+        appt.QueuePosition = ahead + 1;
         await _context.SaveChangesAsync();
-        return Ok(new { patientAppId, status = appt.Status });
+        return Ok(new { patientAppId, status = appt.Status, queuePosition = appt.QueuePosition, readyAt = (DateTime?)null });
     }
 
     public async Task<S4ActionResult> SwitchToTeleAsync(int patientAppId, S4Caller caller)
     {
-        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
         var appt = await _context.PatientAppointments
             .FirstOrDefaultAsync(a => a.PatientAppId == patientAppId && a.DeleteStatus != true);
         if (appt == null) return Fail(404, "NOT_FOUND", "Appointment not found.");
-        if (appt.DoctorId != caller.DoctorId && appt.UserId != caller.UserId)
-            return Fail(403, "FORBIDDEN", "This visit belongs to another doctor.");
+        if (!OwnsVisit(caller, appt))
+            return Fail(403, "FORBIDDEN", "This visit belongs to another account.");
         if (IsCancelled(appt.Status) || IsCompleted(appt.Status))
             return Fail(400, "VALIDATION", "This visit can no longer change mode.");
         appt.IsTele = true;
@@ -149,14 +246,13 @@ public class MobileClinicQueryService
 
     public async Task<S4ActionResult> RunningLateAsync(int teleSessionId, int? minutes, S4Caller caller)
     {
-        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
         var session = await _context.Database.SqlQuery<SessionRow>($@"
             SELECT TeleSessionId, PatientAppId FROM dbo.TeleSession WHERE TeleSessionId = {teleSessionId}").FirstOrDefaultAsync();
         if (session == null) return Fail(404, "NOT_FOUND", "Tele session not found.");
         var appt = await _context.PatientAppointments.AsNoTracking()
             .FirstOrDefaultAsync(a => a.PatientAppId == session.PatientAppId);
-        if (appt == null || (appt.DoctorId != caller.DoctorId && appt.UserId != caller.UserId))
-            return Fail(403, "FORBIDDEN", "This session belongs to another doctor.");
+        if (appt == null || !OwnsVisit(caller, appt))
+            return Fail(403, "FORBIDDEN", "This session belongs to another account.");
         var detail = minutes.HasValue && minutes.Value > 0 ? minutes.Value + " minutes" : null;
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.TeleSessionEvent (TeleSessionId, Code, Detail, At)
@@ -168,7 +264,8 @@ public class MobileClinicQueryService
     {
         await EnsureSchemaAsync();
         var row = await _context.Database.SqlQuery<PreferenceRow>($@"
-            SELECT PushEnabled, SmsEnabled, EmailEnabled, QuietStart, QuietEnd
+            SELECT PushEnabled, SmsEnabled, EmailEnabled, QuietStart, QuietEnd,
+                   Appointments, Prescriptions, Medicines, Marketing, QuietHoursEnabled, ReminderOffsets
             FROM dbo.UserNotificationPreference
             WHERE UserId = {caller.UserId}").FirstOrDefaultAsync();
         return Ok(row ?? new PreferenceRow());
@@ -184,13 +281,22 @@ public class MobileClinicQueryService
                 SmsEnabled = {request.SmsEnabled},
                 EmailEnabled = {request.EmailEnabled},
                 QuietStart = {request.QuietStart},
-                QuietEnd = {request.QuietEnd}
+                QuietEnd = {request.QuietEnd},
+                Appointments = {request.Appointments},
+                Prescriptions = {request.Prescriptions},
+                Medicines = {request.Medicines},
+                Marketing = {request.Marketing},
+                QuietHoursEnabled = {request.QuietHoursEnabled},
+                ReminderOffsets = {Trim(request.ReminderOffsets)}
             WHERE UserId = {caller.UserId}");
         if (updated == 0)
         {
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                INSERT INTO dbo.UserNotificationPreference (UserId, PushEnabled, SmsEnabled, EmailEnabled, QuietStart, QuietEnd)
-                VALUES ({caller.UserId}, {request.PushEnabled}, {request.SmsEnabled}, {request.EmailEnabled}, {request.QuietStart}, {request.QuietEnd})");
+                INSERT INTO dbo.UserNotificationPreference
+                    (UserId, PushEnabled, SmsEnabled, EmailEnabled, QuietStart, QuietEnd,
+                     Appointments, Prescriptions, Medicines, Marketing, QuietHoursEnabled, ReminderOffsets)
+                VALUES ({caller.UserId}, {request.PushEnabled}, {request.SmsEnabled}, {request.EmailEnabled}, {request.QuietStart}, {request.QuietEnd},
+                        {request.Appointments}, {request.Prescriptions}, {request.Medicines}, {request.Marketing}, {request.QuietHoursEnabled}, {Trim(request.ReminderOffsets)})");
         }
         return await GetPreferencesAsync(caller);
     }
@@ -207,7 +313,7 @@ public class MobileClinicQueryService
     {
         await EnsureSchemaAsync();
         var rows = await _context.Database.SqlQuery<ReminderRow>($@"
-            SELECT PatientReminderId, PatientId, Title, DueAt, IsDone
+            SELECT PatientReminderId, PatientId, Title, DueAt, IsDone, Kind, TimeOfDay, Weekdays, MemberPatientId
             FROM dbo.PatientReminder
             WHERE UserId = {caller.UserId}
             ORDER BY DueAt").ToListAsync();
@@ -222,8 +328,9 @@ public class MobileClinicQueryService
         if (request == null || string.IsNullOrWhiteSpace(request.Title) || request.DueAt == null)
             return Fail(400, "VALIDATION", "Title and dueAt are required.");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO dbo.PatientReminder (UserId, PatientId, Title, DueAt, IsDone, CreatedAt)
-            VALUES ({caller.UserId}, {caller.PatientId.Value}, {request.Title.Trim()}, {request.DueAt.Value}, 0, {DateTime.Now})");
+            INSERT INTO dbo.PatientReminder (UserId, PatientId, Title, DueAt, IsDone, CreatedAt, Kind, TimeOfDay, Weekdays, MemberPatientId)
+            VALUES ({caller.UserId}, {caller.PatientId.Value}, {request.Title.Trim()}, {request.DueAt.Value}, 0, {DateTime.Now},
+                    {Trim(request.Kind)}, {Trim(request.TimeOfDay)}, {Trim(request.Weekdays)}, {request.MemberPatientId ?? caller.PatientId.Value})");
         return await ListRemindersAsync(caller);
     }
 
@@ -234,7 +341,11 @@ public class MobileClinicQueryService
             UPDATE dbo.PatientReminder
             SET Title = {request.Title.Trim()},
                 DueAt = {request.DueAt},
-                IsDone = {request.IsDone}
+                IsDone = {request.IsDone},
+                Kind = {Trim(request.Kind)},
+                TimeOfDay = {Trim(request.TimeOfDay)},
+                Weekdays = {Trim(request.Weekdays)},
+                MemberPatientId = {request.MemberPatientId}
             WHERE PatientReminderId = {id} AND UserId = {caller.UserId}");
         if (updated == 0) return Fail(404, "NOT_FOUND", "Reminder not found.");
         return await ListRemindersAsync(caller);
@@ -283,7 +394,7 @@ public class MobileClinicQueryService
         return Ok(new { deleted = true });
     }
 
-    public async Task<S4ActionResult> ListAppointmentRequestsAsync(S4Caller caller)
+    public async Task<S4ActionResult> ListAppointmentRequestsAsync(S4Caller caller, string? status)
     {
         await EnsureSchemaAsync();
         if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
@@ -294,6 +405,8 @@ public class MobileClinicQueryService
             INNER JOIN dbo.Patient pt ON pt.PatientId = r.PatientId
             WHERE r.DoctorId = {caller.DoctorId.Value}
             ORDER BY r.CreatedAt DESC").ToListAsync();
+        if (!string.IsNullOrWhiteSpace(status))
+            rows = rows.Where(r => string.Equals(r.Status, status.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
         return Ok(rows);
     }
 
@@ -388,12 +501,26 @@ public class MobileClinicQueryService
         var id = caller.DoctorId.Value;
         var rows = await _context.Database.SqlQuery<CareLinkRow>($@"
             SELECT c.CareLinkRequestId, c.FromDoctorId, c.ToDoctorId, c.PatientId, pt.PatientName,
-                   c.Note, c.FeeAmount, c.Status, c.CreatedAt
+                   c.Note, c.FeeAmount, c.Opinion, c.Status, c.CreatedAt
             FROM dbo.CareLinkRequest c
             INNER JOIN dbo.Patient pt ON pt.PatientId = c.PatientId
             WHERE c.FromDoctorId = {id} OR c.ToDoctorId = {id}
             ORDER BY c.CreatedAt DESC").ToListAsync();
-        return Ok(rows);
+        return Ok(rows.Select(r => new
+        {
+            careLinkRequestId = r.CareLinkRequestId,
+            fromDoctorId = r.FromDoctorId,
+            toDoctorId = r.ToDoctorId,
+            patientId = r.PatientId,
+            patientName = r.PatientName,
+            note = r.Note,
+            feeAmount = r.FeeAmount,
+            feeInr = r.FeeAmount,
+            opinion = r.Opinion,
+            expiry = (DateTime?)null,
+            status = r.Status,
+            createdAt = r.CreatedAt
+        }));
     }
 
     public async Task<S4ActionResult> CreateCareLinkAsync(CareLinkWrite request, S4Caller caller)
@@ -422,6 +549,20 @@ public class MobileClinicQueryService
             WHERE CareLinkRequestId = {id} AND ToDoctorId = {caller.DoctorId.Value} AND Status = N'OPEN'");
         if (updated == 0) return Fail(404, "NOT_FOUND", "Open care link not found.");
         return Ok(new { status = next });
+    }
+
+    public async Task<S4ActionResult> SaveCareLinkOpinionAsync(int id, string? opinion, S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        if (string.IsNullOrWhiteSpace(opinion)) return Fail(400, "VALIDATION", "opinion is required.");
+        var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.CareLinkRequest
+            SET Opinion = {opinion.Trim()}
+            WHERE CareLinkRequestId = {id}
+              AND (FromDoctorId = {caller.DoctorId.Value} OR ToDoctorId = {caller.DoctorId.Value})");
+        if (updated == 0) return Fail(404, "NOT_FOUND", "Care link not found.");
+        return Ok(new { careLinkRequestId = id, opinion = opinion.Trim() });
     }
 
     public async Task<S4ActionResult> ListPharmacyQueriesAsync(S4Caller caller)
@@ -481,7 +622,13 @@ public class MobileClinicQueryService
                 SmsEnabled bit NOT NULL CONSTRAINT DF_Unp_Sms DEFAULT (0),
                 EmailEnabled bit NOT NULL CONSTRAINT DF_Unp_Email DEFAULT (0),
                 QuietStart time NULL,
-                QuietEnd time NULL
+                QuietEnd time NULL,
+                Appointments bit NOT NULL CONSTRAINT DF_Unp_Appt DEFAULT (1),
+                Prescriptions bit NOT NULL CONSTRAINT DF_Unp_Rx DEFAULT (1),
+                Medicines bit NOT NULL CONSTRAINT DF_Unp_Med DEFAULT (1),
+                Marketing bit NOT NULL CONSTRAINT DF_Unp_Mkt DEFAULT (0),
+                QuietHoursEnabled bit NOT NULL CONSTRAINT DF_Unp_Quiet DEFAULT (0),
+                ReminderOffsets nvarchar(100) NULL
             );
             IF OBJECT_ID(N'dbo.PatientReminder', N'U') IS NULL
             CREATE TABLE dbo.PatientReminder (
@@ -537,6 +684,34 @@ public class MobileClinicQueryService
                 Status nvarchar(20) NOT NULL,
                 CreatedAt datetime NOT NULL
             );
+            IF OBJECT_ID(N'dbo.DoctorBookingRule', N'U') IS NULL
+            CREATE TABLE dbo.DoctorBookingRule (
+                DoctorId int NOT NULL PRIMARY KEY,
+                GapMinutes int NULL,
+                BookingHorizonDays int NULL
+            );
+            IF COL_LENGTH(N'dbo.UserNotificationPreference', N'Appointments') IS NULL
+                ALTER TABLE dbo.UserNotificationPreference ADD Appointments bit NOT NULL CONSTRAINT DF_Unp_Appt DEFAULT (1);
+            IF COL_LENGTH(N'dbo.UserNotificationPreference', N'Prescriptions') IS NULL
+                ALTER TABLE dbo.UserNotificationPreference ADD Prescriptions bit NOT NULL CONSTRAINT DF_Unp_Rx DEFAULT (1);
+            IF COL_LENGTH(N'dbo.UserNotificationPreference', N'Medicines') IS NULL
+                ALTER TABLE dbo.UserNotificationPreference ADD Medicines bit NOT NULL CONSTRAINT DF_Unp_Med DEFAULT (1);
+            IF COL_LENGTH(N'dbo.UserNotificationPreference', N'Marketing') IS NULL
+                ALTER TABLE dbo.UserNotificationPreference ADD Marketing bit NOT NULL CONSTRAINT DF_Unp_Mkt DEFAULT (0);
+            IF COL_LENGTH(N'dbo.UserNotificationPreference', N'QuietHoursEnabled') IS NULL
+                ALTER TABLE dbo.UserNotificationPreference ADD QuietHoursEnabled bit NOT NULL CONSTRAINT DF_Unp_Quiet DEFAULT (0);
+            IF COL_LENGTH(N'dbo.UserNotificationPreference', N'ReminderOffsets') IS NULL
+                ALTER TABLE dbo.UserNotificationPreference ADD ReminderOffsets nvarchar(100) NULL;
+            IF COL_LENGTH(N'dbo.PatientReminder', N'Kind') IS NULL
+                ALTER TABLE dbo.PatientReminder ADD Kind nvarchar(40) NULL;
+            IF COL_LENGTH(N'dbo.PatientReminder', N'TimeOfDay') IS NULL
+                ALTER TABLE dbo.PatientReminder ADD TimeOfDay nvarchar(8) NULL;
+            IF COL_LENGTH(N'dbo.PatientReminder', N'Weekdays') IS NULL
+                ALTER TABLE dbo.PatientReminder ADD Weekdays nvarchar(40) NULL;
+            IF COL_LENGTH(N'dbo.PatientReminder', N'MemberPatientId') IS NULL
+                ALTER TABLE dbo.PatientReminder ADD MemberPatientId int NULL;
+            IF COL_LENGTH(N'dbo.CareLinkRequest', N'Opinion') IS NULL
+                ALTER TABLE dbo.CareLinkRequest ADD Opinion nvarchar(1000) NULL;
             """);
         Volatile.Write(ref _schemaReady, 1);
     }
@@ -550,6 +725,12 @@ public class MobileClinicQueryService
         => status != null && (status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
             || status.Equals("Closed", StringComparison.OrdinalIgnoreCase)
             || status.Equals("Done", StringComparison.OrdinalIgnoreCase));
+
+    private static bool OwnsVisit(S4Caller caller, Master.PatientAppointment appt)
+        => caller.IsAdmin
+           || (caller.DoctorId.HasValue && caller.DoctorId.Value == appt.DoctorId)
+           || appt.UserId == caller.UserId
+           || (caller.IsPatient && caller.PatientId.HasValue && caller.PatientId.Value == appt.PatientId);
 
     private sealed class FollowUpListRow
     {
@@ -586,6 +767,12 @@ public class MobileClinicQueryService
         public bool EmailEnabled { get; set; }
         public TimeSpan? QuietStart { get; set; }
         public TimeSpan? QuietEnd { get; set; }
+        public bool Appointments { get; set; } = true;
+        public bool Prescriptions { get; set; } = true;
+        public bool Medicines { get; set; } = true;
+        public bool Marketing { get; set; }
+        public bool QuietHoursEnabled { get; set; }
+        public string? ReminderOffsets { get; set; }
     }
 
     private sealed class ReminderRow
@@ -595,6 +782,10 @@ public class MobileClinicQueryService
         public string Title { get; set; } = "";
         public DateTime DueAt { get; set; }
         public bool IsDone { get; set; }
+        public string? Kind { get; set; }
+        public string? TimeOfDay { get; set; }
+        public string? Weekdays { get; set; }
+        public int? MemberPatientId { get; set; }
     }
 
     private sealed class TimeOffRow
@@ -603,6 +794,12 @@ public class MobileClinicQueryService
         public DateTime StartsAt { get; set; }
         public DateTime EndsAt { get; set; }
         public string? Reason { get; set; }
+    }
+
+    private sealed class BookingRuleRow
+    {
+        public int? GapMinutes { get; set; }
+        public int? BookingHorizonDays { get; set; }
     }
 
     private sealed class AppointmentRequestRow
@@ -630,6 +827,7 @@ public class MobileClinicQueryService
         public string? PatientName { get; set; }
         public string? Note { get; set; }
         public decimal? FeeAmount { get; set; }
+        public string? Opinion { get; set; }
         public string Status { get; set; } = "";
         public DateTime CreatedAt { get; set; }
     }
@@ -645,20 +843,40 @@ public class MobileClinicQueryService
     }
 }
 
+/// <summary>Notification switches for the signed-in user.</summary>
 public class PreferenceWrite
 {
+    /// <summary>Push notifications. Default true before the first save.</summary>
     public bool PushEnabled { get; set; } = true;
     public bool SmsEnabled { get; set; }
     public bool EmailEnabled { get; set; }
+    /// <summary>Quiet-hours start, as a time such as 22:00:00. Null when quiet hours are off.</summary>
     public TimeSpan? QuietStart { get; set; }
+    /// <summary>Quiet-hours end, as a time such as 07:00:00.</summary>
     public TimeSpan? QuietEnd { get; set; }
+    public bool Appointments { get; set; } = true;
+    public bool Prescriptions { get; set; } = true;
+    public bool Medicines { get; set; } = true;
+    public bool Marketing { get; set; }
+    public bool QuietHoursEnabled { get; set; }
+    /// <summary>Comma-separated minute offsets, for example 60,1440. Null when unset.</summary>
+    public string? ReminderOffsets { get; set; }
 }
 
+/// <summary>A patient reminder. Title and dueAt are required.</summary>
 public class ReminderWrite
 {
     public string Title { get; set; } = "";
     public DateTime? DueAt { get; set; }
     public bool IsDone { get; set; }
+    /// <summary>For example MEDICINE. Null when the app does not send a kind.</summary>
+    public string? Kind { get; set; }
+    /// <summary>Clock time HH:mm. Null when unset.</summary>
+    public string? TimeOfDay { get; set; }
+    /// <summary>Comma-separated weekdays, for example Mon,Wed. Null when unset.</summary>
+    public string? Weekdays { get; set; }
+    /// <summary>Family member this reminder is for. Null means the signed-in patient.</summary>
+    public int? MemberPatientId { get; set; }
 }
 
 public class TimeOffWrite
@@ -689,4 +907,45 @@ public class PharmacyQueryWrite
 {
     public int PatientId { get; set; }
     public string Question { get; set; } = "";
+}
+
+public class OpinionBody
+{
+    public string? Opinion { get; set; }
+}
+
+public class ReplyBody
+{
+    public string? Reply { get; set; }
+}
+
+public class ReasonBody
+{
+    public string? Reason { get; set; }
+}
+
+public class ProposeBody
+{
+    public DateTime? ProposedDate { get; set; }
+    public string? ProposedTime { get; set; }
+}
+
+public class StatusBody
+{
+    public string? Status { get; set; }
+}
+
+public class CheckInBody
+{
+    public string? Status { get; set; }
+}
+
+public class SwitchTeleBody
+{
+    public int PatientAppId { get; set; }
+}
+
+public class LateBody
+{
+    public int? Minutes { get; set; }
 }
