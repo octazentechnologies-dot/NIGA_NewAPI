@@ -189,6 +189,40 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = rows });
     }
 
+    /// <summary>Doctor mobile — own payout history (BE-014).</summary>
+    public async Task<S4ActionResult> DoctorPayoutHistoryAsync(DateTime? from, DateTime? to, S4Caller caller)
+    {
+        if (!caller.IsDoctor && !caller.IsAdmin)
+            return Fail(403, "FORBIDDEN", "Only the doctor can read their payout history.");
+        if (!caller.DoctorId.HasValue || caller.DoctorId.Value <= 0)
+            return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        var range = DateRange(from, to, out var start, out var end);
+        if (range != null) return range;
+        var doctorId = caller.DoctorId.Value;
+        var currency = await _context.Doctors.AsNoTracking()
+            .Where(d => d.DoctorId == doctorId)
+            .Select(d => d.FeeCurrency)
+            .FirstOrDefaultAsync();
+        var rows = await _context.Database.SqlQuery<DoctorPayoutHistRow>($@"
+            SELECT TOP 200 p.PayoutId AS Id, p.CreatedAt AS At, p.Amount, p.Status
+            FROM dbo.Payout p
+            WHERE p.PayeeType = N'Doctor' AND p.PayeeId = {doctorId}
+              AND p.CreatedAt >= {start} AND p.CreatedAt < {end}
+            ORDER BY p.CreatedAt DESC").ToListAsync();
+        return Ok(new
+        {
+            success = true,
+            data = rows.Select(r => new
+            {
+                id = r.Id,
+                at = r.At,
+                amount = r.Amount,
+                status = r.Status,
+                currency = string.IsNullOrWhiteSpace(currency) ? null : currency
+            })
+        });
+    }
+
     private const int PayoutOtpResendSeconds = 30;
     private const int PayoutOtpTtlMinutes = 10;
 

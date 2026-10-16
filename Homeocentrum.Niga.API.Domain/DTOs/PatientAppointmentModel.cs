@@ -44,6 +44,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public int QueueOrder { get; set; }
         /// <summary>REC-08.03 — minutes past appointment time (negative = not yet due).</summary>
         public int? WaitMinutes { get; set; }
+        /// <summary>Latest non-ended tele session for this visit. Null when none / not tele.</summary>
+        public int? TeleSessionId { get; set; }
     }
 }
 

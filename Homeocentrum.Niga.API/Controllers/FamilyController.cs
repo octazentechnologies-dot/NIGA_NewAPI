@@ -543,7 +543,8 @@ namespace Homeocentrum.Niga.API.Controllers
                     bookingToken = appt.BookingToken,
                     status = appt.Status,
                     consultMode = appt.ConsultMode,
-                    consultFee = isTele ? fees.TeleFee : fees.InClinicFee
+                    consultFee = isTele ? fees.TeleFee : fees.InClinicFee,
+                    currency = fees.Currency
                 }
             });
         }

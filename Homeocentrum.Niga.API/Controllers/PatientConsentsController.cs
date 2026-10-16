@@ -35,6 +35,9 @@ public class PatientConsentsController : ControllerBase
     [HttpPost("/api/Patient/Consents/{id:long}/Withdraw")]
     public Task<IActionResult> Withdraw(long id) => Done(_s4.WithdrawConsentAsync(id, Caller()));
 
+    [HttpGet("/api/Patient/DataRequests")]
+    public Task<IActionResult> DataRequests() => Done(_s4.ListDataRequestsAsync(Caller()));
+
     [HttpPost("/api/Patient/DataRequests")]
     public Task<IActionResult> DataRequest([FromBody] DataRequestCreate request) => Done(_s4.CreateDataRequestAsync(request, Caller()));
 

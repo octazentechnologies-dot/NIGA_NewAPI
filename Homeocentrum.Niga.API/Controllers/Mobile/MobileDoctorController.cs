@@ -287,6 +287,18 @@ public class MobileDoctorController : ControllerBase
     public Task<IActionResult> FollowUps([FromQuery] string? status, [FromQuery] DateTime? from, [FromQuery] DateTime? to)
         => Done(_clinic.DoctorFollowUpsAsync(Caller(), status, from, to));
 
+    [HttpPost("/api/Doctor/FollowUps/{followUpTaskId:int}/Complete")]
+    public Task<IActionResult> CompleteFollowUp(int followUpTaskId, [FromBody] FollowUpNoteBody? body)
+        => Done(_clinic.CompleteDoctorFollowUpAsync(followUpTaskId, body?.Note, Caller()));
+
+    [HttpPost("/api/Doctor/FollowUps/{followUpTaskId:int}/Reopen")]
+    public Task<IActionResult> ReopenFollowUp(int followUpTaskId)
+        => Done(_clinic.ReopenDoctorFollowUpAsync(followUpTaskId, Caller()));
+
+    [HttpGet("/api/Doctor/Directory")]
+    public Task<IActionResult> Directory([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        => Done(_clinic.DoctorDirectoryAsync(search, page, pageSize, Caller()));
+
     [HttpGet("/api/Doctor/PracticeStats")]
     public Task<IActionResult> PracticeStats() => Done(_clinic.PracticeStatsAsync(Caller()));
 
@@ -353,6 +365,15 @@ public class MobileDoctorController : ControllerBase
     [HttpPost("/api/CareLink/{id:int}/Opinion")]
     public Task<IActionResult> CareLinkOpinion(int id, [FromBody] OpinionBody body)
         => Done(_clinic.SaveCareLinkOpinionAsync(id, body?.Opinion, Caller()));
+
+    [HttpGet("/api/Doctor/CareLinks/{id:int}/Package")]
+    [HttpGet("/api/CareLink/{id:int}/Package")]
+    public Task<IActionResult> CareLinkPackage(int id) => Done(_clinic.CareLinkPackageAsync(id, Caller()));
+
+    [HttpPost("/api/Doctor/CareLinks/{id:int}/InfoRequest")]
+    [HttpPost("/api/CareLink/{id:int}/InfoRequest")]
+    public Task<IActionResult> CareLinkInfoRequest(int id, [FromBody] CareLinkInfoRequestWrite? body)
+        => Done(_clinic.CareLinkInfoRequestAsync(id, body, Caller()));
 
     [HttpGet("/api/Doctor/PharmacyQueries")]
     [HttpGet("/api/PharmacyQuery")]

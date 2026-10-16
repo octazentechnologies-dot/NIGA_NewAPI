@@ -32,6 +32,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> ListSettlementsAsync(S4Caller caller);
     Task<S4ActionResult> SettlementDetailAsync(long id, S4Caller caller);
     Task<S4ActionResult> ListPayoutsAsync(S4Caller caller);
+    Task<S4ActionResult> DoctorPayoutHistoryAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> RequestPayoutOtpAsync(long payoutId, S4Caller caller);
     Task<S4ActionResult> ApprovePayoutAsync(long payoutId, PayoutDecisionRequest request, S4Caller caller);
     Task<S4ActionResult> RejectPayoutAsync(long payoutId, PayoutDecisionRequest request, S4Caller caller);
@@ -62,6 +63,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> RankingExplainAsync(int doctorId);
 
     Task<S4ActionResult> ListPotenciesAsync();
+    Task<S4ActionResult> SearchRemediesAsync(string? search, int take = 40);
     Task<S4ActionResult> UpdateRemedyLineAsync(int prescriptionRemedyId, RemedyLineUpdateRequest request, S4Caller caller);
     Task<S4ActionResult> GetErxByAppointmentAsync(int patientAppId, S4Caller caller, bool patientView);
     Task<S4ActionResult> SignErxAsync(SignErxRequest request, S4Caller caller);
@@ -116,6 +118,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> PatientVisitsAsync(int? patientId, S4Caller caller);
     Task<S4ActionResult> WithdrawConsentAsync(long consentId, S4Caller caller);
     Task<S4ActionResult> CreateDataRequestAsync(DataRequestCreate request, S4Caller caller);
+    Task<S4ActionResult> ListDataRequestsAsync(S4Caller caller);
     Task<S4ActionResult> GetHealthProfileAsync(S4Caller caller);
     Task<S4ActionResult> UpdateHealthProfileAsync(HealthProfileUpdate request, S4Caller caller);
 }

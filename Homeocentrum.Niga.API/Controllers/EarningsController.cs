@@ -41,6 +41,10 @@ public class EarningsController : ControllerBase
     public Task<IActionResult> Buckets([FromQuery] DateTime? from, [FromQuery] DateTime? to)
         => Done(_s5.EarningsBucketsAsync(from, to, Caller()));
 
+    [HttpGet("/api/Earnings/Payouts")]
+    public Task<IActionResult> Payouts([FromQuery] DateTime? from, [FromQuery] DateTime? to)
+        => Done(_s4.DoctorPayoutHistoryAsync(from, to, Caller()));
+
     private Task<IActionResult> Done(Task<S4ActionResult> work) => this.Respond(work, _logger);
     private S4Caller Caller() => this.S4Caller(_context);
 }

@@ -1,6 +1,11 @@
+using System.Threading;
 using Homeocentrum.Niga.API.Domain.Data;
+using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Interfaces;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using System.Text.Json;
 
 namespace Homeocentrum.Niga.API.Domain.Repositories;
 
@@ -11,9 +16,17 @@ namespace Homeocentrum.Niga.API.Domain.Repositories;
 public class MobileClinicQueryService
 {
     private static int _schemaReady;
+    private const int CareLinkExpiryHours = 48;
     private readonly NIGACentrumContext _context;
+    private readonly IHttpContextAccessor _http;
+    private readonly IConfiguration _config;
 
-    public MobileClinicQueryService(NIGACentrumContext context) => _context = context;
+    public MobileClinicQueryService(NIGACentrumContext context, IHttpContextAccessor http, IConfiguration config)
+    {
+        _context = context;
+        _http = http;
+        _config = config;
+    }
 
     public async Task<S4ActionResult> DoctorFollowUpsAsync(S4Caller caller, string? status, DateTime? from, DateTime? to)
     {
@@ -32,6 +45,106 @@ public class MobileClinicQueryService
         if (to.HasValue)
             rows = rows.Where(r => r.DueDate.Date <= to.Value.Date).ToList();
         return Ok(rows);
+    }
+
+    public async Task<S4ActionResult> CompleteDoctorFollowUpAsync(int followUpTaskId, string? note, S4Caller caller)
+    {
+        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        var row = await _context.Database.SqlQuery<FollowUpOwnerRow>($@"
+            SELECT t.FollowUpTaskId, t.Status, p.DoctorId
+            FROM dbo.FollowUpTask t
+            INNER JOIN dbo.FollowUpPlan p ON p.FollowUpPlanId = t.FollowUpPlanId
+            WHERE t.FollowUpTaskId = {followUpTaskId}").FirstOrDefaultAsync();
+        if (row == null) return Fail(404, "NOT_FOUND", "Follow-up task not found.");
+        if (row.DoctorId != caller.DoctorId.Value) return Fail(403, "FORBIDDEN", "This task belongs to another clinic.");
+        if (string.Equals(row.Status, "DONE", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(row.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+            return Fail(409, "CONFLICT", "This task is already complete.");
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.FollowUpTask
+            SET Status = N'DONE', CompletedAt = {DateTime.Now}
+            WHERE FollowUpTaskId = {followUpTaskId}");
+        _ = note; // optional note is accepted but not stored until a note column exists
+        return Ok(new { followUpTaskId, status = "DONE" });
+    }
+
+    public async Task<S4ActionResult> ReopenDoctorFollowUpAsync(int followUpTaskId, S4Caller caller)
+    {
+        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        var row = await _context.Database.SqlQuery<FollowUpOwnerRow>($@"
+            SELECT t.FollowUpTaskId, t.Status, p.DoctorId
+            FROM dbo.FollowUpTask t
+            INNER JOIN dbo.FollowUpPlan p ON p.FollowUpPlanId = t.FollowUpPlanId
+            WHERE t.FollowUpTaskId = {followUpTaskId}").FirstOrDefaultAsync();
+        if (row == null) return Fail(404, "NOT_FOUND", "Follow-up task not found.");
+        if (row.DoctorId != caller.DoctorId.Value) return Fail(403, "FORBIDDEN", "This task belongs to another clinic.");
+        if (string.Equals(row.Status, "OPEN", StringComparison.OrdinalIgnoreCase))
+            return Fail(409, "CONFLICT", "This task is already open.");
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.FollowUpTask
+            SET Status = N'OPEN', CompletedAt = NULL
+            WHERE FollowUpTaskId = {followUpTaskId}");
+        return Ok(new { followUpTaskId, status = "OPEN" });
+    }
+
+    public async Task<S4ActionResult> DoctorDirectoryAsync(string? search, int page, int pageSize, S4Caller caller)
+    {
+        if (!caller.DoctorId.HasValue && !caller.IsAdmin)
+            return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 50) pageSize = 20;
+        var selfId = caller.DoctorId ?? 0;
+        var q = (search ?? "").Trim();
+        var doctors = await _context.Doctors.AsNoTracking()
+            .Where(d => !d.DeleteStatus
+                        && d.DirectoryVisible
+                        && d.DoctorId != selfId
+                        && d.VerificationStatus == "Verified")
+            .Select(d => new
+            {
+                d.DoctorId,
+                d.FirstName,
+                d.MiddleName,
+                d.LastName,
+                d.PassingCertNo,
+                d.City,
+                d.PhotoPath,
+                d.PassingUniversity
+            })
+            .ToListAsync();
+        if (q.Length > 0)
+        {
+            doctors = doctors.Where(d =>
+            {
+                var name = string.Join(" ", new[] { d.FirstName, d.MiddleName, d.LastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
+                return name.Contains(q, StringComparison.OrdinalIgnoreCase)
+                       || (!string.IsNullOrWhiteSpace(d.City) && d.City.Contains(q, StringComparison.OrdinalIgnoreCase))
+                       || (!string.IsNullOrWhiteSpace(d.PassingCertNo) && d.PassingCertNo.Contains(q, StringComparison.OrdinalIgnoreCase));
+            }).ToList();
+        }
+        var total = doctors.Count;
+        var pageRows = doctors
+            .OrderBy(d => d.FirstName).ThenBy(d => d.LastName).ThenBy(d => d.DoctorId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(d =>
+            {
+                var displayName = string.Join(" ", new[] { d.FirstName, d.MiddleName, d.LastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
+                if (!string.IsNullOrWhiteSpace(displayName) && !displayName.StartsWith("Dr", StringComparison.OrdinalIgnoreCase))
+                    displayName = "Dr. " + displayName;
+                return new
+                {
+                    doctorId = d.DoctorId,
+                    displayName,
+                    registrationNo = string.IsNullOrWhiteSpace(d.PassingCertNo) ? null : d.PassingCertNo,
+                    city = string.IsNullOrWhiteSpace(d.City) ? null : d.City,
+                    careLinkEligible = true,
+                    photoUrl = AbsoluteDoctorPhotoUrl(d.DoctorId, d.PhotoPath),
+                    specialityLabel = string.IsNullOrWhiteSpace(d.PassingUniversity) ? null : d.PassingUniversity
+                };
+            })
+            .ToList();
+        return Ok(new { totalRecords = total, page, pageSize, data = pageRows });
     }
 
     public async Task<S4ActionResult> PracticeStatsAsync(S4Caller caller)
@@ -195,7 +308,40 @@ public class MobileClinicQueryService
                 currency = a.Doctor.FeeCurrency
             })
             .ToListAsync();
-        return Ok(rows);
+        var teleByApp = new Dictionary<int, int>();
+        if (rows.Count > 0)
+        {
+            var sessions = await _context.Database.SqlQuery<SessionMapRow>($@"
+                SELECT s.PatientAppId, MAX(s.TeleSessionId) AS TeleSessionId
+                FROM dbo.TeleSession s
+                INNER JOIN dbo.PatientAppointment a ON a.PatientAppId = s.PatientAppId
+                WHERE a.UserId = {caller.UserId}
+                  AND ISNULL(a.DeleteStatus, 0) = 0
+                  AND a.AppointmentDate >= {from.Date} AND a.AppointmentDate < {end}
+                  AND s.Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED')
+                GROUP BY s.PatientAppId").ToListAsync();
+            foreach (var s in sessions)
+                teleByApp[s.PatientAppId] = s.TeleSessionId;
+        }
+        return Ok(rows.Select(a => new
+        {
+            a.PatientAppId,
+            a.PatientId,
+            a.patientName,
+            a.mobileNo,
+            a.DoctorId,
+            a.AppointmentDate,
+            a.AppointmentTime,
+            a.Status,
+            a.VisitType,
+            a.ConsultMode,
+            a.IsTele,
+            a.PaymentStatus,
+            a.BookingChannel,
+            a.consultFee,
+            currency = string.IsNullOrWhiteSpace(a.currency) ? null : a.currency,
+            teleSessionId = teleByApp.TryGetValue(a.PatientAppId, out var sid) ? sid : (int?)null
+        }));
     }
 
     public async Task<S4ActionResult> CheckInAsync(int patientAppId, string? status, S4Caller caller)
@@ -517,7 +663,7 @@ public class MobileClinicQueryService
             feeAmount = r.FeeAmount,
             feeInr = r.FeeAmount,
             opinion = r.Opinion,
-            expiry = (DateTime?)null,
+            expiry = r.CreatedAt.AddHours(CareLinkExpiryHours),
             status = r.Status,
             createdAt = r.CreatedAt
         }));
@@ -563,6 +709,69 @@ public class MobileClinicQueryService
               AND (FromDoctorId = {caller.DoctorId.Value} OR ToDoctorId = {caller.DoctorId.Value})");
         if (updated == 0) return Fail(404, "NOT_FOUND", "Care link not found.");
         return Ok(new { careLinkRequestId = id, opinion = opinion.Trim() });
+    }
+
+    public async Task<S4ActionResult> CareLinkPackageAsync(int id, S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        var row = await _context.Database.SqlQuery<CareLinkRow>($@"
+            SELECT c.CareLinkRequestId, c.FromDoctorId, c.ToDoctorId, c.PatientId, pt.PatientName,
+                   c.Note, c.FeeAmount, c.Opinion, c.Status, c.CreatedAt
+            FROM dbo.CareLinkRequest c
+            INNER JOIN dbo.Patient pt ON pt.PatientId = c.PatientId
+            WHERE c.CareLinkRequestId = {id}").FirstOrDefaultAsync();
+        if (row == null) return Fail(404, "NOT_FOUND", "Care link not found.");
+        var doctorId = caller.DoctorId.Value;
+        var isSender = row.FromDoctorId == doctorId;
+        var isRecipient = row.ToDoctorId == doctorId;
+        if (!isSender && !isRecipient) return Fail(403, "FORBIDDEN", "This care link belongs to another clinic.");
+        if (isRecipient && !string.Equals(row.Status, "ACCEPTED", StringComparison.OrdinalIgnoreCase))
+            return Fail(403, "FORBIDDEN", "Accept the care link before opening the package.");
+
+        var fromName = await DoctorDisplayNameAsync(row.FromDoctorId);
+        return Ok(new
+        {
+            careLinkId = row.CareLinkRequestId,
+            fromDoctorName = fromName,
+            patientName = row.PatientName,
+            patientId = row.PatientId,
+            note = row.Note,
+            feeInr = row.FeeAmount,
+            status = row.Status,
+            requestedOutput = "written_opinion",
+            sections = Array.Empty<object>()
+        });
+    }
+
+    public async Task<S4ActionResult> CareLinkInfoRequestAsync(int id, CareLinkInfoRequestWrite? request, S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        var options = request?.Options?.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                      ?? new List<string>();
+        var note = Trim(request?.Note);
+        if (options.Count == 0 && note == null)
+            return Fail(400, "VALIDATION", "options or note is required.");
+        var row = await _context.Database.SqlQuery<CareLinkRow>($@"
+            SELECT c.CareLinkRequestId, c.FromDoctorId, c.ToDoctorId, c.PatientId, pt.PatientName,
+                   c.Note, c.FeeAmount, c.Opinion, c.Status, c.CreatedAt
+            FROM dbo.CareLinkRequest c
+            INNER JOIN dbo.Patient pt ON pt.PatientId = c.PatientId
+            WHERE c.CareLinkRequestId = {id}").FirstOrDefaultAsync();
+        if (row == null) return Fail(404, "NOT_FOUND", "Care link not found.");
+        if (row.FromDoctorId != caller.DoctorId.Value && row.ToDoctorId != caller.DoctorId.Value)
+            return Fail(403, "FORBIDDEN", "Only a care-link participant can ask for info.");
+        var optionsJson = JsonSerializer.Serialize(options);
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO dbo.CareLinkInfoRequest (CareLinkRequestId, FromDoctorId, OptionsJson, Note, CreatedAt)
+            VALUES ({id}, {caller.DoctorId.Value}, {optionsJson}, {note}, {DateTime.Now})");
+        var created = await _context.Database.SqlQuery<IdRow>($@"
+            SELECT TOP 1 CareLinkInfoRequestId AS Id
+            FROM dbo.CareLinkInfoRequest
+            WHERE CareLinkRequestId = {id}
+            ORDER BY CareLinkInfoRequestId DESC").FirstAsync();
+        return Ok(new { careLinkId = id, infoRequestId = created.Id });
     }
 
     public async Task<S4ActionResult> ListPharmacyQueriesAsync(S4Caller caller)
@@ -712,8 +921,43 @@ public class MobileClinicQueryService
                 ALTER TABLE dbo.PatientReminder ADD MemberPatientId int NULL;
             IF COL_LENGTH(N'dbo.CareLinkRequest', N'Opinion') IS NULL
                 ALTER TABLE dbo.CareLinkRequest ADD Opinion nvarchar(1000) NULL;
+            IF OBJECT_ID(N'dbo.CareLinkInfoRequest', N'U') IS NULL
+            CREATE TABLE dbo.CareLinkInfoRequest (
+                CareLinkInfoRequestId int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                CareLinkRequestId int NOT NULL,
+                FromDoctorId int NOT NULL,
+                OptionsJson nvarchar(1000) NULL,
+                Note nvarchar(1000) NULL,
+                CreatedAt datetime NOT NULL
+            );
+            IF COL_LENGTH(N'dbo.AppNotification', N'Type') IS NULL
+                ALTER TABLE dbo.AppNotification ADD Type nvarchar(40) NULL;
+            IF COL_LENGTH(N'dbo.AppNotification', N'DeepLink') IS NULL
+                ALTER TABLE dbo.AppNotification ADD DeepLink nvarchar(300) NULL;
             """);
         Volatile.Write(ref _schemaReady, 1);
+    }
+
+    private async Task<string?> DoctorDisplayNameAsync(int doctorId)
+    {
+        var d = await _context.Doctors.AsNoTracking()
+            .Where(x => x.DoctorId == doctorId)
+            .Select(x => new { x.FirstName, x.MiddleName, x.LastName })
+            .FirstOrDefaultAsync();
+        if (d == null) return null;
+        var name = string.Join(" ", new[] { d.FirstName, d.MiddleName, d.LastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        return name.StartsWith("Dr", StringComparison.OrdinalIgnoreCase) ? name : "Dr. " + name;
+    }
+
+    private string? AbsoluteDoctorPhotoUrl(int doctorId, string? photoPath)
+    {
+        if (string.IsNullOrWhiteSpace(photoPath) || doctorId <= 0) return null;
+        var request = _http.HttpContext?.Request;
+        if (request != null)
+            return PublicApiUrl.For(request, $"/api/Profile/Photo/{doctorId}");
+        var site = (_config["ConfigurationModel:SiteUrl"] ?? "").TrimEnd('/');
+        return string.IsNullOrWhiteSpace(site) ? $"/api/Profile/Photo/{doctorId}" : $"{site}/api/Profile/Photo/{doctorId}";
     }
 
     private static S4ActionResult Ok(object data) => S4ActionResult.Ok(new { success = true, data });
@@ -741,6 +985,24 @@ public class MobileClinicQueryService
         public int PatientId { get; set; }
         public int PatientAppId { get; set; }
         public string? PatientName { get; set; }
+    }
+
+    private sealed class FollowUpOwnerRow
+    {
+        public int FollowUpTaskId { get; set; }
+        public string Status { get; set; } = "";
+        public int DoctorId { get; set; }
+    }
+
+    private sealed class SessionMapRow
+    {
+        public int PatientAppId { get; set; }
+        public int TeleSessionId { get; set; }
+    }
+
+    private sealed class IdRow
+    {
+        public int Id { get; set; }
     }
 
     private sealed class ReviewStatRow
@@ -901,6 +1163,17 @@ public class CareLinkWrite
     public int PatientId { get; set; }
     public string? Note { get; set; }
     public decimal? FeeAmount { get; set; }
+}
+
+public class CareLinkInfoRequestWrite
+{
+    public List<string>? Options { get; set; }
+    public string? Note { get; set; }
+}
+
+public class FollowUpNoteBody
+{
+    public string? Note { get; set; }
 }
 
 public class PharmacyQueryWrite

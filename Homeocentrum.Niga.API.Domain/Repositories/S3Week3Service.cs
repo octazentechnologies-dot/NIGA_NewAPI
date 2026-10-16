@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.DTOs;
@@ -22,6 +24,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         private readonly IPatientAppointmentService _appointments;
         private readonly ITeleVideoVendor _teleVideo;
         private readonly IAppointmentRescheduleNotifier _notifier;
+        private readonly IHttpContextAccessor _http;
+        private readonly IConfiguration _config;
         private readonly ILogger<S3Week3Service> _logger;
 
         public S3Week3Service(
@@ -29,12 +33,16 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             IPatientAppointmentService appointments,
             ITeleVideoVendor teleVideo,
             IAppointmentRescheduleNotifier notifier,
+            IHttpContextAccessor http,
+            IConfiguration config,
             ILogger<S3Week3Service> logger)
         {
             _context = context;
             _appointments = appointments;
             _teleVideo = teleVideo;
             _notifier = notifier;
+            _http = http;
+            _config = config;
             _logger = logger;
         }
 
@@ -450,6 +458,20 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                   AND ISNULL(a.Status, N'') <> N'CANCELLED'
                 ORDER BY a.AppointmentTime, a.PatientAppId").ToListAsync();
 
+            var feeDoctor = await _context.Doctors.AsNoTracking()
+                .Where(d => d.DoctorId == doctorId && !d.DeleteStatus)
+                .Select(d => new { d.ConsultFeeTele, d.ConsultFeeInClinic, d.FeeCurrency })
+                .FirstOrDefaultAsync();
+            var feeConfig = await _context.Database.SqlQuery<TeleFeeConfigRow>($@"
+                SELECT TOP 1 TeleFee, InClinicFee, Currency
+                FROM dbo.ConsultFeeConfig
+                WHERE DoctorId = {doctorId} AND EffectiveFrom <= CONVERT(date, GETDATE())
+                ORDER BY EffectiveFrom DESC, ConsultFeeConfigId DESC").FirstOrDefaultAsync();
+            var consultFee = feeConfig?.TeleFee ?? feeDoctor?.ConsultFeeTele ?? feeDoctor?.ConsultFeeInClinic;
+            var currency = !string.IsNullOrWhiteSpace(feeConfig?.Currency)
+                ? feeConfig!.Currency
+                : (string.IsNullOrWhiteSpace(feeDoctor?.FeeCurrency) ? null : feeDoctor!.FeeCurrency);
+
             var data = rows.Select(r =>
             {
                 var status = (r.Status ?? "").Trim().ToUpperInvariant();
@@ -486,6 +508,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     r.Status,
                     PaymentStatus = string.IsNullOrWhiteSpace(r.PaymentStatus) ? "UNPAID" : r.PaymentStatus,
                     r.Amount,
+                    consultFee,
+                    currency,
                     r.TeleSessionId,
                     r.SessionStatus,
                     ConsultType = (r.BookingChannel ?? "").Contains("Instant", StringComparison.OrdinalIgnoreCase) ? "instant" : "scheduled",
@@ -917,11 +941,40 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             return S3ActionResult.Ok(new { success = true, data = rows });
         }
 
-        /// <summary>TEL-12.02 — doctor accepts an OFFERED instant request.</summary>
+        /// <summary>TEL-12.02 — doctor accepts an OFFERED instant request and opens the visit plus waiting room.</summary>
         public async Task<S3ActionResult> AcceptInstantAsync(int requestId, int doctorId)
         {
             if (requestId <= 0)
                 return S3ActionResult.Fail(400, "RequestId is required.");
+
+            await EnsureInstantLinkColumnsAsync();
+            var request = await LoadInstantAsync(requestId);
+            if (request == null)
+                return S3ActionResult.Fail(404, "Instant consult request not found.");
+
+            if (string.Equals(request.Status, "ACCEPTED", StringComparison.OrdinalIgnoreCase)
+                && request.PatientAppId is > 0
+                && request.TeleSessionId is > 0)
+            {
+                var owned = await _context.Database.SqlQuery<IdRow>($@"
+                    SELECT TOP 1 DoctorOfferId AS Id
+                    FROM dbo.DoctorOffer
+                    WHERE InstantConsultRequestId = {requestId} AND DoctorId = {doctorId} AND Status = N'ACCEPTED'").FirstOrDefaultAsync();
+                if (owned == null)
+                    return S3ActionResult.Fail(404, "No accepted offer for this doctor.");
+                return S3ActionResult.Ok(new
+                {
+                    success = true,
+                    instantConsultRequestId = requestId,
+                    doctorOfferId = owned.Id,
+                    status = "ACCEPTED",
+                    patientAppId = request.PatientAppId,
+                    teleSessionId = request.TeleSessionId
+                });
+            }
+
+            if (request.PatientId is not > 0)
+                return S3ActionResult.Fail(400, "This request has no patient record, so a visit cannot be opened.");
 
             var offer = await _context.Database.SqlQuery<IdRow>($@"
                 SELECT TOP 1 DoctorOfferId AS Id
@@ -930,17 +983,68 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             if (offer == null)
                 return S3ActionResult.Fail(404, "No open offer for this doctor.");
 
+            var doctor = await _context.Doctors.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.DoctorId == doctorId && !d.DeleteStatus);
+            if (doctor?.UserId == null)
+                return S3ActionResult.Fail(400, "This doctor has no login user, so the visit cannot be booked.");
+            var patientExists = await _context.Patients.AsNoTracking()
+                .AnyAsync(p => p.PatientId == request.PatientId.Value);
+            if (!patientExists)
+                return S3ActionResult.Fail(400, "The patient on this request was not found.");
+
             var now = DateTime.Now;
+            var appt = new PatientAppointment
+            {
+                PatientId = request.PatientId.Value,
+                DoctorId = doctorId,
+                UserId = doctor.UserId.Value,
+                AppointmentDate = now.Date,
+                AppointmentTime = TimeOnly.FromDateTime(now),
+                Status = "NOT ARRIVED",
+                DeleteStatus = false,
+                VisitType = "Tele",
+                ConsultMode = "Tele",
+                IsTele = true,
+                PaymentStatus = "UNPAID",
+                BookingChannel = "Instant"
+            };
+            _context.PatientAppointments.Add(appt);
+            await _context.SaveChangesAsync();
+
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.TeleSession
+                    (PatientAppId, DoctorId, PatientId, RoomId, Status, RecordAllowed, CreatedAt)
+                VALUES
+                    ({appt.PatientAppId}, {doctorId}, {request.PatientId.Value}, N'pending', N'Waiting', 0, {now})");
+            var session = await _context.Database.SqlQuery<IdRow>($@"
+                SELECT TOP 1 TeleSessionId AS Id
+                FROM dbo.TeleSession
+                WHERE PatientAppId = {appt.PatientAppId}
+                ORDER BY TeleSessionId DESC").FirstAsync();
+            var room = "room-" + session.Id;
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.TeleSession SET RoomId = {room} WHERE TeleSessionId = {session.Id}");
+            await LogEventAsync(session.Id, "Created", "Waiting room opened from instant accept");
+
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
                 UPDATE dbo.DoctorOffer SET Status = N'ACCEPTED', At = {now} WHERE DoctorOfferId = {offer.Id}");
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                UPDATE dbo.InstantConsultRequest SET Status = N'ACCEPTED' WHERE InstantConsultRequestId = {requestId}");
+                UPDATE dbo.DoctorOffer SET Status = N'WITHDRAWN', At = {now}
+                WHERE InstantConsultRequestId = {requestId} AND DoctorOfferId <> {offer.Id} AND Status = N'OFFERED'");
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.InstantConsultRequest
+                SET Status = N'ACCEPTED', PatientAppId = {appt.PatientAppId}, TeleSessionId = {session.Id}
+                WHERE InstantConsultRequestId = {requestId}");
+
             return S3ActionResult.Ok(new
             {
                 success = true,
                 instantConsultRequestId = requestId,
                 doctorOfferId = offer.Id,
-                status = "ACCEPTED"
+                status = "ACCEPTED",
+                patientAppId = appt.PatientAppId,
+                teleSessionId = session.Id,
+                roomId = room
             });
         }
 
@@ -950,6 +1054,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         /// </summary>
         public async Task<S3ActionResult> GetInstantStatusAsync(int requestId, S3Caller caller)
         {
+            await EnsureInstantLinkColumnsAsync();
             var row = await LoadInstantAsync(requestId);
             if (row == null)
                 return S3ActionResult.Fail(404, "Instant consult request not found.");
@@ -1000,10 +1105,24 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 "OPEN" => "Looking for an online doctor.",
                 "NO_DOCTOR" => "No doctor is online right now. Keep this screen open; each refresh tries again.",
                 "OFFERED" => "A doctor has your request. Waiting for the doctor to accept.",
-                "ACCEPTED" => "The doctor accepted. Stay on this screen; the doctor will start the call.",
+                "ACCEPTED" => "The doctor accepted. Join the waiting room for this visit.",
                 "CANCELLED" => "You cancelled this request.",
                 _ => row.Status
             };
+
+            decimal? consultFee = null;
+            string? currency = null;
+            string? doctorPhotoUrl = null;
+            if (offer?.DoctorId is > 0)
+            {
+                var offeredDoctor = await _context.Doctors.AsNoTracking()
+                    .Where(d => d.DoctorId == offer.DoctorId && !d.DeleteStatus)
+                    .Select(d => new { d.ConsultFeeTele, d.ConsultFeeInClinic, d.FeeCurrency, d.PhotoPath })
+                    .FirstOrDefaultAsync();
+                consultFee = offeredDoctor?.ConsultFeeTele ?? offeredDoctor?.ConsultFeeInClinic;
+                currency = string.IsNullOrWhiteSpace(offeredDoctor?.FeeCurrency) ? null : offeredDoctor!.FeeCurrency;
+                doctorPhotoUrl = AbsoluteDoctorPhotoUrl(offer.DoctorId, offeredDoctor?.PhotoPath);
+            }
 
             return S3ActionResult.Ok(new
             {
@@ -1019,6 +1138,11 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     doctorName = offer?.DoctorName,
                     offerStatus = offer?.Status,
                     offeredAt = offer?.At,
+                    patientAppId = row.PatientAppId,
+                    teleSessionId = row.TeleSessionId,
+                    consultFee,
+                    currency,
+                    doctorPhotoUrl,
                     canCancel = waiting,
                     message
                 }
@@ -1028,6 +1152,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         /// <summary>PAT-25.02 — patient withdraws an instant request that no doctor has accepted yet.</summary>
         public async Task<S3ActionResult> CancelInstantAsync(int requestId, S3Caller caller)
         {
+            await EnsureInstantLinkColumnsAsync();
             var row = await LoadInstantAsync(requestId);
             if (row == null)
                 return S3ActionResult.Fail(404, "Instant consult request not found.");
@@ -1047,9 +1172,26 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             return S3ActionResult.Ok(new { success = true, instantConsultRequestId = requestId, status = "CANCELLED", message = "Instant request cancelled." });
         }
 
+        private static int _instantLinkReady;
+
+        private async Task EnsureInstantLinkColumnsAsync()
+        {
+            if (_instantLinkReady == 1)
+                return;
+            await _context.Database.ExecuteSqlRawAsync(
+                """
+                IF COL_LENGTH(N'dbo.InstantConsultRequest', N'PatientAppId') IS NULL
+                    ALTER TABLE dbo.InstantConsultRequest ADD PatientAppId INT NULL;
+                IF COL_LENGTH(N'dbo.InstantConsultRequest', N'TeleSessionId') IS NULL
+                    ALTER TABLE dbo.InstantConsultRequest ADD TeleSessionId INT NULL;
+                """);
+            _instantLinkReady = 1;
+        }
+
         private async Task<InstantRow?> LoadInstantAsync(int requestId)
             => await _context.Database.SqlQuery<InstantRow>($@"
-                SELECT InstantConsultRequestId, PatientId, ContactName, ContactMobile, Status, QueuePosition, CreatedAt
+                SELECT InstantConsultRequestId, PatientId, ContactName, ContactMobile, Status, QueuePosition, CreatedAt,
+                       PatientAppId, TeleSessionId
                 FROM dbo.InstantConsultRequest
                 WHERE InstantConsultRequestId = {requestId}").FirstOrDefaultAsync();
 
@@ -1522,11 +1664,18 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 .Select(x => x.AppointmentDate)
                 .FirstOrDefaultAsync();
 
-            var tele = await _context.Database.SqlQuery<TextRow>($@"
-                SELECT TOP 1 Status AS Text
+            var tele = await _context.Database.SqlQuery<TeleSessionLiteRow>($@"
+                SELECT TOP 1 TeleSessionId, Status AS Text
                 FROM dbo.TeleSession
                 WHERE PatientAppId = {patientAppId}
-                ORDER BY TeleSessionId DESC").FirstOrDefaultAsync();
+                ORDER BY
+                    CASE WHEN Status IN (N'Ended', N'ENDED', N'Closed', N'CLOSED') THEN 1 ELSE 0 END,
+                    TeleSessionId DESC").FirstOrDefaultAsync();
+            int? teleSessionId = tele != null
+                && !string.Equals(tele.Text, "Ended", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(tele.Text, "Closed", StringComparison.OrdinalIgnoreCase)
+                ? tele.TeleSessionId
+                : null;
 
             var age = appt.Patient?.Age;
             if (age == null && appt.Patient?.DateOfBirth != null)
@@ -1564,8 +1713,9 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     paymentStatus = appt.PaymentStatus,
                     consultMode = appt.ConsultMode,
                     teleStatus = tele?.Text,
+                    teleSessionId,
                     consultFee,
-                    currency = feeDoctor?.FeeCurrency,
+                    currency = string.IsNullOrWhiteSpace(feeDoctor?.FeeCurrency) ? null : feeDoctor!.FeeCurrency,
                     platformFee,
                     totalAmount,
                     paidAt = paidCaptured ? paid!.CreatedAt : (DateTime?)null
@@ -1646,6 +1796,17 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         }
 
         /// <summary>SUP-07.01 — includes AssistedRequest ticket type for assisted booking help.</summary>
+        private string? AbsoluteDoctorPhotoUrl(int doctorId, string? photoPath)
+        {
+            if (string.IsNullOrWhiteSpace(photoPath) || doctorId <= 0)
+                return null;
+            var request = _http.HttpContext?.Request;
+            if (request != null)
+                return PublicApiUrl.For(request, $"/api/Profile/Photo/{doctorId}");
+            var site = (_config["ConfigurationModel:SiteUrl"] ?? "").TrimEnd('/');
+            return string.IsNullOrWhiteSpace(site) ? $"/api/Profile/Photo/{doctorId}" : $"{site}/api/Profile/Photo/{doctorId}";
+        }
+
         private static string NormalizeCategory(string? category)
         {
             var value = (category ?? "other").Trim();
@@ -1762,6 +1923,12 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             public string? Text { get; set; }
         }
 
+        private sealed class TeleSessionLiteRow
+        {
+            public int TeleSessionId { get; set; }
+            public string? Text { get; set; }
+        }
+
         private sealed class SessionRow
         {
             public int TeleSessionId { get; set; }
@@ -1801,6 +1968,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             public string Status { get; set; } = "";
             public int QueuePosition { get; set; }
             public DateTime CreatedAt { get; set; }
+            public int? PatientAppId { get; set; }
+            public int? TeleSessionId { get; set; }
         }
 
         private sealed class InstantOfferRow
@@ -1862,6 +2031,13 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             public string FileName { get; set; } = "";
             public string StorageKey { get; set; } = "";
             public DateTime At { get; set; }
+        }
+
+        private sealed class TeleFeeConfigRow
+        {
+            public decimal? TeleFee { get; set; }
+            public decimal? InClinicFee { get; set; }
+            public string? Currency { get; set; }
         }
 
         private sealed class TeleDayRow

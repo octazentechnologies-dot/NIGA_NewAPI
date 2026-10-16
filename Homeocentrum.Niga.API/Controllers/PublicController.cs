@@ -317,6 +317,7 @@ namespace Homeocentrum.Niga.API.Controllers
                     consentPolicyVersion = appt.ConsentPolicyVersion,
                     consultMode = appt.ConsultMode,
                     consultFee = isTele ? fees.TeleFee : fees.InClinicFee,
+                    currency = fees.Currency,
                     payAtClinicAllowed = appt.PayAtClinicAllowed,
                     payAtClinicEnabled
                 }
@@ -358,6 +359,7 @@ namespace Homeocentrum.Niga.API.Controllers
                     appt.HoldExpiresAt,
                     appt.ConsentPolicyVersion,
                     consultFee = isTele ? fees.TeleFee : fees.InClinicFee,
+                    currency = fees.Currency,
                     payAtClinicEnabled
                 }
             });
@@ -540,12 +542,13 @@ namespace Homeocentrum.Niga.API.Controllers
                 ClinicName = d.ClinicName,
                 ConsultFeeInClinic = d.ConsultFeeInClinic,
                 ConsultFeeTele = d.ConsultFeeTele,
+                FeeCurrency = string.IsNullOrWhiteSpace(d.FeeCurrency) ? null : d.FeeCurrency,
                 IsOnline = d.IsOnline,
                 Verified = string.Equals(d.VerificationStatus, "Verified", StringComparison.OrdinalIgnoreCase),
                 PhotoPath = d.PhotoPath,
                 PhotoUrl = string.IsNullOrWhiteSpace(d.PhotoPath)
                     ? null
-                    : $"{Request.Scheme}://{Request.Host}{Request.PathBase}/api/Profile/Photo/{d.DoctorId}",
+                    : PublicApiUrl.For(Request, $"/api/Profile/Photo/{d.DoctorId}"),
                 RegistrationNumber = string.IsNullOrWhiteSpace(d.PassingCertNo) ? null : d.PassingCertNo,
                 PassingUniversity = string.IsNullOrWhiteSpace(d.PassingUniversity) ? null : d.PassingUniversity,
                 YearsExperience = null,

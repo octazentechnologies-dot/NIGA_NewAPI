@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -24,6 +25,7 @@ public partial class S4Week4Service : IS4Week4Service
     private readonly NIGACentrumContext _context;
     private readonly IConfiguration _config;
     private readonly IWebHostEnvironment _env;
+    private readonly IHttpContextAccessor _http;
     private readonly ILogger<S4Week4Service> _logger;
     private readonly IAppointmentRescheduleNotifier _notify;
     private readonly INotificationOutbox _outbox;
@@ -32,6 +34,7 @@ public partial class S4Week4Service : IS4Week4Service
         NIGACentrumContext context,
         IConfiguration config,
         IWebHostEnvironment env,
+        IHttpContextAccessor http,
         ILogger<S4Week4Service> logger,
         IAppointmentRescheduleNotifier notify,
         INotificationOutbox outbox)
@@ -39,6 +42,7 @@ public partial class S4Week4Service : IS4Week4Service
         _context = context;
         _config = config;
         _env = env;
+        _http = http;
         _logger = logger;
         _notify = notify;
         _outbox = outbox;
@@ -66,10 +70,14 @@ public partial class S4Week4Service : IS4Week4Service
             return new ConsultFeeQuote();
 
         var fee = await LatestFeeOrNullAsync(doctorId);
+        var currency = string.IsNullOrWhiteSpace(fee?.Currency)
+            ? (string.IsNullOrWhiteSpace(doctor.FeeCurrency) ? null : doctor.FeeCurrency)
+            : fee!.Currency;
         return new ConsultFeeQuote
         {
             InClinicFee = fee?.InClinicFee ?? doctor.ConsultFeeInClinic ?? 0,
-            TeleFee = fee?.TeleFee ?? doctor.ConsultFeeTele ?? 0
+            TeleFee = fee?.TeleFee ?? doctor.ConsultFeeTele ?? 0,
+            Currency = currency
         };
     }
 
@@ -95,7 +103,9 @@ public partial class S4Week4Service : IS4Week4Service
                 inClinicFee = inClinic,
                 teleFee = tele,
                 instantSurcharge = fee?.InstantSurcharge ?? 0,
-                currency = fee?.Currency ?? "INR",
+                currency = string.IsNullOrWhiteSpace(fee?.Currency)
+                    ? (string.IsNullOrWhiteSpace(doctor.FeeCurrency) ? null : doctor.FeeCurrency)
+                    : fee!.Currency,
                 payAtClinicEnabled = fee?.PayAtClinicEnabled ?? true,
                 isVerified = IsVerified(doctor.VerificationStatus),
                 source = fee == null ? "profile" : "config"
@@ -195,6 +205,8 @@ public partial class S4Week4Service : IS4Week4Service
         var quote = await QuoteConsultAsync(doctor, appointment);
         if (quote.Amount <= 0)
             return Fail(400, "FEE_NOT_CONFIGURED", "Set an in-clinic or tele consult fee before taking payment.");
+        if (string.IsNullOrWhiteSpace(quote.Currency))
+            return Fail(400, "CURRENCY_NOT_CONFIGURED", "Set FeeCurrency on the doctor profile or ConsultFeeConfig before taking payment.");
         if (request.Amount.HasValue && request.Amount.Value != quote.Amount)
             return Fail(400, "AMOUNT_MISMATCH", "Amount is taken from the consult fee configuration.");
         if (request.PayAtClinic && !quote.PayAtClinicEnabled)
@@ -220,7 +232,7 @@ public partial class S4Week4Service : IS4Week4Service
                 DoctorId = appointment.DoctorId,
                 PatientId = appointment.PatientId,
                 Amount = quote.Amount,
-                Currency = quote.Currency,
+                Currency = quote.Currency!,
                 Status = "PAY_AT_CLINIC",
                 Method = "PAY_AT_CLINIC",
                 IdempotencyKey = key,
@@ -257,7 +269,7 @@ public partial class S4Week4Service : IS4Week4Service
             DoctorId = appointment.DoctorId,
             PatientId = appointment.PatientId,
             Amount = quote.Amount,
-            Currency = quote.Currency,
+            Currency = quote.Currency!,
             Status = status,
             Method = "ONLINE",
             GatewayOrderId = gatewayOrderId,
@@ -422,6 +434,8 @@ public partial class S4Week4Service : IS4Week4Service
         var quote = await QuoteConsultAsync(doctor, appointment);
         if (quote.Amount <= 0)
             return Fail(400, "FEE_NOT_CONFIGURED", "Set a consult fee before collection.");
+        if (string.IsNullOrWhiteSpace(quote.Currency))
+            return Fail(400, "CURRENCY_NOT_CONFIGURED", "Set FeeCurrency on the doctor profile or ConsultFeeConfig before collection.");
         if (request.Amount.HasValue && request.Amount.Value != quote.Amount)
             return Fail(400, "AMOUNT_MISMATCH", "Collected amount must match the configured consult fee.");
 
@@ -434,7 +448,7 @@ public partial class S4Week4Service : IS4Week4Service
             DoctorId = appointment.DoctorId,
             PatientId = appointment.PatientId,
             Amount = quote.Amount,
-            Currency = quote.Currency,
+            Currency = quote.Currency!,
             Status = status,
             Method = method,
             CorrelationId = correlation,
@@ -535,6 +549,11 @@ public partial class S4Week4Service : IS4Week4Service
                 return Ok(OrderBody(existing, "Existing medicine payment returned."));
         }
 
+        // MedicineOrder has no currency column; use Payments:MedicineCurrency (3-letter) when configured.
+        var medicineCurrency = (_config["Payments:MedicineCurrency"] ?? "").Trim().ToUpperInvariant();
+        if (medicineCurrency.Length != 3)
+            return Fail(400, "CURRENCY_NOT_CONFIGURED", "Set Payments:MedicineCurrency (3-letter code) before medicine payment. MedicineOrder has no stored currency.");
+
         var correlation = Guid.NewGuid().ToString("N");
         if (mode == "COD")
         {
@@ -544,7 +563,7 @@ public partial class S4Week4Service : IS4Week4Service
                 MedicineOrderId = order.MedicineOrderId,
                 PatientId = order.PatientId,
                 Amount = order.QuoteAmount.Value,
-                Currency = "INR",
+                Currency = medicineCurrency,
                 Status = "COD",
                 Method = "COD",
                 IdempotencyKey = key,
@@ -552,7 +571,7 @@ public partial class S4Week4Service : IS4Week4Service
                 CreatedBy = caller.UserId
             });
             await SetMedicineStatusAsync(order.MedicineOrderId, "COD_PENDING", "COD selected");
-            return Ok(new { success = true, message = "COD recorded. Capture happens when the seller confirms collection.", data = new { paymentOrderId = id, status = "COD" } });
+            return Ok(new { success = true, message = "COD recorded. Capture happens when the seller confirms collection.", data = new { paymentOrderId = id, status = "COD", currency = medicineCurrency } });
         }
 
         var keyId = _config["Razorpay:KeyId"];
@@ -562,7 +581,7 @@ public partial class S4Week4Service : IS4Week4Service
         var gatewayReady = false;
         if (!string.IsNullOrWhiteSpace(keyId) && !string.IsNullOrWhiteSpace(keySecret))
         {
-            gatewayOrderId = await CreateGatewayOrderAsync(keyId, keySecret, order.QuoteAmount.Value, "INR", correlation);
+            gatewayOrderId = await CreateGatewayOrderAsync(keyId, keySecret, order.QuoteAmount.Value, medicineCurrency, correlation);
             if (gatewayOrderId == null)
                 return Fail(502, "GATEWAY", "The payment gateway did not return an order id.");
             status = "PENDING";
@@ -575,7 +594,7 @@ public partial class S4Week4Service : IS4Week4Service
             MedicineOrderId = order.MedicineOrderId,
             PatientId = order.PatientId,
             Amount = order.QuoteAmount.Value,
-            Currency = "INR",
+            Currency = medicineCurrency,
             Status = status,
             Method = "ONLINE",
             GatewayOrderId = gatewayOrderId,
@@ -590,7 +609,7 @@ public partial class S4Week4Service : IS4Week4Service
             message = gatewayReady
                 ? "Medicine order created. Paid status waits for the webhook."
                 : "Medicine payment stored. Gateway keys are not configured, so the order is not marked paid.",
-            data = new { paymentOrderId = paymentId, amount = order.QuoteAmount, currency = "INR", gatewayReady, keyId, gatewayOrderId }
+            data = new { paymentOrderId = paymentId, amount = order.QuoteAmount, currency = medicineCurrency, gatewayReady, keyId, gatewayOrderId }
         });
     }
 
@@ -990,7 +1009,10 @@ public partial class S4Week4Service : IS4Week4Service
         var mode = appointment.ConsultMode ?? "";
         if (mode.Contains("instant", StringComparison.OrdinalIgnoreCase))
             amount += fee?.InstantSurcharge ?? 0;
-        return new FeeQuote(amount, fee?.Currency ?? "INR", fee?.PayAtClinicEnabled ?? true);
+        var currency = string.IsNullOrWhiteSpace(fee?.Currency)
+            ? (string.IsNullOrWhiteSpace(doctor.FeeCurrency) ? null : doctor.FeeCurrency!.Trim())
+            : fee!.Currency.Trim();
+        return new FeeQuote(amount, currency, fee?.PayAtClinicEnabled ?? true);
     }
 
     private async Task<FeeRow?> LatestFeeAsync(int doctorId) => await LatestFeeOrNullAsync(doctorId);
@@ -1363,7 +1385,7 @@ public partial class S4Week4Service : IS4Week4Service
         public int? DoctorId { get; set; }
         public int? PatientId { get; set; }
         public decimal Amount { get; set; }
-        public string Currency { get; set; } = "INR";
+        public string Currency { get; set; } = "";
         public string Status { get; set; } = "";
         public string? Method { get; set; }
         public string? GatewayOrderId { get; set; }
@@ -1372,7 +1394,18 @@ public partial class S4Week4Service : IS4Week4Service
         public long CreatedBy { get; set; }
     }
 
-    private readonly record struct FeeQuote(decimal Amount, string Currency, bool PayAtClinicEnabled);
+    private readonly record struct FeeQuote(decimal Amount, string? Currency, bool PayAtClinicEnabled);
+
+    private string? AbsoluteDoctorPhotoUrl(int doctorId, string? photoPath)
+    {
+        if (string.IsNullOrWhiteSpace(photoPath) || doctorId <= 0)
+            return null;
+        var request = _http.HttpContext?.Request;
+        if (request != null)
+            return PublicApiUrl.For(request, $"/api/Profile/Photo/{doctorId}");
+        var site = (_config["ConfigurationModel:SiteUrl"] ?? "").TrimEnd('/');
+        return string.IsNullOrWhiteSpace(site) ? $"/api/Profile/Photo/{doctorId}" : $"{site}/api/Profile/Photo/{doctorId}";
+    }
     private readonly record struct RefundPolicy(string Policy, decimal Amount, string Reason);
 }
 

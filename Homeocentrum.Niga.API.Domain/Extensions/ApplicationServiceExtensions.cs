@@ -52,7 +52,7 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
     {
         public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration config)
         {
-
+            services.AddHttpContextAccessor();
             services.AddScoped<ITokenService, TokenService>();
             services.AddSingleton<IJwtDenylistService, JwtDenylistService>();
             services.AddScoped<IAuditEventWriter, AuditEventWriter>();

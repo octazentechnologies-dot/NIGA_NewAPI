@@ -378,6 +378,21 @@ public sealed class MobileOpenApiDetailFilter : IOperationFilter, IDocumentFilte
             "priceTotal, deliveryFee, etaMinutes, fulfilPercent, distanceKm, and serviceable are null. Those facts are not stored.",
             null,
             null),
+        ["GET api/Patient/DataRequests"] = new(
+            "Data requests for the signed-in patient",
+            "Patient token. Lists EXPORT and DELETE requests already recorded. A request is not executed automatically. There is no account-delete route.",
+            null,
+            """{"success":true,"data":[{"dataRequestId":12,"requestType":"EXPORT","status":"OPEN","createdAt":"2026-10-15T18:00:00"}]}"""),
+        ["POST api/Tele/Instant/{requestId}/Accept"] = new(
+            "Accept an instant consult and open the visit",
+            "Doctor token. Creates the patient's visit and a waiting-room session. patientAppId and teleSessionId are the stored ids. A request with no patient record is rejected. Calling again returns the same ids.",
+            null,
+            """{"success":true,"instantConsultRequestId":18,"doctorOfferId":7,"status":"ACCEPTED","patientAppId":88120,"teleSessionId":44,"roomId":"room-44"}"""),
+        ["GET api/Tele/Instant/{requestId}"] = new(
+            "Instant consult status",
+            "Patient token. After the doctor accepts, patientAppId and teleSessionId are set. Until then both are null.",
+            null,
+            """{"success":true,"data":{"instantConsultRequestId":18,"status":"ACCEPTED","queuePosition":null,"patientAppId":88120,"teleSessionId":44}}"""),
         ["GET api/Availability/Me"] = new(
             "Working hours for the signed-in doctor",
             "Doctor token. gapMinutes and bookingHorizonDays are included. Both are null until saved with PUT /api/Doctor/BookingRules.",

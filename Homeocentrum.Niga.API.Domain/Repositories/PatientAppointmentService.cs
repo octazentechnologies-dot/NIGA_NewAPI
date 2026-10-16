@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
@@ -456,6 +457,23 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 .ThenBy(x => x.PatientAppId)
                 .ToListAsync();
 
+            var teleByApp = new Dictionary<int, int>();
+            if (appointments.Count > 0)
+            {
+                var sessions = await _context.Database.SqlQuery<TeleSessionIdRow>($@"
+                    SELECT s.PatientAppId, MAX(s.TeleSessionId) AS TeleSessionId
+                    FROM dbo.TeleSession s
+                    INNER JOIN dbo.PatientAppointment a ON a.PatientAppId = s.PatientAppId
+                    WHERE a.UserId = {request.UserId}
+                      AND a.DeleteStatus = 0
+                      AND a.AppointmentDate IS NOT NULL
+                      AND CONVERT(date, a.AppointmentDate) = {appointmentDate}
+                      AND s.Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED')
+                    GROUP BY s.PatientAppId").ToListAsync();
+                foreach (var s in sessions)
+                    teleByApp[s.PatientAppId] = s.TeleSessionId;
+            }
+
             return appointments.Select(appointment => new PatientAppointmentModel
             {
                 PatientAppId = appointment.PatientAppId,
@@ -483,6 +501,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 DateOfBirth = appointment.Patient.DateOfBirth,
                 IsWhatsAppOptIn = appointment.Patient.IsWhatsAppOptIn,
                 WhatsAppOptInDate = appointment.Patient.WhatsAppOptInDate,
+                TeleSessionId = teleByApp.TryGetValue(appointment.PatientAppId, out var sid) ? sid : null,
             }).ToList();
         }
 
@@ -1282,6 +1301,12 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             public int BookingWaitlistId { get; set; }
             public string ContactName { get; set; } = "";
             public string ContactMobile { get; set; } = "";
+        }
+
+        private sealed class TeleSessionIdRow
+        {
+            public int PatientAppId { get; set; }
+            public int TeleSessionId { get; set; }
         }
 
         private sealed class CancelPaymentOrderRow

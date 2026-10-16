@@ -29,6 +29,10 @@ public class ErxController : ControllerBase
     [HttpGet("/api/Erx/Potencies")]
     public Task<IActionResult> Potencies() => Done(_s4.ListPotenciesAsync());
 
+    [HttpGet("/api/Erx/Remedies")]
+    public Task<IActionResult> Remedies([FromQuery] string? search, [FromQuery] int take = 40)
+        => Done(_s4.SearchRemediesAsync(search, take));
+
     [HttpPut("/api/Erx/RemedyLines/{id:int}")]
     public Task<IActionResult> RemedyLine(int id, [FromBody] RemedyLineUpdateRequest request)
         => Done(_s4.UpdateRemedyLineAsync(id, request, Caller()));

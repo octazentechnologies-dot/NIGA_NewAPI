@@ -287,6 +287,21 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = rows });
     }
 
+    public async Task<S4ActionResult> SearchRemediesAsync(string? search, int take = 40)
+    {
+        if (take < 1 || take > 100) take = 40;
+        var q = (search ?? "").Trim();
+        var query = _context.RemedyMasters.AsNoTracking().Where(r => !r.DeleteStatus);
+        if (q.Length > 0)
+            query = query.Where(r => r.RemedyName.StartsWith(q) || (r.RemedyAlias != null && r.RemedyAlias.StartsWith(q)));
+        var rows = await query
+            .OrderBy(r => r.RemedyName)
+            .Take(take)
+            .Select(r => new { remedyId = r.RemedyId, name = r.RemedyName })
+            .ToListAsync();
+        return Ok(new { success = true, data = rows });
+    }
+
     public async Task<S4ActionResult> UpdateRemedyLineAsync(int prescriptionRemedyId, RemedyLineUpdateRequest request, S4Caller caller)
     {
         if (!caller.IsDoctor && !caller.IsAdmin)
@@ -1227,9 +1242,9 @@ public partial class S4Week4Service
                 clinicName = doctor?.ClinicName,
                 clinicCity = doctor?.City,
                 clinicMapLink = doctor?.GoogleMapsLink,
-                doctorPhotoUrl = string.IsNullOrWhiteSpace(doctor?.PhotoPath) ? null : $"/api/Profile/Photo/{appointment.DoctorId}",
+                doctorPhotoUrl = AbsoluteDoctorPhotoUrl(appointment.DoctorId, doctor?.PhotoPath),
                 consultFee,
-                currency = doctor?.FeeCurrency,
+                currency = string.IsNullOrWhiteSpace(doctor?.FeeCurrency) ? null : doctor!.FeeCurrency,
                 platformFee,
                 clinicPhone = doctor?.MobileNo,
                 reasonText = complaint?.Text,
@@ -1630,6 +1645,17 @@ public partial class S4Week4Service
             INSERT INTO dbo.DataRequest (PatientId, RequestType, Status, CreatedAt)
             VALUES ({patientId}, {type}, N'OPEN', {DateTime.Now})");
         return Ok(new { success = true, message = "Request recorded. It is not executed automatically.", data = new { type, status = "OPEN" } });
+    }
+
+    public async Task<S4ActionResult> ListDataRequestsAsync(S4Caller caller)
+    {
+        if (caller.PatientId is null) return Fail(403, "FORBIDDEN", "A patient profile is required.");
+        var rows = await _context.Database.SqlQuery<DataRequestRow>($@"
+            SELECT DataRequestId, RequestType, Status, CreatedAt
+            FROM dbo.DataRequest
+            WHERE PatientId = {caller.PatientId.Value}
+            ORDER BY CreatedAt DESC").ToListAsync();
+        return Ok(new { success = true, data = rows });
     }
 
     public async Task<S4ActionResult> GetHealthProfileAsync(S4Caller caller)
@@ -2061,5 +2087,13 @@ public partial class S4Week4Service
     private sealed class IdIntRow
     {
         public int Id { get; set; }
+    }
+
+    private sealed class DataRequestRow
+    {
+        public int DataRequestId { get; set; }
+        public string RequestType { get; set; } = "";
+        public string Status { get; set; } = "";
+        public DateTime CreatedAt { get; set; }
     }
 }

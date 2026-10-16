@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Threading;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -249,12 +250,27 @@ public partial class S5Week5Service : IS5Week5Service
 
     public Task<S4ActionResult> ListNotificationsAsync(S4Caller caller) => Guard(async () =>
     {
+        await EnsureNotificationNavColumnsAsync();
         var rows = await _context.Database.SqlQuery<NoteRow>($@"
-            SELECT TOP 100 AppNotificationId, Title, Body, IsRead, PushStatus, CreatedAt
+            SELECT TOP 100 AppNotificationId, Title, Body, IsRead, PushStatus, CreatedAt, Type, DeepLink
             FROM dbo.AppNotification
             WHERE UserId = {caller.UserId}
             ORDER BY AppNotificationId DESC").ToListAsync();
-        return S4ActionResult.Ok(new { success = true, data = rows });
+        return S4ActionResult.Ok(new
+        {
+            success = true,
+            data = rows.Select(r => new
+            {
+                r.AppNotificationId,
+                r.Title,
+                r.Body,
+                r.IsRead,
+                r.PushStatus,
+                r.CreatedAt,
+                type = string.IsNullOrWhiteSpace(r.Type) ? InferNotificationType(r.Title, r.Body) : r.Type,
+                deepLink = string.IsNullOrWhiteSpace(r.DeepLink) ? null : r.DeepLink
+            })
+        });
     });
 
     public Task<S4ActionResult> PatchNotificationAsync(long id, bool isRead, S4Caller caller) => Guard(async () =>
@@ -829,6 +845,33 @@ public partial class S5Week5Service : IS5Week5Service
         public bool IsRead { get; set; }
         public string PushStatus { get; set; } = "";
         public DateTime CreatedAt { get; set; }
+        public string? Type { get; set; }
+        public string? DeepLink { get; set; }
+    }
+
+    private static int _notificationNavReady;
+
+    private async Task EnsureNotificationNavColumnsAsync()
+    {
+        if (Volatile.Read(ref _notificationNavReady) == 1) return;
+        await _context.Database.ExecuteSqlRawAsync("""
+            IF COL_LENGTH(N'dbo.AppNotification', N'Type') IS NULL
+                ALTER TABLE dbo.AppNotification ADD Type nvarchar(40) NULL;
+            IF COL_LENGTH(N'dbo.AppNotification', N'DeepLink') IS NULL
+                ALTER TABLE dbo.AppNotification ADD DeepLink nvarchar(300) NULL;
+            """);
+        Volatile.Write(ref _notificationNavReady, 1);
+    }
+
+    private static string? InferNotificationType(string? title, string? body)
+    {
+        var text = ((title ?? "") + " " + (body ?? "")).ToLowerInvariant();
+        if (text.Contains("carelink") || text.Contains("care link")) return "carelink";
+        if (text.Contains("pharmacy") || text.Contains("medicine") || text.Contains("refill")) return "pharmacy";
+        if (text.Contains("payout") || text.Contains("payment") || text.Contains("refund") || text.Contains("earning")) return "money";
+        if (text.Contains("appointment") || text.Contains("visit") || text.Contains("consult")) return "appointment";
+        if (text.Contains("refill")) return "refill";
+        return "system";
     }
     private sealed class EmailLogRow
     {

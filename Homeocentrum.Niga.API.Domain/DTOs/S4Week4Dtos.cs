@@ -6,6 +6,8 @@ public class ConsultFeeQuote
 {
     public decimal InClinicFee { get; set; }
     public decimal TeleFee { get; set; }
+    /// <summary>ConsultFeeConfig.Currency, else Doctor.FeeCurrency. Null when neither is stored.</summary>
+    public string? Currency { get; set; }
 }
 
 public class FeeUpsertRequest

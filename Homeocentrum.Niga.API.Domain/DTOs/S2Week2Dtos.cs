@@ -28,6 +28,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string? ClinicName { get; set; }
         public decimal? ConsultFeeInClinic { get; set; }
         public decimal? ConsultFeeTele { get; set; }
+        /// <summary>Doctor.FeeCurrency. Null when the profile has no currency.</summary>
+        public string? FeeCurrency { get; set; }
         public bool IsOnline { get; set; }
         public bool Verified { get; set; }
         /// <summary>Same flag as <see cref="Verified"/>. Kept so public clients can read isVerified.</summary>
