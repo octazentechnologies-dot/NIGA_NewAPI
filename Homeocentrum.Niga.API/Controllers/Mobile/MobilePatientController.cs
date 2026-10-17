@@ -232,6 +232,10 @@ public class MobilePatientController : ControllerBase
     public Task<IActionResult> UpdateDeliveryAddress(int id, [FromBody] DeliveryAddressWrite request)
         => Done(_clinic.SaveDeliveryAddressAsync(id, request, Caller()));
 
+    [HttpPost("/api/Patient/Waitlist/Offers/{id:int}/Accept")]
+    public Task<IActionResult> AcceptWaitlistOffer(int id)
+        => Done(_clinic.AcceptWaitlistOfferAsync(id, Caller()));
+
     [HttpDelete("/api/Patient/DeliveryAddresses/{id:int}")]
     [HttpDelete("/api/Patient/Addresses/{id:int}")]
     public Task<IActionResult> DeleteDeliveryAddress(int id)

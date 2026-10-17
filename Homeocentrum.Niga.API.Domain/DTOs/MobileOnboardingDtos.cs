@@ -51,6 +51,12 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
 
         /// <summary>Optional existing PatientId to link as primary (same as Family/LinkPrimary).</summary>
         public int? PatientId { get; set; }
+
+        public int? CountryId { get; set; }
+        public int? StateId { get; set; }
+        public int? DistrictId { get; set; }
+        public int? CityId { get; set; }
+        public int? PinCodeId { get; set; }
     }
 
     public class DeviceRegisterRequest

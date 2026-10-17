@@ -1300,8 +1300,8 @@ public partial class S4Week4Service
                 .FirstOrDefaultAsync();
             if (appt?.DoctorId is not > 0) continue;
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                INSERT INTO dbo.TeleSession (PatientAppId, DoctorId, PatientId, Status, CreatedAt)
-                VALUES ({appt.PatientAppId}, {appt.DoctorId}, {appt.PatientId}, N'Waiting', {DateTime.Now})");
+                INSERT INTO dbo.TeleSession (PatientAppId, DoctorId, PatientId, RoomId, Status, RecordAllowed, CreatedAt)
+                VALUES ({appt.PatientAppId}, {appt.DoctorId}, {appt.PatientId}, N'pending', N'Waiting', 0, {DateTime.Now})");
         }
     }
 
@@ -1330,8 +1330,8 @@ public partial class S4Week4Service
             if (existingSession == null)
             {
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                    INSERT INTO dbo.TeleSession (PatientAppId, DoctorId, PatientId, Status, CreatedAt)
-                    VALUES ({patientAppId}, {appointment.DoctorId}, {appointment.PatientId}, N'Waiting', {DateTime.Now})");
+                    INSERT INTO dbo.TeleSession (PatientAppId, DoctorId, PatientId, RoomId, Status, RecordAllowed, CreatedAt)
+                    VALUES ({patientAppId}, {appointment.DoctorId}, {appointment.PatientId}, N'pending', N'Waiting', 0, {DateTime.Now})");
             }
         }
 

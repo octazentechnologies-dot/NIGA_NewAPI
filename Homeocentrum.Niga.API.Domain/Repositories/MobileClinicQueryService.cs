@@ -410,8 +410,8 @@ public class MobileClinicQueryService
             ORDER BY TeleSessionId DESC").FirstOrDefaultAsync();
         if (existing != null) return existing.TeleSessionId;
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO dbo.TeleSession (PatientAppId, DoctorId, PatientId, Status, CreatedAt)
-            VALUES ({patientAppId}, {doctorId}, {patientId}, N'Waiting', {DateTime.Now})");
+            INSERT INTO dbo.TeleSession (PatientAppId, DoctorId, PatientId, RoomId, Status, RecordAllowed, CreatedAt)
+            VALUES ({patientAppId}, {doctorId}, {patientId}, N'pending', N'Waiting', 0, {DateTime.Now})");
         var created = await _context.Database.SqlQuery<SessionRow>($@"
             SELECT TOP 1 TeleSessionId, PatientAppId
             FROM dbo.TeleSession
@@ -625,6 +625,29 @@ public class MobileClinicQueryService
             WHERE DeliveryAddressId = {id} AND PatientId = {caller.PatientId.Value}");
         if (deleted == 0) return Fail(404, "NOT_FOUND", "Address not found.");
         return Ok(new { deleted = true, addressId = id });
+    }
+
+    public async Task<S4ActionResult> AcceptWaitlistOfferAsync(int bookingWaitlistId, S4Caller caller)
+    {
+        if (!caller.IsPatient || !caller.PatientId.HasValue)
+            return Fail(403, "FORBIDDEN", "Patient context is required.");
+        if (bookingWaitlistId <= 0)
+            return Fail(400, "VALIDATION", "Waitlist offer id is required.");
+        var mobile = await _context.Patients.AsNoTracking()
+            .Where(p => p.PatientId == caller.PatientId.Value)
+            .Select(p => p.MobileNo)
+            .FirstOrDefaultAsync();
+        mobile = string.IsNullOrWhiteSpace(mobile) ? null : mobile.Trim();
+        var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.BookingWaitlist
+            SET Status = N'ACCEPTED'
+            WHERE BookingWaitlistId = {bookingWaitlistId}
+              AND Status = N'OFFERED'
+              AND (PatientId = {caller.PatientId.Value}
+                   OR ({mobile} IS NOT NULL AND ContactMobile = {mobile}))");
+        if (updated == 0)
+            return Fail(404, "NOT_FOUND", "No open offer matches this account.");
+        return Ok(new { success = true, data = new { bookingWaitlistId, status = "ACCEPTED" } });
     }
 
     public async Task<S4ActionResult> DeleteReminderAsync(int id, S4Caller caller)

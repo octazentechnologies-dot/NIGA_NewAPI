@@ -105,6 +105,39 @@ namespace Homeocentrum.Niga.API.Controllers
             if (request.QualificationId.HasValue) doctor.QualificationId = request.QualificationId;
             if (request.PassingUniversity != null) doctor.PassingUniversity = request.PassingUniversity.Trim();
             if (request.PassingCertNo != null) doctor.PassingCertNo = request.PassingCertNo.Trim();
+            if (request.CasePaperValidity.HasValue)
+                doctor.CasePaperValidity = request.CasePaperValidity.Value > 0 ? request.CasePaperValidity : null;
+            if (request.PracticeActivated.HasValue)
+                doctor.PracticeActivated = request.PracticeActivated.Value;
+            if (request.CountryId.HasValue) doctor.CountryId = request.CountryId;
+            if (request.DistrictId.HasValue) doctor.DistrictId = request.DistrictId;
+            if (request.CityId.HasValue)
+            {
+                doctor.CityId = request.CityId;
+                if (string.IsNullOrWhiteSpace(request.City))
+                {
+                    doctor.City = await _context.CityMasters.AsNoTracking()
+                        .Where(c => c.CityId == request.CityId.Value)
+                        .Select(c => c.CityName)
+                        .FirstOrDefaultAsync();
+                }
+            }
+            if (request.PinCodeId.HasValue)
+            {
+                doctor.PinCodeId = request.PinCodeId;
+                if (string.IsNullOrWhiteSpace(request.Pincode))
+                {
+                    var pin = await _context.PinCodeMasters.AsNoTracking()
+                        .Where(p => p.PinCodeId == request.PinCodeId.Value)
+                        .Select(p => p.PinCode)
+                        .FirstOrDefaultAsync();
+                    if (!string.IsNullOrWhiteSpace(pin))
+                    {
+                        var parsedPin = ParseClinicAddress(doctor.PermanantAddress);
+                        doctor.PermanantAddress = FormatClinicAddress(parsedPin.Line1, parsedPin.Line2, pin);
+                    }
+                }
+            }
             if (request.ConsultFeeInClinic.HasValue) doctor.ConsultFeeInClinic = request.ConsultFeeInClinic;
             if (request.ConsultFeeTele.HasValue) doctor.ConsultFeeTele = request.ConsultFeeTele;
             if (request.TeleDisabled == true)
@@ -138,7 +171,11 @@ namespace Homeocentrum.Niga.API.Controllers
                     if (!string.IsNullOrWhiteSpace(request.LastName)) user.LastName = request.LastName.Trim();
                     if (request.EmailId != null) user.EmailId = request.EmailId.Trim();
                     if (request.MobileNo != null) user.MobileNo = PhoneNormalizer.Digits(request.MobileNo);
+                    if (doctor.CountryId.HasValue) user.CountryId = doctor.CountryId;
                     if (doctor.StateId.HasValue) user.StateId = doctor.StateId;
+                    if (doctor.DistrictId.HasValue) user.DistrictId = doctor.DistrictId;
+                    if (doctor.CityId.HasValue) user.CityId = doctor.CityId;
+                    if (doctor.PinCodeId.HasValue) user.PinCodeId = doctor.PinCodeId;
                     user.ChangedDate = DateTime.UtcNow;
                 }
             }
@@ -160,7 +197,8 @@ namespace Homeocentrum.Niga.API.Controllers
                 kyc.BankName = request.Kyc.BankName;
                 kyc.AccountNumber = request.Kyc.AccountNumber;
                 kyc.Ifsc = request.Kyc.Ifsc;
-                if (request.Kyc.Pan != null) kyc.Pan = request.Kyc.Pan;
+                if (request.Kyc.Pan != null)
+                    kyc.Pan = string.IsNullOrWhiteSpace(request.Kyc.Pan) ? null : request.Kyc.Pan.Trim().ToUpperInvariant();
                 if (request.Kyc.BranchName != null)
                     kyc.BranchName = string.IsNullOrWhiteSpace(request.Kyc.BranchName) ? null : request.Kyc.BranchName.Trim();
                 if (request.Kyc.AccountType != null)
@@ -230,6 +268,7 @@ namespace Homeocentrum.Niga.API.Controllers
                     EnteredDate = d.EnteredDate
                 })
                 .ToListAsync();
+            await FillStoredQualificationAsync(doctor, docs);
 
             return Ok(new
             {
@@ -403,15 +442,77 @@ namespace Homeocentrum.Niga.API.Controllers
             DocumentType = row.DocumentType,
             FileName = row.FileName,
             FilePath = row.FilePath,
-            Degree = row.Degree,
-            Specialization = row.Specialization,
-            Institution = row.Institution,
+            Degree = TextOrNull(row.Degree),
+            Specialization = TextOrNull(row.Specialization),
+            Institution = TextOrNull(row.Institution),
             PassingYear = row.PassingYear,
-            EnteredDate = row.EnteredDate,
-            ValidUntil = null,
-            Verified = null,
-            IssuingCouncil = null
+            EnteredDate = row.EnteredDate
         };
+
+        /// <summary>
+        /// Qualification files uploaded before degree details were saved still belong to the
+        /// doctor's stored qualification. Copy those stored values onto the file row in the response.
+        /// </summary>
+        private async Task FillStoredQualificationAsync(Doctor doctor, List<DoctorCredentialDocumentDto> docs)
+        {
+            string? qualificationName = null;
+            if (doctor.QualificationId != null)
+            {
+                qualificationName = await _context.QualificationMasters.AsNoTracking()
+                    .Where(q => q.QualificationId == doctor.QualificationId)
+                    .Select(q => q.QualificationName)
+                    .FirstOrDefaultAsync();
+            }
+            var university = TextOrNull(doctor.PassingUniversity);
+            qualificationName = TextOrNull(qualificationName);
+            foreach (var doc in docs)
+            {
+                doc.Degree = TextOrNull(doc.Degree);
+                doc.Specialization = TextOrNull(doc.Specialization);
+                doc.Institution = TextOrNull(doc.Institution);
+                doc.FileName = TextOrNull(doc.FileName) ?? string.Empty;
+                doc.FilePath = TextOrNull(doc.FilePath) ?? string.Empty;
+                if (!string.Equals(doc.DocumentType, "Qualification", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                doc.Degree ??= qualificationName;
+                doc.Institution ??= university;
+            }
+        }
+
+        private static string? TextOrNull(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+            return value.Trim();
+        }
+
+        private static async Task<string?> NameOrNull(int? id, Func<int, Task<string?>> load)
+        {
+            if (id is not > 0)
+                return null;
+            return TextOrNull(await load(id.Value));
+        }
+
+        private async Task<string?> PackageNameForAsync(Doctor doctor)
+        {
+            var lookupIds = new List<int> { doctor.DoctorId };
+            if (doctor.UserId is int linkedUser && linkedUser > 0)
+                lookupIds.Add(linkedUser);
+            var packageId = await _context.PackageEntryDetails.AsNoTracking()
+                .Where(p => p.IsActive == true && p.DoctorId != null && lookupIds.Contains(p.DoctorId.Value) && p.PackageId != null)
+                .OrderByDescending(p => p.ExpiryDate)
+                .Select(p => p.PackageId)
+                .FirstOrDefaultAsync();
+            if (packageId is not > 0)
+                packageId = doctor.PackageId;
+            if (packageId is not > 0)
+                return null;
+            var name = await _context.PackageMasters.AsNoTracking()
+                .Where(p => p.PackageId == packageId.Value)
+                .Select(p => p.PackageName)
+                .FirstOrDefaultAsync();
+            return TextOrNull(name);
+        }
 
         private static string? TrimTo(string? value, int max)
         {
@@ -604,54 +705,92 @@ namespace Homeocentrum.Niga.API.Controllers
                     .Select(s => s.StateName)
                     .FirstOrDefaultAsync();
             }
+
+            UserMaster account = null;
+            string roleName = null;
+            if (doctor.UserId is int linkedUserId && linkedUserId > 0)
+            {
+                account = await _context.UserMasters.AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.UserId == linkedUserId && !u.DeleteStatus);
+                if (account?.RoleId is int roleId)
+                {
+                    roleName = await _context.RoleMasters.AsNoTracking()
+                        .Where(r => r.RoleId == roleId)
+                        .Select(r => r.RoleName)
+                        .FirstOrDefaultAsync();
+                }
+            }
+
+            var kycDto = kyc == null ? null : new DoctorPayeeKycDto
+            {
+                AccountHolder = TextOrNull(kyc.AccountHolder),
+                BankName = TextOrNull(kyc.BankName),
+                AccountNumber = TextOrNull(kyc.AccountNumber),
+                Ifsc = TextOrNull(kyc.Ifsc),
+                Pan = TextOrNull(kyc.Pan),
+                BranchName = TextOrNull(kyc.BranchName),
+                AccountType = TextOrNull(kyc.AccountType)
+            };
+            if (kycDto != null
+                && kycDto.AccountHolder == null
+                && kycDto.BankName == null
+                && kycDto.AccountNumber == null
+                && kycDto.Ifsc == null
+                && kycDto.Pan == null
+                && kycDto.BranchName == null
+                && kycDto.AccountType == null)
+            {
+                kycDto = null;
+            }
+
             return new DoctorProfileMeDto
             {
                 DoctorId = doctor.DoctorId,
                 UserId = doctor.UserId ?? 0,
-                FirstName = doctor.FirstName,
-                MiddleName = doctor.MiddleName,
-                LastName = doctor.LastName,
-                ClinicName = doctor.ClinicName,
-                EmailId = doctor.EmailId,
-                MobileNo = doctor.MobileNo,
-                City = doctor.City,
-                AddressLine1 = parsed.Line1,
-                AddressLine2 = parsed.Line2,
-                State = stateName,
+                LoginId = TextOrNull(account?.UserName),
+                RoleName = TextOrNull(roleName),
+                FirstName = TextOrNull(doctor.FirstName) ?? TextOrNull(account?.FirstName) ?? string.Empty,
+                MiddleName = TextOrNull(doctor.MiddleName),
+                LastName = TextOrNull(doctor.LastName) ?? TextOrNull(account?.LastName) ?? string.Empty,
+                ClinicName = TextOrNull(doctor.ClinicName),
+                EmailId = TextOrNull(doctor.EmailId) ?? TextOrNull(account?.EmailId),
+                MobileNo = TextOrNull(doctor.MobileNo) ?? TextOrNull(account?.MobileNo),
+                City = TextOrNull(doctor.City),
+                AddressLine1 = TextOrNull(parsed.Line1),
+                AddressLine2 = TextOrNull(parsed.Line2),
+                State = TextOrNull(stateName),
                 StateId = doctor.StateId,
-                Pincode = parsed.Pincode,
+                Pincode = TextOrNull(parsed.Pincode),
                 QualificationId = doctor.QualificationId,
-                QualificationName = qual,
-                PassingUniversity = doctor.PassingUniversity,
-                PassingCertNo = doctor.PassingCertNo,
-                RegistrationNo = string.IsNullOrWhiteSpace(doctor.PassingCertNo) ? null : doctor.PassingCertNo,
-                RegistrationValidUntil = null,
-                IssuingCouncil = null,
-                YearsExperience = null,
+                QualificationName = TextOrNull(qual),
+                PassingUniversity = TextOrNull(doctor.PassingUniversity),
+                PassingCertNo = TextOrNull(doctor.PassingCertNo),
+                RegistrationNo = TextOrNull(doctor.PassingCertNo),
+                CasePaperValidity = doctor.CasePaperValidity is > 0 ? doctor.CasePaperValidity : null,
+                PracticeActivated = doctor.PracticeActivated,
+                PackageName = await PackageNameForAsync(doctor),
+                CountryId = doctor.CountryId,
+                CountryName = await NameOrNull(doctor.CountryId, id => _context.CountryMasters.AsNoTracking().Where(c => c.CountryId == id).Select(c => c.CountryName).FirstOrDefaultAsync()),
+                DistrictId = doctor.DistrictId,
+                DistrictName = await NameOrNull(doctor.DistrictId, id => _context.DistrictMasters.AsNoTracking().Where(d => d.DistrictId == id).Select(d => d.DistrictName).FirstOrDefaultAsync()),
+                CityId = doctor.CityId,
+                CityName = await NameOrNull(doctor.CityId, id => _context.CityMasters.AsNoTracking().Where(c => c.CityId == id).Select(c => c.CityName).FirstOrDefaultAsync()) ?? TextOrNull(doctor.City),
+                PinCodeId = doctor.PinCodeId,
                 ConsultFeeInClinic = doctor.ConsultFeeInClinic,
                 ConsultFeeTele = doctor.ConsultFeeTele,
-                PhotoPath = doctor.PhotoPath,
-                PhotoUrl = PhotoUrlFor(doctor),
-                WorkingHoursNote = doctor.WorkingHoursNote,
+                PhotoPath = TextOrNull(doctor.PhotoPath),
+                PhotoUrl = string.IsNullOrWhiteSpace(doctor.PhotoPath) ? null : PhotoUrlFor(doctor),
+                WorkingHoursNote = TextOrNull(doctor.WorkingHoursNote),
                 FollowUpFeeInClinic = doctor.FollowUpFeeInClinic,
                 FollowUpFeeTele = doctor.FollowUpFeeTele,
                 FreeFollowUpDaysInClinic = doctor.FreeFollowUpDaysInClinic,
                 FreeFollowUpDaysTele = doctor.FreeFollowUpDaysTele,
-                FeeCurrency = doctor.FeeCurrency,
-                GoogleMapsLink = doctor.GoogleMapsLink,
+                FeeCurrency = TextOrNull(doctor.FeeCurrency),
+                GoogleMapsLink = TextOrNull(doctor.GoogleMapsLink),
                 IsOnline = doctor.IsOnline,
-                VerificationStatus = doctor.VerificationStatus,
+                VerificationStatus = TextOrNull(doctor.VerificationStatus) ?? "Pending",
                 DirectoryVisible = doctor.DirectoryVisible,
-                Kyc = kyc == null ? null : new DoctorPayeeKycDto
-                {
-                    AccountHolder = kyc.AccountHolder,
-                    BankName = kyc.BankName,
-                    AccountNumber = kyc.AccountNumber,
-                    Ifsc = kyc.Ifsc,
-                    Pan = kyc.Pan,
-                    BranchName = kyc.BranchName,
-                    AccountType = kyc.AccountType
-                }
+                Kyc = kycDto
             };
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Homeocentrum.Niga.API.Domain.DTOs
 {
@@ -104,45 +105,99 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
     {
         public int DoctorId { get; set; }
         public long UserId { get; set; }
+        /// <summary>Login name from UserMaster, separate from the display name.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? LoginId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? RoleName { get; set; }
         public string FirstName { get; set; } = string.Empty;
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? MiddleName { get; set; }
         public string LastName { get; set; } = string.Empty;
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? ClinicName { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? EmailId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? MobileNo { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? City { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? AddressLine1 { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? AddressLine2 { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? State { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? StateId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Pincode { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? QualificationId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? QualificationName { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? PassingUniversity { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? PassingCertNo { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? CasePaperValidity { get; set; }
+        public bool PracticeActivated { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? PackageName { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? CountryId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? CountryName { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? DistrictId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? DistrictName { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? CityId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? CityName { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? PinCodeId { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? ConsultFeeInClinic { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? ConsultFeeTele { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? PhotoPath { get; set; }
-        /// <summary>Absolute URL of the photo (GET /api/Profile/Photo/{doctorId}); null when the doctor has no photo.</summary>
+        /// <summary>Absolute URL of the photo (GET /api/Profile/Photo/{doctorId}). Omitted when the doctor has no photo.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? PhotoUrl { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? WorkingHoursNote { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? FollowUpFeeInClinic { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? FollowUpFeeTele { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? FreeFollowUpDaysInClinic { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? FreeFollowUpDaysTele { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? FeeCurrency { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? GoogleMapsLink { get; set; }
         public bool IsOnline { get; set; }
         public string VerificationStatus { get; set; } = string.Empty;
         public bool DirectoryVisible { get; set; }
         /// <summary>Same stored value as PassingCertNo. There is no separate registration-number column.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? RegistrationNo { get; set; }
-        /// <summary>Not stored on the doctor row.</summary>
+        /// <summary>Not stored on the doctor row. Omitted until a column exists.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DateTime? RegistrationValidUntil { get; set; }
-        /// <summary>Not stored on the doctor row.</summary>
+        /// <summary>Not stored on the doctor row. Omitted until a column exists.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? IssuingCouncil { get; set; }
         /// <summary>Not stored. Account age is on GET /api/Doctor/PracticeStats as accountAgeDays.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? YearsExperience { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DoctorPayeeKycDto? Kyc { get; set; }
     }
 
@@ -168,16 +223,23 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string DocumentType { get; set; } = string.Empty;
         public string FileName { get; set; } = string.Empty;
         public string FilePath { get; set; } = string.Empty;
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Degree { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Specialization { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Institution { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? PassingYear { get; set; }
         public DateTime EnteredDate { get; set; }
         /// <summary>Not stored on the credential file row.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DateTime? ValidUntil { get; set; }
         /// <summary>Not stored per document. Doctor verification is VerificationStatus on the profile.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? Verified { get; set; }
         /// <summary>Not stored on the credential file row.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? IssuingCouncil { get; set; }
         /// <summary>Authorised GET for the stored file (owning doctor or admin JWT).</summary>
         public string DownloadUrl => $"/api/Profile/CredentialDocuments/{DoctorCredentialDocumentId}/File";
@@ -208,6 +270,12 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public int? QualificationId { get; set; }
         public string? PassingUniversity { get; set; }
         public string? PassingCertNo { get; set; }
+        public int? CasePaperValidity { get; set; }
+        public bool? PracticeActivated { get; set; }
+        public int? CountryId { get; set; }
+        public int? DistrictId { get; set; }
+        public int? CityId { get; set; }
+        public int? PinCodeId { get; set; }
         public decimal? ConsultFeeInClinic { get; set; }
         public decimal? ConsultFeeTele { get; set; }
         /// <summary>True clears the tele fee (teleconsultation turned off).</summary>
@@ -226,12 +294,19 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
 
     public class DoctorPayeeKycDto
     {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? AccountHolder { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? BankName { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? AccountNumber { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Ifsc { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Pan { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? BranchName { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? AccountType { get; set; }
     }
 
@@ -252,6 +327,10 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public TimeOnly WorkStartTime { get; set; }
         public TimeOnly WorkEndTime { get; set; }
         public int SlotIntervalMinutes { get; set; } = 15;
+        /// <summary>When true, BreakStartTime and BreakEndTime are written. Null clears the break.</summary>
+        public bool? IncludeBreak { get; set; }
+        public TimeOnly? BreakStartTime { get; set; }
+        public TimeOnly? BreakEndTime { get; set; }
     }
 
     public class AvailabilityUpdateRequest

@@ -46,7 +46,9 @@ namespace Homeocentrum.Niga.API.Controllers
                 ScheduleDate = s.ScheduleDate,
                 SlotIntervalMinutes = s.SlotIntervalMinutes,
                 WorkStartTime = s.WorkStartTime,
-                WorkEndTime = s.WorkEndTime
+                WorkEndTime = s.WorkEndTime,
+                BreakStartTime = s.BreakStartTime,
+                BreakEndTime = s.BreakEndTime
             };
 
             return Ok(new
@@ -193,6 +195,9 @@ namespace Homeocentrum.Niga.API.Controllers
                 {
                     return BadRequest(new { success = false, message = $"Work end time must be after start on {scheduleDate:yyyy-MM-dd}." });
                 }
+                var breakError = BreakError(day, scheduleDate);
+                if (breakError != null)
+                    return breakError;
 
                 var existing = await _context.DoctorDailySchedules
                     .FirstOrDefaultAsync(s => s.DoctorId == doctor.DoctorId && s.ScheduleDate == scheduleDate);
@@ -205,6 +210,8 @@ namespace Homeocentrum.Niga.API.Controllers
                         SlotIntervalMinutes = interval,
                         WorkStartTime = day.WorkStartTime,
                         WorkEndTime = day.WorkEndTime,
+                        BreakStartTime = day.IncludeBreak == true ? day.BreakStartTime : null,
+                        BreakEndTime = day.IncludeBreak == true ? day.BreakEndTime : null,
                         CreatedByUserId = createdBy,
                         CreatedAt = DateTime.UtcNow
                     });
@@ -214,9 +221,33 @@ namespace Homeocentrum.Niga.API.Controllers
                     existing.SlotIntervalMinutes = interval;
                     existing.WorkStartTime = day.WorkStartTime;
                     existing.WorkEndTime = day.WorkEndTime;
+                    if (day.IncludeBreak == true)
+                    {
+                        existing.BreakStartTime = day.BreakStartTime;
+                        existing.BreakEndTime = day.BreakEndTime;
+                    }
                 }
             }
 
+            return null;
+        }
+
+        private IActionResult? BreakError(AvailabilityDayHours day, DateTime scheduleDate)
+        {
+            if (day.IncludeBreak != true)
+                return null;
+            var hasStart = day.BreakStartTime.HasValue;
+            var hasEnd = day.BreakEndTime.HasValue;
+            if (!hasStart && !hasEnd)
+                return null;
+            if (!hasStart || !hasEnd || day.BreakEndTime <= day.BreakStartTime)
+            {
+                return BadRequest(new { success = false, message = $"Break end must be after break start on {scheduleDate:yyyy-MM-dd}." });
+            }
+            if (day.BreakStartTime < day.WorkStartTime || day.BreakEndTime > day.WorkEndTime)
+            {
+                return BadRequest(new { success = false, message = $"Break must fall inside working hours on {scheduleDate:yyyy-MM-dd}." });
+            }
             return null;
         }
 

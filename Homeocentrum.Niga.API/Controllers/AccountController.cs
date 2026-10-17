@@ -144,7 +144,10 @@ namespace Homeocentrum.Niga.API.Controllers
                         LastName = lastName ?? "",
                         Role = roleEntity.RoleName,
                         RoleId = userEntity.RoleId,
-                        FirmIds = userEntity.FirmIds,
+                        FirmIds = string.IsNullOrWhiteSpace(userEntity.FirmIds) ? null : userEntity.FirmIds.Trim(),
+                        LoginId = (userEntity.UserName ?? "").Trim(),
+                        Email = FirstText(doctorEntity?.EmailId, userEntity.EmailId),
+                        MobileNo = FirstText(doctorEntity?.MobileNo, userEntity.MobileNo),
                         Token = token,
                         IsPlanActive = false,
                         IslastFiveDays = false,
@@ -978,6 +981,16 @@ namespace Homeocentrum.Niga.API.Controllers
             }
 
             return token.Split('&', '#')[0].Trim();
+        }
+
+        private static string? FirstText(params string?[] values)
+        {
+            foreach (var value in values)
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value.Trim();
+            }
+            return null;
         }
     }
 
