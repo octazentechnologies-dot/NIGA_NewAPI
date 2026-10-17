@@ -56,7 +56,12 @@ public sealed class SmsOutboxWorker : BackgroundService
     private async Task DrainAsync(CancellationToken cancellationToken)
     {
         var options = _sms.Value ?? new SmsOptions();
-        var ready = options.Msg91.IsConfigured() || options.Twilio.IsConfigured();
+        if (!options.Enabled)
+            return;
+        var provider = (options.Provider ?? "Stub").Trim();
+        var ready = provider.Equals("Twilio", StringComparison.OrdinalIgnoreCase)
+            ? options.Twilio.IsConfigured()
+            : provider.Equals("Msg91", StringComparison.OrdinalIgnoreCase) && options.Msg91.IsConfigured();
         if (!ready)
             return;
 

@@ -606,11 +606,20 @@ public partial class S5Week5Service : IS5Week5Service
             directoryBrowsingEnabled = false,
             secretsStoredIn = "appsettings.json",
             keyVaultConfigured = !string.IsNullOrWhiteSpace(_config["KeyVault:VaultUri"]),
-            smsConfigured = !string.IsNullOrWhiteSpace(_config["Sms:AuthKey"]),
+            smsConfigured = TwilioSmsReady() || !string.IsNullOrWhiteSpace(_config["Sms:Msg91:AuthKey"]) || !string.IsNullOrWhiteSpace(_config["Sms:AuthKey"]),
+            smsProvider = _config["Sms:Provider"] ?? "Stub",
+            smsSendingEnabled = bool.TryParse(_config["Sms:Enabled"], out var smsOn) && smsOn,
             fcmConfigured = !string.IsNullOrWhiteSpace(_config["Fcm:ServerKey"]),
-            message = "Live keys are not rotated by this API. Change them in appsettings.json."
+            message = TwilioSmsReady() && !(bool.TryParse(_config["Sms:Enabled"], out var sending) && sending)
+                ? "Twilio is saved. SMS sending is off until Sms:Enabled is true. This page does not send a message."
+                : "Live keys are not rotated by this API. Change them in appsettings.json."
         }));
     }
+
+    private bool TwilioSmsReady() =>
+        !string.IsNullOrWhiteSpace(_config["Sms:Twilio:AccountSid"])
+        && !string.IsNullOrWhiteSpace(_config["Sms:Twilio:AuthToken"])
+        && !string.IsNullOrWhiteSpace(_config["Sms:Twilio:FromNumber"]);
 
     private async Task<S4ActionResult> Guard(Func<Task<S4ActionResult>> work)
     {

@@ -326,6 +326,7 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSingleton<WhatsAppBulkSendQueue>();
             services.AddSingleton<IWhatsAppBulkSendQueue>(sp => sp.GetRequiredService<WhatsAppBulkSendQueue>());
             services.AddHostedService<WhatsAppBulkSendBackgroundService>();
+            services.AddHostedService<SmsTemplateSeeder>();
             services.AddHostedService<SmsOutboxWorker>();
             services.AddHostedService<DailyIssueMatrixEmailService>();
             services.AddHostedService<Logging.DiskSpaceMonitor>();
