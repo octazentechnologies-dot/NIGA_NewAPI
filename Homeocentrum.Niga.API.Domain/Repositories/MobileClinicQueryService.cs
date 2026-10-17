@@ -371,7 +371,15 @@ public class MobileClinicQueryService
         appt.Status = next;
         appt.QueuePosition = ahead + 1;
         await _context.SaveChangesAsync();
-        return Ok(new { patientAppId, status = appt.Status, queuePosition = appt.QueuePosition, readyAt = (DateTime?)null });
+        // readyAt / ETA not stored in clinic queue module yet (BE-007) — always null.
+        return Ok(new
+        {
+            patientAppId,
+            status = appt.Status,
+            queuePosition = appt.QueuePosition,
+            readyAt = (DateTime?)null,
+            estimatedWaitMinutes = (int?)null
+        });
     }
 
     public async Task<S4ActionResult> SwitchToTeleAsync(int patientAppId, S4Caller caller)
@@ -387,7 +395,29 @@ public class MobileClinicQueryService
         appt.ConsultMode = "Tele";
         appt.VisitType = "Tele";
         await _context.SaveChangesAsync();
-        return Ok(new { patientAppId, consultMode = appt.ConsultMode, isTele = true });
+        var teleSessionId = await EnsureTeleSessionForVisitAsync(appt.PatientAppId, appt.DoctorId, appt.PatientId);
+        return Ok(new { patientAppId, consultMode = appt.ConsultMode, isTele = true, teleSessionId });
+    }
+
+    /// <summary>Creates a Waiting TeleSession when missing so patient Running Late / join can bind (BE-008).</summary>
+    private async Task<int?> EnsureTeleSessionForVisitAsync(int patientAppId, int doctorId, int patientId)
+    {
+        if (doctorId <= 0) return null;
+        var existing = await _context.Database.SqlQuery<SessionRow>($@"
+            SELECT TOP 1 TeleSessionId, PatientAppId
+            FROM dbo.TeleSession
+            WHERE PatientAppId = {patientAppId} AND Status <> N'Ended'
+            ORDER BY TeleSessionId DESC").FirstOrDefaultAsync();
+        if (existing != null) return existing.TeleSessionId;
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO dbo.TeleSession (PatientAppId, DoctorId, PatientId, Status, CreatedAt)
+            VALUES ({patientAppId}, {doctorId}, {patientId}, N'Waiting', {DateTime.Now})");
+        var created = await _context.Database.SqlQuery<SessionRow>($@"
+            SELECT TOP 1 TeleSessionId, PatientAppId
+            FROM dbo.TeleSession
+            WHERE PatientAppId = {patientAppId}
+            ORDER BY TeleSessionId DESC").FirstOrDefaultAsync();
+        return created?.TeleSessionId;
     }
 
     public async Task<S4ActionResult> RunningLateAsync(int teleSessionId, int? minutes, S4Caller caller)
@@ -459,11 +489,25 @@ public class MobileClinicQueryService
     {
         await EnsureSchemaAsync();
         var rows = await _context.Database.SqlQuery<ReminderRow>($@"
-            SELECT PatientReminderId, PatientId, Title, DueAt, IsDone, Kind, TimeOfDay, Weekdays, MemberPatientId
+            SELECT PatientReminderId, PatientId, Title, DueAt, IsDone, Kind, TimeOfDay, Weekdays, MemberPatientId,
+                   SnoozeMinutes, CAST(ISNULL(NotifyPush, 0) AS bit) AS NotifyPush
             FROM dbo.PatientReminder
             WHERE UserId = {caller.UserId}
             ORDER BY DueAt").ToListAsync();
-        return Ok(rows);
+        return Ok(rows.Select(r => new
+        {
+            r.PatientReminderId,
+            r.PatientId,
+            r.Title,
+            r.DueAt,
+            r.IsDone,
+            r.Kind,
+            r.TimeOfDay,
+            r.Weekdays,
+            r.MemberPatientId,
+            snoozeMinutes = r.SnoozeMinutes,
+            notifyPush = r.NotifyPush
+        }));
     }
 
     public async Task<S4ActionResult> SaveReminderAsync(ReminderWrite request, S4Caller caller)
@@ -473,16 +517,24 @@ public class MobileClinicQueryService
             return Fail(403, "FORBIDDEN", "Patient context is required.");
         if (request == null || string.IsNullOrWhiteSpace(request.Title) || request.DueAt == null)
             return Fail(400, "VALIDATION", "Title and dueAt are required.");
+        if (request.SnoozeMinutes is < 0 or > 1440)
+            return Fail(400, "VALIDATION", "snoozeMinutes must be from 0 to 1440.");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO dbo.PatientReminder (UserId, PatientId, Title, DueAt, IsDone, CreatedAt, Kind, TimeOfDay, Weekdays, MemberPatientId)
+            INSERT INTO dbo.PatientReminder
+                (UserId, PatientId, Title, DueAt, IsDone, CreatedAt, Kind, TimeOfDay, Weekdays, MemberPatientId, SnoozeMinutes, NotifyPush)
             VALUES ({caller.UserId}, {caller.PatientId.Value}, {request.Title.Trim()}, {request.DueAt.Value}, 0, {DateTime.Now},
-                    {Trim(request.Kind)}, {Trim(request.TimeOfDay)}, {Trim(request.Weekdays)}, {request.MemberPatientId ?? caller.PatientId.Value})");
+                    {Trim(request.Kind)}, {Trim(request.TimeOfDay)}, {Trim(request.Weekdays)}, {request.MemberPatientId ?? caller.PatientId.Value},
+                    {request.SnoozeMinutes}, {request.NotifyPush})");
         return await ListRemindersAsync(caller);
     }
 
     public async Task<S4ActionResult> UpdateReminderAsync(int id, ReminderWrite request, S4Caller caller)
     {
         await EnsureSchemaAsync();
+        if (request == null || string.IsNullOrWhiteSpace(request.Title) || request.DueAt == null)
+            return Fail(400, "VALIDATION", "Title and dueAt are required.");
+        if (request.SnoozeMinutes is < 0 or > 1440)
+            return Fail(400, "VALIDATION", "snoozeMinutes must be from 0 to 1440.");
         var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.PatientReminder
             SET Title = {request.Title.Trim()},
@@ -491,10 +543,88 @@ public class MobileClinicQueryService
                 Kind = {Trim(request.Kind)},
                 TimeOfDay = {Trim(request.TimeOfDay)},
                 Weekdays = {Trim(request.Weekdays)},
-                MemberPatientId = {request.MemberPatientId}
+                MemberPatientId = {request.MemberPatientId},
+                SnoozeMinutes = {request.SnoozeMinutes},
+                NotifyPush = {request.NotifyPush}
             WHERE PatientReminderId = {id} AND UserId = {caller.UserId}");
         if (updated == 0) return Fail(404, "NOT_FOUND", "Reminder not found.");
         return await ListRemindersAsync(caller);
+    }
+
+    public async Task<S4ActionResult> ListDeliveryAddressesAsync(S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.IsPatient || !caller.PatientId.HasValue)
+            return Fail(403, "FORBIDDEN", "Patient context is required.");
+        var rows = await _context.Database.SqlQuery<DeliveryAddressRow>($@"
+            SELECT DeliveryAddressId, Label, Line1, Line2, City, State, Pincode, Phone,
+                   CAST(ISNULL(IsDefault, 0) AS bit) AS IsDefault
+            FROM dbo.PatientDeliveryAddress
+            WHERE PatientId = {caller.PatientId.Value}
+            ORDER BY IsDefault DESC, DeliveryAddressId DESC").ToListAsync();
+        return Ok(rows.Select(r => new
+        {
+            addressId = r.DeliveryAddressId,
+            label = r.Label,
+            line1 = r.Line1,
+            line2 = r.Line2,
+            city = r.City,
+            state = r.State,
+            pincode = r.Pincode,
+            phone = r.Phone,
+            isDefault = r.IsDefault
+        }));
+    }
+
+    public async Task<S4ActionResult> SaveDeliveryAddressAsync(int? id, DeliveryAddressWrite request, S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.IsPatient || !caller.PatientId.HasValue)
+            return Fail(403, "FORBIDDEN", "Patient context is required.");
+        if (request == null || string.IsNullOrWhiteSpace(request.Line1) || string.IsNullOrWhiteSpace(request.Pincode))
+            return Fail(400, "VALIDATION", "line1 and pincode are required.");
+        var pin = request.Pincode.Trim();
+        // B-023 — pincode must be exactly 6 digits.
+        if (pin.Length != 6 || !pin.All(char.IsDigit))
+            return Fail(400, "VALIDATION", "pincode must be 6 digits.");
+        var phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+        var patientId = caller.PatientId.Value;
+        if (request.IsDefault)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.PatientDeliveryAddress SET IsDefault = 0 WHERE PatientId = {patientId}");
+        }
+        if (id == null)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.PatientDeliveryAddress
+                    (PatientId, Label, Line1, Line2, City, State, Pincode, Phone, IsDefault, CreatedAt)
+                VALUES ({patientId}, {Trim(request.Label)}, {request.Line1.Trim()}, {Trim(request.Line2)},
+                        {Trim(request.City)}, {Trim(request.State)}, {pin}, {phone}, {request.IsDefault}, {DateTime.Now})");
+        }
+        else
+        {
+            var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.PatientDeliveryAddress
+                SET Label = {Trim(request.Label)}, Line1 = {request.Line1.Trim()}, Line2 = {Trim(request.Line2)},
+                    City = {Trim(request.City)}, State = {Trim(request.State)}, Pincode = {pin},
+                    Phone = {phone}, IsDefault = {request.IsDefault}
+                WHERE DeliveryAddressId = {id.Value} AND PatientId = {patientId}");
+            if (updated == 0) return Fail(404, "NOT_FOUND", "Address not found.");
+        }
+        return await ListDeliveryAddressesAsync(caller);
+    }
+
+    public async Task<S4ActionResult> DeleteDeliveryAddressAsync(int id, S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.IsPatient || !caller.PatientId.HasValue)
+            return Fail(403, "FORBIDDEN", "Patient context is required.");
+        var deleted = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            DELETE FROM dbo.PatientDeliveryAddress
+            WHERE DeliveryAddressId = {id} AND PatientId = {caller.PatientId.Value}");
+        if (deleted == 0) return Fail(404, "NOT_FOUND", "Address not found.");
+        return Ok(new { deleted = true, addressId = id });
     }
 
     public async Task<S4ActionResult> DeleteReminderAsync(int id, S4Caller caller)
@@ -556,9 +686,10 @@ public class MobileClinicQueryService
         return Ok(rows);
     }
 
-    public async Task<S4ActionResult> CreateAppointmentRequestAsync(AppointmentRequestWrite request, S4Caller caller)
+    public async Task<S4ActionResult> CreateAppointmentRequestAsync(AppointmentRequestWrite request, S4Caller caller, string? idempotencyKey = null)
     {
         await EnsureSchemaAsync();
+        await EnsureAppointmentRequestIdempotencyAsync();
         if (!caller.IsPatient || !caller.PatientId.HasValue)
             return Fail(403, "FORBIDDEN", "Patient context is required.");
         if (request == null || request.DoctorId <= 0 || request.RequestedDate == null || string.IsNullOrWhiteSpace(request.RequestedTime))
@@ -566,12 +697,188 @@ public class MobileClinicQueryService
         var doctor = await _context.Doctors.AsNoTracking()
             .FirstOrDefaultAsync(d => d.DoctorId == request.DoctorId && !d.DeleteStatus);
         if (doctor == null) return Fail(404, "NOT_FOUND", "Doctor not found.");
+
+        var key = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim();
+        if (key != null && key.Length > 80) key = key[..80];
+        if (!string.IsNullOrEmpty(key))
+        {
+            var prior = await _context.Database.SqlQuery<AppointmentRequestRow>($@"
+                SELECT TOP 1 r.AppointmentRequestId, r.PatientId, CAST(NULL AS nvarchar(200)) AS PatientName,
+                       r.RequestedDate, r.RequestedTime, r.ConsultMode, r.Status, r.Reason,
+                       r.ProposedDate, r.ProposedTime, r.PatientAppId, r.CreatedAt
+                FROM dbo.AppointmentRequest r
+                WHERE r.PatientId = {caller.PatientId.Value}
+                  AND r.IdempotencyKey = {key}
+                  AND r.CreatedAt >= DATEADD(hour, -24, {DateTime.Now})
+                ORDER BY r.AppointmentRequestId DESC").FirstOrDefaultAsync();
+            if (prior != null)
+                return Ok(new { appointmentRequestId = prior.AppointmentRequestId, status = prior.Status, idempotent = true });
+        }
+
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.AppointmentRequest
-                (DoctorId, PatientId, RequestedDate, RequestedTime, ConsultMode, Status, Reason, CreatedAt)
+                (DoctorId, PatientId, RequestedDate, RequestedTime, ConsultMode, Status, Reason, CreatedAt, IdempotencyKey)
             VALUES ({request.DoctorId}, {caller.PatientId.Value}, {request.RequestedDate.Value.Date}, {request.RequestedTime.Trim()},
-                    {Trim(request.ConsultMode) ?? "InClinic"}, N'PENDING', {Trim(request.Reason)}, {DateTime.Now})");
-        return Ok(new { status = "PENDING" });
+                    {Trim(request.ConsultMode) ?? "InClinic"}, N'PENDING', {Trim(request.Reason)}, {DateTime.Now}, {key})");
+        var created = await _context.Database.SqlQuery<AppointmentRequestRow>($@"
+            SELECT TOP 1 r.AppointmentRequestId, r.PatientId, CAST(NULL AS nvarchar(200)) AS PatientName,
+                   r.RequestedDate, r.RequestedTime, r.ConsultMode, r.Status, r.Reason,
+                   r.ProposedDate, r.ProposedTime, r.PatientAppId, r.CreatedAt
+            FROM dbo.AppointmentRequest r
+            WHERE r.PatientId = {caller.PatientId.Value}
+            ORDER BY r.AppointmentRequestId DESC").FirstAsync();
+        return Ok(new { appointmentRequestId = created.AppointmentRequestId, status = "PENDING" });
+    }
+
+    public async Task<S4ActionResult> ListPatientAppointmentRequestsAsync(
+        S4Caller caller,
+        string? status = null,
+        int? pageNumber = null,
+        int? pageSize = null)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.IsPatient || !caller.PatientId.HasValue)
+            return Fail(403, "FORBIDDEN", "Patient context is required.");
+        var rows = await _context.Database.SqlQuery<PatientAppointmentRequestRow>($@"
+            SELECT r.AppointmentRequestId, r.DoctorId,
+                   LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
+                   r.RequestedDate, r.RequestedTime, r.ConsultMode, r.Reason, r.Status,
+                   r.ProposedDate, r.ProposedTime, CAST(NULL AS nvarchar(400)) AS DoctorMessage,
+                   r.PatientAppId, r.CreatedAt, r.CreatedAt AS UpdatedAt
+            FROM dbo.AppointmentRequest r
+            LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
+            WHERE r.PatientId = {caller.PatientId.Value}
+            ORDER BY r.CreatedAt DESC").ToListAsync();
+        if (!string.IsNullOrWhiteSpace(status))
+            rows = rows.Where(r => string.Equals(r.Status, status.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+
+        object Map(PatientAppointmentRequestRow r) => new
+        {
+            appointmentRequestId = r.AppointmentRequestId,
+            doctorId = r.DoctorId,
+            doctorName = r.DoctorName,
+            requestedDate = r.RequestedDate.ToString("yyyy-MM-dd"),
+            requestedTime = r.RequestedTime,
+            consultMode = r.ConsultMode,
+            reason = r.Reason,
+            status = r.Status,
+            proposedDate = string.Equals(r.Status, "PROPOSED", StringComparison.OrdinalIgnoreCase)
+                ? r.ProposedDate?.ToString("yyyy-MM-dd")
+                : null,
+            proposedTime = string.Equals(r.Status, "PROPOSED", StringComparison.OrdinalIgnoreCase)
+                ? r.ProposedTime
+                : null,
+            doctorMessage = r.DoctorMessage,
+            patientAppId = r.PatientAppId,
+            createdAt = r.CreatedAt,
+            updatedAt = r.UpdatedAt
+        };
+
+        // Paginate only when the client asks (B-005). Otherwise return the full array.
+        if (pageNumber == null && pageSize == null)
+            return Ok(rows.Select(Map));
+
+        var page = pageNumber is null or < 1 ? 1 : pageNumber.Value;
+        var size = pageSize is null or < 1 ? 20 : Math.Min(pageSize.Value, 50);
+        var total = rows.Count;
+        var data = rows.Skip((page - 1) * size).Take(size).Select(Map);
+        return Ok(new { totalRecords = total, pageNumber = page, pageSize = size, data });
+    }
+
+    public async Task<S4ActionResult> CancelPatientAppointmentRequestAsync(int id, S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.IsPatient || !caller.PatientId.HasValue)
+            return Fail(403, "FORBIDDEN", "Patient context is required.");
+        var row = await _context.Database.SqlQuery<AppointmentRequestRow>($@"
+            SELECT AppointmentRequestId, PatientId, CAST(NULL AS nvarchar(200)) AS PatientName,
+                   RequestedDate, RequestedTime, ConsultMode, Status, Reason, ProposedDate, ProposedTime, PatientAppId, CreatedAt
+            FROM dbo.AppointmentRequest
+            WHERE AppointmentRequestId = {id}").FirstOrDefaultAsync();
+        if (row == null) return Fail(404, "NOT_FOUND", "Request not found.");
+        if (row.PatientId != caller.PatientId.Value) return Fail(403, "FORBIDDEN", "This request belongs to another patient.");
+        if (!string.Equals(row.Status, "PENDING", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(row.Status, "PROPOSED", StringComparison.OrdinalIgnoreCase))
+            return Fail(409, "CONFLICT", "Only a pending or proposed request can be cancelled.");
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.AppointmentRequest SET Status = N'CANCELLED'
+            WHERE AppointmentRequestId = {id}");
+        return Ok(new { appointmentRequestId = id, status = "CANCELLED" });
+    }
+
+    public async Task<S4ActionResult> RespondPatientAppointmentRequestAsync(int id, string? action, S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.IsPatient || !caller.PatientId.HasValue)
+            return Fail(403, "FORBIDDEN", "Patient context is required.");
+        // B-005 — ACCEPT / DECLINE aliases for ACCEPT_PROPOSAL / DECLINE_PROPOSAL.
+        var act = (action ?? "").Trim().ToUpperInvariant();
+        if (act is "ACCEPT" or "ACCEPT_PROPOSAL") act = "ACCEPT_PROPOSAL";
+        else if (act is "DECLINE" or "DECLINE_PROPOSAL") act = "DECLINE_PROPOSAL";
+        else
+            return Fail(400, "VALIDATION", "action must be ACCEPT, DECLINE, ACCEPT_PROPOSAL, or DECLINE_PROPOSAL.");
+        var row = await _context.Database.SqlQuery<PatientAppointmentRequestRow>($@"
+            SELECT r.AppointmentRequestId, r.DoctorId,
+                   LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
+                   r.RequestedDate, r.RequestedTime, r.ConsultMode, r.Reason, r.Status,
+                   r.ProposedDate, r.ProposedTime, CAST(NULL AS nvarchar(400)) AS DoctorMessage,
+                   r.PatientAppId, r.CreatedAt, r.CreatedAt AS UpdatedAt
+            FROM dbo.AppointmentRequest r
+            LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
+            WHERE r.AppointmentRequestId = {id} AND r.PatientId = {caller.PatientId.Value}").FirstOrDefaultAsync();
+        if (row == null) return Fail(404, "NOT_FOUND", "Request not found.");
+        if (string.Equals(row.Status, "ACCEPTED", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(row.Status, "DECLINED", StringComparison.OrdinalIgnoreCase))
+            return Fail(409, "CONFLICT", "This proposal was already answered.");
+        if (!string.Equals(row.Status, "PROPOSED", StringComparison.OrdinalIgnoreCase))
+            return Fail(400, "INVALID_STATE", "Only a proposed request can be answered.");
+        if (act == "DECLINE_PROPOSAL")
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.AppointmentRequest SET Status = N'DECLINED'
+                WHERE AppointmentRequestId = {id}");
+            return Ok(new { appointmentRequestId = id, status = "DECLINED", patientAppId = (int?)null });
+        }
+
+        if (row.ProposedDate == null || string.IsNullOrWhiteSpace(row.ProposedTime)
+            || !TimeOnly.TryParse(row.ProposedTime, out var time))
+            return Fail(400, "VALIDATION", "Proposed date/time is missing.");
+        var doctor = await _context.Doctors.AsNoTracking().FirstOrDefaultAsync(d => d.DoctorId == row.DoctorId);
+        if (doctor?.UserId == null) return Fail(400, "VALIDATION", "This doctor has no login user, so the visit cannot be booked.");
+        var isTele = string.Equals(row.ConsultMode, "Tele", StringComparison.OrdinalIgnoreCase);
+        var appt = new Master.PatientAppointment
+        {
+            PatientId = caller.PatientId.Value,
+            DoctorId = row.DoctorId,
+            UserId = doctor.UserId.Value,
+            AppointmentDate = row.ProposedDate.Value.Date,
+            AppointmentTime = time,
+            Status = "NOT ARRIVED",
+            DeleteStatus = false,
+            VisitType = isTele ? "Tele" : "InClinic",
+            ConsultMode = isTele ? "Tele" : "InClinic",
+            IsTele = isTele,
+            PaymentStatus = "UNPAID",
+            BookingChannel = "Request"
+        };
+        _context.PatientAppointments.Add(appt);
+        await _context.SaveChangesAsync();
+        if (isTele)
+            await EnsureTeleSessionForVisitAsync(appt.PatientAppId, row.DoctorId, caller.PatientId.Value);
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.AppointmentRequest
+            SET Status = N'ACCEPTED', PatientAppId = {appt.PatientAppId},
+                RequestedDate = {row.ProposedDate.Value.Date}, RequestedTime = {row.ProposedTime}
+            WHERE AppointmentRequestId = {id}");
+        return Ok(new { appointmentRequestId = id, status = "ACCEPTED", patientAppId = appt.PatientAppId });
+    }
+
+    private async Task EnsureAppointmentRequestIdempotencyAsync()
+    {
+        await _context.Database.ExecuteSqlRawAsync("""
+            IF COL_LENGTH(N'dbo.AppointmentRequest', N'IdempotencyKey') IS NULL
+                ALTER TABLE dbo.AppointmentRequest ADD IdempotencyKey nvarchar(80) NULL;
+            """);
     }
 
     public async Task<S4ActionResult> AcceptAppointmentRequestAsync(int id, S4Caller caller)
@@ -605,6 +912,8 @@ public class MobileClinicQueryService
         };
         _context.PatientAppointments.Add(appt);
         await _context.SaveChangesAsync();
+        if (isTele)
+            await EnsureTeleSessionForVisitAsync(appt.PatientAppId, caller.DoctorId.Value, row.PatientId);
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.AppointmentRequest
             SET Status = N'ACCEPTED', PatientAppId = {appt.PatientAppId}
@@ -919,6 +1228,26 @@ public class MobileClinicQueryService
                 ALTER TABLE dbo.PatientReminder ADD Weekdays nvarchar(40) NULL;
             IF COL_LENGTH(N'dbo.PatientReminder', N'MemberPatientId') IS NULL
                 ALTER TABLE dbo.PatientReminder ADD MemberPatientId int NULL;
+            IF COL_LENGTH(N'dbo.PatientReminder', N'SnoozeMinutes') IS NULL
+                ALTER TABLE dbo.PatientReminder ADD SnoozeMinutes int NULL;
+            IF COL_LENGTH(N'dbo.PatientReminder', N'NotifyPush') IS NULL
+                ALTER TABLE dbo.PatientReminder ADD NotifyPush bit NOT NULL CONSTRAINT DF_Pr_NotifyPush DEFAULT (0);
+            IF OBJECT_ID(N'dbo.PatientDeliveryAddress', N'U') IS NULL
+            CREATE TABLE dbo.PatientDeliveryAddress (
+                DeliveryAddressId int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                PatientId int NOT NULL,
+                Label nvarchar(80) NULL,
+                Line1 nvarchar(200) NOT NULL,
+                Line2 nvarchar(200) NULL,
+                City nvarchar(80) NULL,
+                State nvarchar(80) NULL,
+                Pincode nvarchar(12) NOT NULL,
+                Phone nvarchar(30) NULL,
+                IsDefault bit NOT NULL CONSTRAINT DF_Pda_Default DEFAULT (0),
+                CreatedAt datetime NOT NULL
+            );
+            IF COL_LENGTH(N'dbo.PatientDeliveryAddress', N'Phone') IS NULL
+                ALTER TABLE dbo.PatientDeliveryAddress ADD Phone nvarchar(30) NULL;
             IF COL_LENGTH(N'dbo.CareLinkRequest', N'Opinion') IS NULL
                 ALTER TABLE dbo.CareLinkRequest ADD Opinion nvarchar(1000) NULL;
             IF OBJECT_ID(N'dbo.CareLinkInfoRequest', N'U') IS NULL
@@ -1048,6 +1377,21 @@ public class MobileClinicQueryService
         public string? TimeOfDay { get; set; }
         public string? Weekdays { get; set; }
         public int? MemberPatientId { get; set; }
+        public int? SnoozeMinutes { get; set; }
+        public bool NotifyPush { get; set; }
+    }
+
+    private sealed class DeliveryAddressRow
+    {
+        public int DeliveryAddressId { get; set; }
+        public string? Label { get; set; }
+        public string Line1 { get; set; } = "";
+        public string? Line2 { get; set; }
+        public string? City { get; set; }
+        public string? State { get; set; }
+        public string Pincode { get; set; } = "";
+        public string? Phone { get; set; }
+        public bool IsDefault { get; set; }
     }
 
     private sealed class TimeOffRow
@@ -1078,6 +1422,24 @@ public class MobileClinicQueryService
         public string? ProposedTime { get; set; }
         public int? PatientAppId { get; set; }
         public DateTime CreatedAt { get; set; }
+    }
+
+    private sealed class PatientAppointmentRequestRow
+    {
+        public int AppointmentRequestId { get; set; }
+        public int DoctorId { get; set; }
+        public string? DoctorName { get; set; }
+        public DateTime RequestedDate { get; set; }
+        public string RequestedTime { get; set; } = "";
+        public string? ConsultMode { get; set; }
+        public string? Reason { get; set; }
+        public string Status { get; set; } = "";
+        public DateTime? ProposedDate { get; set; }
+        public string? ProposedTime { get; set; }
+        public string? DoctorMessage { get; set; }
+        public int? PatientAppId { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
     }
 
     private sealed class CareLinkRow
@@ -1139,6 +1501,28 @@ public class ReminderWrite
     public string? Weekdays { get; set; }
     /// <summary>Family member this reminder is for. Null means the signed-in patient.</summary>
     public int? MemberPatientId { get; set; }
+    /// <summary>Snooze offset in minutes (BE-024). Null when unset.</summary>
+    public int? SnoozeMinutes { get; set; }
+    /// <summary>When true, server may schedule a push at DueAt (BE-024).</summary>
+    public bool NotifyPush { get; set; }
+}
+
+public class DeliveryAddressWrite
+{
+    public string? Label { get; set; }
+    public string Line1 { get; set; } = "";
+    public string? Line2 { get; set; }
+    public string? City { get; set; }
+    public string? State { get; set; }
+    public string Pincode { get; set; } = "";
+    /// <summary>Optional contact phone for delivery (B-023).</summary>
+    public string? Phone { get; set; }
+    public bool IsDefault { get; set; }
+}
+
+public class AppointmentRequestRespondBody
+{
+    public string? Action { get; set; }
 }
 
 public class TimeOffWrite

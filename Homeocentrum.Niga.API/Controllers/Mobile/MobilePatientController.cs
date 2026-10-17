@@ -196,7 +196,46 @@ public class MobilePatientController : ControllerBase
 
     [HttpPost("/api/Patient/AppointmentRequests")]
     public Task<IActionResult> CreateAppointmentRequest([FromBody] AppointmentRequestWrite request)
-        => Done(_clinic.CreateAppointmentRequestAsync(request, Caller()));
+    {
+        Request.Headers.TryGetValue("Idempotency-Key", out var key);
+        return Done(_clinic.CreateAppointmentRequestAsync(request, Caller(), key.ToString()));
+    }
+
+    [HttpGet("/api/Patient/AppointmentRequests")]
+    public Task<IActionResult> ListAppointmentRequests(
+        [FromQuery] string? status,
+        [FromQuery] int? pageNumber,
+        [FromQuery] int? pageSize)
+        => Done(_clinic.ListPatientAppointmentRequestsAsync(Caller(), status, pageNumber, pageSize));
+
+    [HttpDelete("/api/Patient/AppointmentRequests/{id:int}")]
+    public Task<IActionResult> CancelAppointmentRequest(int id)
+        => Done(_clinic.CancelPatientAppointmentRequestAsync(id, Caller()));
+
+    [HttpPost("/api/Patient/AppointmentRequests/{id:int}/Respond")]
+    public Task<IActionResult> RespondAppointmentRequest(int id, [FromBody] AppointmentRequestRespondBody? body)
+        => Done(_clinic.RespondPatientAppointmentRequestAsync(id, body?.Action, Caller()));
+
+    // B-023 — DeliveryAddresses is canonical; Addresses is the alias the patient app names.
+    [HttpGet("/api/Patient/DeliveryAddresses")]
+    [HttpGet("/api/Patient/Addresses")]
+    public Task<IActionResult> ListDeliveryAddresses()
+        => Done(_clinic.ListDeliveryAddressesAsync(Caller()));
+
+    [HttpPost("/api/Patient/DeliveryAddresses")]
+    [HttpPost("/api/Patient/Addresses")]
+    public Task<IActionResult> CreateDeliveryAddress([FromBody] DeliveryAddressWrite request)
+        => Done(_clinic.SaveDeliveryAddressAsync(null, request, Caller()));
+
+    [HttpPut("/api/Patient/DeliveryAddresses/{id:int}")]
+    [HttpPut("/api/Patient/Addresses/{id:int}")]
+    public Task<IActionResult> UpdateDeliveryAddress(int id, [FromBody] DeliveryAddressWrite request)
+        => Done(_clinic.SaveDeliveryAddressAsync(id, request, Caller()));
+
+    [HttpDelete("/api/Patient/DeliveryAddresses/{id:int}")]
+    [HttpDelete("/api/Patient/Addresses/{id:int}")]
+    public Task<IActionResult> DeleteDeliveryAddress(int id)
+        => Done(_clinic.DeleteDeliveryAddressAsync(id, Caller()));
 
     private Task<IActionResult> Done(Task<S4ActionResult> work) => this.Respond(work, _logger);
     private S4Caller Caller() => this.S4Caller(_context);

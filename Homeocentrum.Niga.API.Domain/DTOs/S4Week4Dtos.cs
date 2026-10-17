@@ -279,6 +279,9 @@ public class MedicineOrderCreateRequest
     public int ErxSnapshotId { get; set; }
 
     public int? PharmacyPartnerId { get; set; }
+
+    /// <summary>Optional delivery address from GET /api/Patient/Addresses (B-023).</summary>
+    public int? AddressId { get; set; }
 }
 
 public class MedicineRejectRequest

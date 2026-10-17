@@ -15,6 +15,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public bool? TeleOnly { get; set; }
         public decimal? MinFee { get; set; }
         public decimal? MaxFee { get; set; }
+        /// <summary>Optional CareCategories id (BE-029). Filters when a doctor–category map exists; otherwise ignored safely.</summary>
+        public int? CareCategoryId { get; set; }
         public int PageNumber { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }
@@ -22,6 +24,10 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
     public class PublicDoctorCardDto
     {
         public int DoctorId { get; set; }
+        public string? FirstName { get; set; }
+        public string? MiddleName { get; set; }
+        public string? LastName { get; set; }
+        /// <summary>First + Middle + Last (empty parts omitted).</summary>
         public string DisplayName { get; set; } = string.Empty;
         public string? Qualification { get; set; }
         public string? City { get; set; }
@@ -42,6 +48,10 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string? PassingUniversity { get; set; }
         /// <summary>Not stored on the doctor row. Null until the profile has a years-of-practice field.</summary>
         public int? YearsExperience { get; set; }
+        /// <summary>Next open slot start (ISO), or null when none (BE-013).</summary>
+        public DateTime? NextAvailableAt { get; set; }
+        /// <summary>Clinic street address when stored; null otherwise (BE-014).</summary>
+        public string? ClinicAddressLine { get; set; }
         public string RankingSummary { get; set; } = string.Empty;
         public List<string> RankingReasons { get; set; } = new();
         public decimal? AverageRating { get; set; }

@@ -149,9 +149,17 @@ public partial class S4Week4Service
         if (caller.IsPatient)
         {
             if (!caller.PatientId.HasValue) return Fail(403, "FORBIDDEN", "Patient context is required.");
-            var mine = await _context.Database.SqlQuery<ReviewRow>($@"
-                SELECT ReviewId, PatientAppId, DoctorId, PatientId, Rating, Text, Status, At
-                FROM dbo.Review WHERE PatientId = {caller.PatientId.Value} ORDER BY At DESC").ToListAsync();
+            var mine = await _context.Database.SqlQuery<ReviewWithAppealRow>($@"
+                SELECT r.ReviewId, r.PatientAppId, r.DoctorId, r.PatientId, r.Rating, r.Text, r.Status, r.At,
+                       ap.Status AS AppealStatus, ap.Reason AS AppealReason, ap.At AS AppealedAt
+                FROM dbo.Review r
+                OUTER APPLY (
+                    SELECT TOP 1 x.Status, x.Reason, x.At
+                    FROM dbo.ReviewAppeal x
+                    WHERE x.ReviewId = r.ReviewId
+                    ORDER BY x.ReviewAppealId DESC) ap
+                WHERE r.PatientId = {caller.PatientId.Value}
+                ORDER BY r.At DESC").ToListAsync();
             var doctorIds = mine.Select(r => r.DoctorId).Distinct().ToList();
             var names = await _context.Doctors.AsNoTracking()
                 .Where(d => doctorIds.Contains(d.DoctorId))
@@ -164,6 +172,16 @@ public partial class S4Week4Service
                 {
                     var doctor = names.FirstOrDefault(d => d.DoctorId == r.DoctorId);
                     var doctorName = doctor == null ? null : $"Dr. {doctor.FirstName} {doctor.LastName}".Trim();
+                    // B-017 — patient app: null | OPEN | UPHELD | REJECTED (map admin UPHOLD/REMOVE).
+                    var raw = string.IsNullOrWhiteSpace(r.AppealStatus) ? null : r.AppealStatus.Trim().ToUpperInvariant();
+                    string? appealStatus = raw switch
+                    {
+                        null or "" or "NONE" => null,
+                        "OPEN" => "OPEN",
+                        "UPHOLD" or "UPHELD" or "ACCEPTED" => "UPHELD",
+                        "REMOVE" or "REJECTED" or "REJECT" => "REJECTED",
+                        _ => raw
+                    };
                     return new
                     {
                         r.ReviewId,
@@ -175,7 +193,10 @@ public partial class S4Week4Service
                         r.Text,
                         r.Status,
                         r.At,
-                        createdAt = r.At
+                        createdAt = r.At,
+                        appealStatus,
+                        appealReason = r.AppealReason,
+                        appealedAt = r.AppealedAt
                     };
                 })
             });
@@ -573,7 +594,7 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = rows });
     }
 
-    public async Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller)
+    public async Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller, bool asMeta = false)
     {
         var snapshot = await LoadSnapshotAsync(erxId);
         if (snapshot == null) return Fail(404, "NOT_FOUND", "Prescription not found.");
@@ -581,6 +602,25 @@ public partial class S4Week4Service
         if (access != null) return access;
         if (snapshot.Status != "SIGNED")
             return Fail(409, "CONFLICT", "Only a signed prescription can be printed.");
+
+        if (asMeta)
+        {
+            var request = _http.HttpContext?.Request;
+            var pdfUrl = request == null
+                ? $"/api/Erx/{snapshot.ErxSnapshotId}/Pdf"
+                : PublicApiUrl.For(request, $"/api/Erx/{snapshot.ErxSnapshotId}/Pdf");
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    erxSnapshotId = snapshot.ErxSnapshotId,
+                    pdfUrl,
+                    expiresAt = (DateTime?)null
+                }
+            });
+        }
+
         var reveal = !caller.IsPatient || await PharmacyAcceptedAsync(snapshot.ErxSnapshotId);
         var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, reveal);
         var fileName = "eRx-" + snapshot.ErxSnapshotId + ".pdf";
@@ -870,6 +910,20 @@ public partial class S4Week4Service
             return Fail(404, "NOT_FOUND", "Signed prescription not found.");
         if (snapshot.PatientId != caller.PatientId)
             return Fail(403, "FORBIDDEN", "This prescription belongs to another patient.");
+        int? addressId = null;
+        if (request.AddressId.HasValue && request.AddressId.Value > 0)
+        {
+            await _context.Database.ExecuteSqlRawAsync("""
+                IF COL_LENGTH(N'dbo.MedicineOrder', N'DeliveryAddressId') IS NULL
+                    ALTER TABLE dbo.MedicineOrder ADD DeliveryAddressId int NULL;
+                """);
+            var owned = await _context.Database.SqlQuery<IdIntRow>($@"
+                SELECT DeliveryAddressId AS Id FROM dbo.PatientDeliveryAddress
+                WHERE DeliveryAddressId = {request.AddressId.Value} AND PatientId = {caller.PatientId.Value}").FirstOrDefaultAsync();
+            if (owned == null)
+                return Fail(400, "VALIDATION", "addressId is not in this patient's address book.");
+            addressId = request.AddressId.Value;
+        }
         var id = (int)await InsertAsync(
             @"INSERT INTO dbo.MedicineOrder (ErxSnapshotId, PatientId, PharmacyPartnerId, Status, ConsentGranted, CreatedAt)
               VALUES (@Erx, @Patient, @Pharmacy, N'OFFERED', 0, @At);
@@ -878,6 +932,11 @@ public partial class S4Week4Service
             P("@Patient", snapshot.PatientId),
             P("@Pharmacy", request.PharmacyPartnerId),
             P("@At", DateTime.Now));
+        if (addressId.HasValue)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.MedicineOrder SET DeliveryAddressId = {addressId.Value} WHERE MedicineOrderId = {id}");
+        }
         var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, revealNames: true);
         foreach (var item in items)
         {
@@ -886,7 +945,7 @@ public partial class S4Week4Service
                 VALUES ({id}, {item.RemedyCode}, {item.RemedyName})");
         }
         await AddMedicineEventAsync(id, "OFFERED", "Order created from signed prescription");
-        return Ok(new { success = true, data = new { medicineOrderId = id, status = "OFFERED", namesRevealed = false } });
+        return Ok(new { success = true, data = new { medicineOrderId = id, status = "OFFERED", namesRevealed = false, addressId } });
     }
 
     public async Task<S4ActionResult> GrantMedicineConsentAsync(int orderId, S4Caller caller)
@@ -1012,15 +1071,32 @@ public partial class S4Week4Service
             SELECT RemedyCode, RemedyName FROM dbo.MedicineOrderItem WHERE MedicineOrderId = {orderId}").ToListAsync();
         var events = await _context.Database.SqlQuery<MedicineEventRow>($@"
             SELECT Status, Detail, At FROM dbo.MedicineOrderEvent WHERE MedicineOrderId = {orderId} ORDER BY At").ToListAsync();
+        // B-028 — quoteAmount null when not stored (never invent 0). lines + events always arrays.
+        var lines = items.Select(i => new
+        {
+            remedyName = reveal ? i.RemedyName : null,
+            potencyCode = (string?)null,
+            quantityLabel = (string?)null
+        }).ToList();
+        var eventList = events.Select(e => new
+        {
+            at = e.At,
+            status = e.Status,
+            label = string.IsNullOrWhiteSpace(e.Detail) ? e.Status : e.Detail
+        }).ToList();
         return Ok(new
         {
             success = true,
             data = new
             {
-                order.MedicineOrderId,
-                order.Status,
-                items = items.Select(i => new { i.RemedyCode, remedyName = reveal ? i.RemedyName : null }),
-                events
+                medicineOrderId = order.MedicineOrderId,
+                status = order.Status,
+                quoteAmount = order.QuoteAmount,
+                currency = order.QuoteAmount.HasValue ? "INR" : null,
+                lines,
+                events = eventList,
+                // Keep items for older clients.
+                items = items.Select(i => new { i.RemedyCode, remedyName = reveal ? i.RemedyName : null })
             }
         });
     }
@@ -1113,13 +1189,29 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = new { appointments, prescriptions = erx } });
     }
 
-    public async Task<S4ActionResult> PatientVisitsAsync(int? patientId, S4Caller caller)
+    public async Task<S4ActionResult> PatientVisitsAsync(
+        int? patientId,
+        S4Caller caller,
+        string? status = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        int pageNumber = 1,
+        int pageSize = 20)
     {
         var owned = await ResolvePatientAsync(patientId, caller, write: false);
         if (owned.Error != null) return owned.Error;
         var id = owned.PatientId;
-        var rows = await _context.Database.SqlQuery<PatientVisitRow>($@"
-            SELECT TOP 100 a.PatientAppId, a.AppointmentDate,
+        var page = pageNumber < 1 ? 1 : pageNumber;
+        var size = pageSize is < 1 or > 100 ? 20 : pageSize;
+        var statusFilter = string.IsNullOrWhiteSpace(status) ? null : status.Trim();
+        var from = fromDate?.Date;
+        var to = toDate?.Date;
+
+        // BE-008 — ensure open tele visits have a TeleSession before listing.
+        await EnsureOpenTeleSessionsForPatientAsync(id);
+
+        var all = await _context.Database.SqlQuery<PatientVisitRow>($@"
+            SELECT a.PatientAppId, a.AppointmentDate,
                    CONVERT(nvarchar(5), a.AppointmentTime, 108) AS AppointmentTime,
                    a.Status, a.ConsultMode, CAST(ISNULL(a.IsTele, 0) AS bit) AS IsTele, a.DoctorId,
                    LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
@@ -1133,6 +1225,18 @@ public partial class S4Week4Service
                          WHERE t.PatientAppId = a.PatientAppId ORDER BY t.TeleSessionId DESC) ts
             WHERE a.PatientId = {id} AND ISNULL(a.DeleteStatus, 0) = 0
             ORDER BY a.AppointmentDate DESC, a.AppointmentTime DESC").ToListAsync();
+
+        IEnumerable<PatientVisitRow> filtered = all;
+        if (statusFilter != null)
+            filtered = filtered.Where(r => string.Equals(r.Status, statusFilter, StringComparison.OrdinalIgnoreCase));
+        if (from.HasValue)
+            filtered = filtered.Where(r => r.AppointmentDate.HasValue && r.AppointmentDate.Value.Date >= from.Value);
+        if (to.HasValue)
+            filtered = filtered.Where(r => r.AppointmentDate.HasValue && r.AppointmentDate.Value.Date <= to.Value);
+        var list = filtered.ToList();
+        var total = list.Count;
+        var rows = list.Skip((page - 1) * size).Take(size).ToList();
+
         var doctorIds = rows.Where(r => r.DoctorId.HasValue).Select(r => r.DoctorId!.Value).Distinct().ToList();
         var fees = await _context.Doctors.AsNoTracking()
             .Where(d => doctorIds.Contains(d.DoctorId))
@@ -1154,18 +1258,51 @@ public partial class S4Week4Service
                 r.IsTele,
                 r.DoctorId,
                 r.DoctorName,
-                r.TeleSessionId,
+                teleSessionId = r.TeleSessionId,
                 r.SessionStatus,
                 r.ChatCount,
                 r.HasSummary,
                 consultFee,
                 currency = fee?.FeeCurrency,
                 clinicPhone = fee?.MobileNo,
+                clinicAddressLine = string.IsNullOrWhiteSpace(fee?.PermanantAddress) ? null : fee!.PermanantAddress,
                 clinicAddress = fee?.PermanantAddress,
                 reasonText = (string?)null
             };
         });
-        return Ok(new { success = true, data });
+        return Ok(new
+        {
+            success = true,
+            totalRecords = total,
+            pageNumber = page,
+            pageSize = size,
+            data
+        });
+    }
+
+    private async Task EnsureOpenTeleSessionsForPatientAsync(int patientId)
+    {
+        var missing = await _context.Database.SqlQuery<IdIntRow>($@"
+            SELECT a.PatientAppId AS Id
+            FROM dbo.PatientAppointment a
+            WHERE a.PatientId = {patientId}
+              AND ISNULL(a.DeleteStatus, 0) = 0
+              AND ISNULL(a.IsTele, 0) = 1
+              AND a.Status NOT IN (N'CANCELLED', N'Cancelled', N'COMPLETED', N'Completed', N'Closed', N'Done')
+              AND NOT EXISTS (
+                    SELECT 1 FROM dbo.TeleSession t
+                    WHERE t.PatientAppId = a.PatientAppId AND t.Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED'))").ToListAsync();
+        foreach (var row in missing)
+        {
+            var appt = await _context.PatientAppointments.AsNoTracking()
+                .Where(a => a.PatientAppId == row.Id)
+                .Select(a => new { a.PatientAppId, a.DoctorId, a.PatientId })
+                .FirstOrDefaultAsync();
+            if (appt?.DoctorId is not > 0) continue;
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.TeleSession (PatientAppId, DoctorId, PatientId, Status, CreatedAt)
+                VALUES ({appt.PatientAppId}, {appt.DoctorId}, {appt.PatientId}, N'Waiting', {DateTime.Now})");
+        }
     }
 
     /// <summary>PAT-20.02 — one appointment for the patient app: doctor, slot, payment, tele, eRx and next actions.</summary>
@@ -1176,6 +1313,27 @@ public partial class S4Week4Service
         if (appointment == null) return Fail(404, "NOT_FOUND", "Appointment not found.");
         var access = await EnsureAppointmentAccessAsync(appointment, caller);
         if (access != null) return access;
+
+        var cancelled = S3AppointmentRulesCancelled(appointment.Status);
+        var completed = appointment.Status is not null
+            && (appointment.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
+                || appointment.Status.Equals("Closed", StringComparison.OrdinalIgnoreCase)
+                || appointment.Status.Equals("Done", StringComparison.OrdinalIgnoreCase));
+
+        // BE-008 — guarantee teleSessionId for open tele visits.
+        if (appointment.IsTele == true && !cancelled && !completed && appointment.DoctorId is > 0)
+        {
+            var existingSession = await _context.Database.SqlQuery<IdIntRow>($@"
+                SELECT TOP 1 TeleSessionId AS Id FROM dbo.TeleSession
+                WHERE PatientAppId = {patientAppId} AND Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED')
+                ORDER BY TeleSessionId DESC").FirstOrDefaultAsync();
+            if (existingSession == null)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.TeleSession (PatientAppId, DoctorId, PatientId, Status, CreatedAt)
+                    VALUES ({patientAppId}, {appointment.DoctorId}, {appointment.PatientId}, N'Waiting', {DateTime.Now})");
+            }
+        }
 
         var visit = await _context.Database.SqlQuery<PatientVisitRow>($@"
             SELECT a.PatientAppId, a.AppointmentDate,
@@ -1194,7 +1352,7 @@ public partial class S4Week4Service
 
         var doctor = await _context.Doctors.AsNoTracking()
             .Where(d => d.DoctorId == appointment.DoctorId)
-            .Select(d => new { d.ClinicName, d.City, d.GoogleMapsLink, d.PhotoPath, d.ConsultFeeInClinic, d.ConsultFeeTele, d.FeeCurrency, d.MobileNo })
+            .Select(d => new { d.ClinicName, d.City, d.GoogleMapsLink, d.PhotoPath, d.ConsultFeeInClinic, d.ConsultFeeTele, d.FeeCurrency, d.MobileNo, d.PermanantAddress })
             .FirstOrDefaultAsync();
         var complaint = await _context.Database.SqlQuery<NoteRow>($@"
             SELECT TOP 1 cc.ChiefComplaintName AS Text, SYSUTCDATETIME() AS At
@@ -1215,14 +1373,26 @@ public partial class S4Week4Service
             ? paidAmount.Amount - consultFee.Value
             : null;
         var erx = await LoadSnapshotByAppointmentAsync(patientAppId);
-        var cancelled = S3AppointmentRulesCancelled(appointment.Status);
-        var completed = appointment.Status is not null
-            && (appointment.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
-                || appointment.Status.Equals("Closed", StringComparison.OrdinalIgnoreCase)
-                || appointment.Status.Equals("Done", StringComparison.OrdinalIgnoreCase));
         var slotAt = appointment.AppointmentDate?.Date.Add(appointment.AppointmentTime?.ToTimeSpan() ?? TimeSpan.Zero);
         var upcoming = slotAt.HasValue && slotAt.Value > DateTime.Now;
         var paid = IsPaid(appointment.PaymentStatus);
+
+        var followUp = await _context.Database.SqlQuery<FollowUpDateRow>($@"
+            SELECT TOP 1 t.DueDate
+            FROM dbo.FollowUpTask t
+            INNER JOIN dbo.FollowUpPlan p ON p.FollowUpPlanId = t.FollowUpPlanId
+            WHERE p.PatientId = {appointment.PatientId}
+              AND t.Status = N'OPEN'
+            ORDER BY t.DueDate").FirstOrDefaultAsync();
+
+        string? erxPdfUrl = null;
+        if (erx?.Status == "SIGNED")
+        {
+            var request = _http.HttpContext?.Request;
+            erxPdfUrl = request == null
+                ? $"/api/Erx/{erx.ErxSnapshotId}/Pdf"
+                : PublicApiUrl.For(request, $"/api/Erx/{erx.ErxSnapshotId}/Pdf");
+        }
 
         return Ok(new
         {
@@ -1241,6 +1411,7 @@ public partial class S4Week4Service
                 visit.DoctorName,
                 clinicName = doctor?.ClinicName,
                 clinicCity = doctor?.City,
+                clinicAddressLine = string.IsNullOrWhiteSpace(doctor?.PermanantAddress) ? null : doctor!.PermanantAddress,
                 clinicMapLink = doctor?.GoogleMapsLink,
                 doctorPhotoUrl = AbsoluteDoctorPhotoUrl(appointment.DoctorId, doctor?.PhotoPath),
                 consultFee,
@@ -1254,12 +1425,14 @@ public partial class S4Week4Service
                 payAtClinicAllowed = appointment.PayAtClinicAllowed == true,
                 cancelReason = appointment.CancelReasonText ?? appointment.CancelReasonCode,
                 appointment.CancelledAt,
-                visit.TeleSessionId,
+                teleSessionId = visit.TeleSessionId,
                 visit.SessionStatus,
                 visit.ChatCount,
                 visit.HasSummary,
+                followUpDate = followUp?.DueDate?.ToString("yyyy-MM-dd"),
                 erxSnapshotId = erx?.Status == "SIGNED" ? erx.ErxSnapshotId : (int?)null,
                 erxSigned = erx?.Status == "SIGNED",
+                erxPdfUrl,
                 actions = new
                 {
                     canPay = !cancelled && !paid,
@@ -1495,7 +1668,7 @@ public partial class S4Week4Service
                 completedFollowUps = follow?.DoneCount ?? 0,
                 followUpsCompleted = follow?.DoneCount ?? 0,
                 followUpsTotal = (follow?.OpenCount ?? 0) + (follow?.DoneCount ?? 0),
-                adherencePercent = (decimal?)null,
+                // adherencePercent omitted until computed from diary/reminders (BE-021).
                 series = diary.Select(d => new { date = d.EntryDate, severity = d.Severity })
             }
         });
@@ -1584,7 +1757,7 @@ public partial class S4Week4Service
             .FirstOrDefaultAsync(t => t.ConsentTypeId == consentTypeId && t.IsActive);
         if (type == null) return Fail(404, "NOT_FOUND", "Consent type not found.");
         if (string.Equals(type.Code, "Caregiver", StringComparison.OrdinalIgnoreCase))
-            return Fail(409, "CONFLICT", "Caregiver access is granted from the Caregiver page.");
+            return Fail(409, "CONFLICT", "Caregiver access is granted from the Caregiver / Family page.");
         var minor = await PatientIsMinorAsync(caller.PatientId.Value);
         if (minor == true)
             return Fail(403, "GUARDIAN_CONSENT_REQUIRED",
@@ -1655,7 +1828,35 @@ public partial class S4Week4Service
             FROM dbo.DataRequest
             WHERE PatientId = {caller.PatientId.Value}
             ORDER BY CreatedAt DESC").ToListAsync();
-        return Ok(new { success = true, data = rows });
+        // downloadUrl / completedAt are not stored until ops completes an EXPORT (BE-018).
+        return Ok(new
+        {
+            success = true,
+            data = rows.Select(r =>
+            {
+                var status = (r.Status ?? "").Trim().ToUpperInvariant() switch
+                {
+                    "OPEN" => "PENDING",
+                    "DONE" => "COMPLETED",
+                    "COMPLETE" => "COMPLETED",
+                    "COMPLETED" => "COMPLETED",
+                    "REJECTED" => "REJECTED",
+                    "CLOSED" => "COMPLETED",
+                    var s when string.IsNullOrEmpty(s) => "PENDING",
+                    var s => s
+                };
+                var completed = status is "COMPLETED" or "REJECTED";
+                return new
+                {
+                    dataRequestId = r.DataRequestId,
+                    requestType = (r.RequestType ?? "").Trim().ToUpperInvariant(),
+                    status,
+                    createdAt = r.CreatedAt,
+                    completedAt = completed ? r.CreatedAt : (DateTime?)null,
+                    downloadUrl = (string?)null
+                };
+            })
+        });
     }
 
     public async Task<S4ActionResult> GetHealthProfileAsync(S4Caller caller)
@@ -2095,5 +2296,25 @@ public partial class S4Week4Service
         public string RequestType { get; set; } = "";
         public string Status { get; set; } = "";
         public DateTime CreatedAt { get; set; }
+    }
+
+    private sealed class ReviewWithAppealRow
+    {
+        public int ReviewId { get; set; }
+        public int? PatientAppId { get; set; }
+        public int DoctorId { get; set; }
+        public int PatientId { get; set; }
+        public int Rating { get; set; }
+        public string? Text { get; set; }
+        public string Status { get; set; } = "";
+        public DateTime At { get; set; }
+        public string? AppealStatus { get; set; }
+        public string? AppealReason { get; set; }
+        public DateTime? AppealedAt { get; set; }
+    }
+
+    private sealed class FollowUpDateRow
+    {
+        public DateTime? DueDate { get; set; }
     }
 }

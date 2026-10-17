@@ -1124,6 +1124,12 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 doctorPhotoUrl = AbsoluteDoctorPhotoUrl(offer.DoctorId, offeredDoctor?.PhotoPath);
             }
 
+            // platformFee is only returned when a real platform fee is stored — never invent (BE-011).
+            decimal? platformFee = null;
+            decimal? totalPayable = consultFee.HasValue
+                ? consultFee.Value + (platformFee ?? 0m)
+                : null;
+
             return S3ActionResult.Ok(new
             {
                 success = true,
@@ -1142,6 +1148,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     teleSessionId = row.TeleSessionId,
                     consultFee,
                     currency,
+                    platformFee,
+                    totalPayable,
                     doctorPhotoUrl,
                     canCancel = waiting,
                     message
@@ -1491,7 +1499,22 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     ORDER BY Title, HelpArticleId").ToListAsync();
             }
 
-            return S3ActionResult.Ok(new { success = true, data = rows });
+            // BE-020 — taxonomy fields for Help centre (category/sortOrder derived; bodyAvailable from body).
+            return S3ActionResult.Ok(new
+            {
+                success = true,
+                data = rows.Select((r, i) => new
+                {
+                    r.HelpArticleId,
+                    slug = r.Slug,
+                    title = r.Title,
+                    category = InferHelpCategory(r.Slug, r.Title),
+                    sortOrder = i + 1,
+                    bodyAvailable = !string.IsNullOrWhiteSpace(r.Body),
+                    r.Body,
+                    r.IsPublished
+                })
+            });
         }
 
         /// <summary>
@@ -1509,7 +1532,33 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 WHERE Slug = {key}").FirstOrDefaultAsync();
             if (row == null || (!row.IsPublished && !includeUnpublished))
                 return S3ActionResult.Fail(404, "Help article not found.");
-            return S3ActionResult.Ok(new { success = true, data = row });
+            return S3ActionResult.Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    row.HelpArticleId,
+                    slug = row.Slug,
+                    title = row.Title,
+                    category = InferHelpCategory(row.Slug, row.Title),
+                    sortOrder = 1,
+                    bodyAvailable = !string.IsNullOrWhiteSpace(row.Body),
+                    row.Body,
+                    row.IsPublished
+                }
+            });
+        }
+
+        private static string InferHelpCategory(string? slug, string? title)
+        {
+            var text = $"{slug} {title}".ToLowerInvariant();
+            if (text.Contains("book") || text.Contains("appoint")) return "Booking";
+            if (text.Contains("pay") || text.Contains("refund") || text.Contains("fee")) return "Payments";
+            if (text.Contains("medicine") || text.Contains("pharmacy") || text.Contains("rx") || text.Contains("prescription"))
+                return "Medicines";
+            if (text.Contains("tele") || text.Contains("video") || text.Contains("consult")) return "Tele";
+            if (text.Contains("account") || text.Contains("privacy") || text.Contains("data")) return "Account";
+            return "General";
         }
 
         public async Task<S3ActionResult> SaveHelpAsync(HelpArticleWrite request)

@@ -37,21 +37,7 @@ public class MobileSharedController : ControllerBase
     [AllowAnonymous]
     [HttpGet("/api/Public/AppConfig")]
     [HttpGet("/api/App/Config")]
-    public IActionResult AppConfig()
-    {
-        return Ok(new
-        {
-            success = true,
-            data = new
-            {
-                razorpayKeyId = Blank(_configuration["Razorpay:KeyId"]),
-                siteUrl = Blank(_configuration["ConfigurationModel:SiteUrl"]),
-                supportPhone = Blank(_configuration["Support:Phone"]),
-                supportWhatsApp = Blank(_configuration["Support:WhatsApp"]),
-                supportEmail = Blank(_configuration["Support:Email"])
-            }
-        });
-    }
+    public IActionResult AppConfig() => Ok(AppConfigPayload.Build(_configuration));
 
     [HttpGet("/api/Notifications/Preferences")]
     public Task<IActionResult> GetPreferences() => Done(_clinic.GetPreferencesAsync(Caller()));
@@ -78,5 +64,4 @@ public class MobileSharedController : ControllerBase
 
     private Task<IActionResult> Done(Task<S4ActionResult> work) => this.Respond(work, _logger);
     private S4Caller Caller() => this.S4Caller(_context);
-    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

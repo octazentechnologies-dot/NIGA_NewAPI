@@ -16,6 +16,8 @@ public interface IS5Week5Service
     Task<S4ActionResult> WhatsAppAudienceAsync(S4Caller caller);
     Task<S4ActionResult> SendNotificationAsync(NotificationSendRequest request, S4Caller caller);
     Task<S4ActionResult> ListNotificationsAsync(S4Caller caller);
+    Task<S4ActionResult> ListNotificationsPagedAsync(S4Caller caller, int pageNumber, int pageSize);
+    Task<S4ActionResult> UnreadNotificationCountAsync(S4Caller caller);
     Task<S4ActionResult> PatchNotificationAsync(long id, bool isRead, S4Caller caller);
     Task<S4ActionResult> SendReceiptEmailAsync(long paymentOrderId, S4Caller caller);
     Task<S4ActionResult> EmailHistoryAsync(S4Caller caller);

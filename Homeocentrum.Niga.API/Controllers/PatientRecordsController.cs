@@ -30,7 +30,14 @@ public class PatientRecordsController : ControllerBase
     public Task<IActionResult> Timeline([FromQuery] int? patientId) => Done(_s4.TimelineAsync(patientId, Caller()));
 
     [HttpGet("/api/Patient/Visits")]
-    public Task<IActionResult> Visits([FromQuery] int? patientId) => Done(_s4.PatientVisitsAsync(patientId, Caller()));
+    public Task<IActionResult> Visits(
+        [FromQuery] int? patientId,
+        [FromQuery] string? status,
+        [FromQuery] DateTime? fromDate,
+        [FromQuery] DateTime? toDate,
+        [FromQuery] int? pageNumber,
+        [FromQuery] int? pageSize)
+        => Done(_s4.PatientVisitsAsync(patientId, Caller(), status, fromDate, toDate, pageNumber ?? 1, pageSize ?? 20));
 
     [HttpGet("/api/Patient/Consultations/{patientAppId:int}/Note")]
     public Task<IActionResult> Note(int patientAppId) => Done(_s4.ConsultationNoteAsync(patientAppId, Caller()));

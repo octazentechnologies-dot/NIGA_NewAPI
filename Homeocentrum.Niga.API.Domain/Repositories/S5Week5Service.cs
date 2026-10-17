@@ -267,7 +267,7 @@ public partial class S5Week5Service : IS5Week5Service
                 r.IsRead,
                 r.PushStatus,
                 r.CreatedAt,
-                type = string.IsNullOrWhiteSpace(r.Type) ? InferNotificationType(r.Title, r.Body) : r.Type,
+                type = NormalizeNotificationType(r.Type) ?? InferNotificationType(r.Title, r.Body),
                 deepLink = string.IsNullOrWhiteSpace(r.DeepLink) ? null : r.DeepLink
             })
         });
@@ -837,6 +837,11 @@ public partial class S5Week5Service : IS5Week5Service
         public string Status { get; set; } = "";
         public DateTime At { get; set; }
     }
+    private sealed class IdCountRow
+    {
+        public int Id { get; set; }
+    }
+
     private sealed class NoteRow
     {
         public long AppNotificationId { get; set; }
@@ -863,15 +868,75 @@ public partial class S5Week5Service : IS5Week5Service
         Volatile.Write(ref _notificationNavReady, 1);
     }
 
-    private static string? InferNotificationType(string? title, string? body)
+    /// <summary>Patient Bind enum (uppercase). Stored Type is returned as-is when set.</summary>
+    private static string InferNotificationType(string? title, string? body)
     {
         var text = ((title ?? "") + " " + (body ?? "")).ToLowerInvariant();
-        if (text.Contains("carelink") || text.Contains("care link")) return "carelink";
-        if (text.Contains("pharmacy") || text.Contains("medicine") || text.Contains("refill")) return "pharmacy";
-        if (text.Contains("payout") || text.Contains("payment") || text.Contains("refund") || text.Contains("earning")) return "money";
-        if (text.Contains("appointment") || text.Contains("visit") || text.Contains("consult")) return "appointment";
-        if (text.Contains("refill")) return "refill";
-        return "system";
+        if (text.Contains("prescription") || text.Contains("erx") || text.Contains("e-rx")) return "PRESCRIPTION";
+        if (text.Contains("pharmacy") || text.Contains("medicine") || text.Contains("refill") || text.Contains("order")) return "MEDICINE";
+        if (text.Contains("payout") || text.Contains("payment") || text.Contains("refund") || text.Contains("receipt")) return "PAYMENT";
+        if (text.Contains("appointment") || text.Contains("visit") || text.Contains("consult") || text.Contains("carelink")) return "APPOINTMENT";
+        if (text.Contains("promo") || text.Contains("offer") || text.Contains("marketing")) return "MARKETING";
+        return "SYSTEM";
+    }
+
+    public Task<S4ActionResult> UnreadNotificationCountAsync(S4Caller caller) => Guard(async () =>
+    {
+        var count = await _context.Database.SqlQuery<IdCountRow>($@"
+            SELECT COUNT(1) AS Id FROM dbo.AppNotification
+            WHERE UserId = {caller.UserId} AND IsRead = 0").FirstAsync();
+        return S4ActionResult.Ok(new { success = true, data = new { unread = count.Id } });
+    });
+
+    public Task<S4ActionResult> ListNotificationsPagedAsync(S4Caller caller, int pageNumber, int pageSize) => Guard(async () =>
+    {
+        await EnsureNotificationNavColumnsAsync();
+        var page = pageNumber < 1 ? 1 : pageNumber;
+        var size = pageSize is < 1 or > 100 ? 20 : pageSize;
+        var total = await _context.Database.SqlQuery<IdCountRow>($@"
+            SELECT COUNT(1) AS Id FROM dbo.AppNotification WHERE UserId = {caller.UserId}").FirstAsync();
+        var skip = (page - 1) * size;
+        var rows = await _context.Database.SqlQuery<NoteRow>($@"
+            SELECT AppNotificationId, Title, Body, IsRead, PushStatus, CreatedAt, Type, DeepLink
+            FROM dbo.AppNotification
+            WHERE UserId = {caller.UserId}
+            ORDER BY AppNotificationId DESC
+            OFFSET {skip} ROWS FETCH NEXT {size} ROWS ONLY").ToListAsync();
+        return S4ActionResult.Ok(new
+        {
+            success = true,
+            data = new
+            {
+                totalRecords = total.Id,
+                pageNumber = page,
+                pageSize = size,
+                data = rows.Select(r => new
+                {
+                    r.AppNotificationId,
+                    r.Title,
+                    r.Body,
+                    r.IsRead,
+                    r.PushStatus,
+                    r.CreatedAt,
+                    type = NormalizeNotificationType(r.Type) ?? InferNotificationType(r.Title, r.Body),
+                    deepLink = string.IsNullOrWhiteSpace(r.DeepLink) ? null : r.DeepLink
+                })
+            }
+        });
+    });
+
+    private static string? NormalizeNotificationType(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return null;
+        var t = type.Trim().ToUpperInvariant();
+        return t switch
+        {
+            "APPOINTMENT" or "PRESCRIPTION" or "MEDICINE" or "PAYMENT" or "SYSTEM" or "MARKETING" => t,
+            "CARELINK" => "APPOINTMENT",
+            "PHARMACY" or "REFILL" => "MEDICINE",
+            "MONEY" => "PAYMENT",
+            _ => t
+        };
     }
     private sealed class EmailLogRow
     {

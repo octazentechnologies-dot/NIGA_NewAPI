@@ -69,7 +69,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> SignErxAsync(SignErxRequest request, S4Caller caller);
     Task<S4ActionResult> SaveErxDraftAsync(ErxDraftRequest request, S4Caller caller);
     Task<S4ActionResult> ErxHistoryAsync(int? patientId, int? patientAppId, S4Caller caller);
-    Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller);
+    Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller, bool asMeta = false);
     Task<S4ActionResult> RequestRefillAsync(RefillCreateRequest request, S4Caller caller);
     Task<S4ActionResult> ListRefillsAsync(S4Caller caller, string? status = null);
     Task<S4ActionResult> RefillDetailAsync(int refillId, S4Caller caller);
@@ -115,7 +115,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> ListConsentsAsync(S4Caller caller);
     Task<S4ActionResult> GrantConsentAsync(int consentTypeId, S4Caller caller);
     Task<S4ActionResult> PatientVisitDetailAsync(int patientAppId, S4Caller caller);
-    Task<S4ActionResult> PatientVisitsAsync(int? patientId, S4Caller caller);
+    Task<S4ActionResult> PatientVisitsAsync(int? patientId, S4Caller caller, string? status = null, DateTime? fromDate = null, DateTime? toDate = null, int pageNumber = 1, int pageSize = 20);
     Task<S4ActionResult> WithdrawConsentAsync(long consentId, S4Caller caller);
     Task<S4ActionResult> CreateDataRequestAsync(DataRequestCreate request, S4Caller caller);
     Task<S4ActionResult> ListDataRequestsAsync(S4Caller caller);

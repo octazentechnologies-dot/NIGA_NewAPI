@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using Microsoft.Extensions.Configuration;
@@ -65,6 +66,16 @@ namespace Homeocentrum.Niga.API.Domain.Logging
         /// <summary>ErrorAlert:DailyMatrixEnabled. Default on when the section is missing.</summary>
         public static bool IsDailyMatrixEnabled => _alert?.DailyMatrixEnabled == true;
         public static bool IsDeployNoticeEnabled { get; private set; } = true;
+
+        /// <summary>
+        /// When true (default), start/ready/stop mail only fires for a real publish (fresh binaries),
+        /// not for idle recycle, idle wake, or other IIS restarts with unchanged files.
+        /// </summary>
+        public static bool DeployNoticeOnlyOnFreshPublish { get; private set; } = true;
+
+        /// <summary>How recent the host DLL must be (minutes) to treat a start as a publish.</summary>
+        public static int FreshPublishMaxAgeMinutes { get; private set; } = 30;
+
         private static bool? _opsAlertSetting;
 
         /// <summary>APP_POOL_ID is set only when IIS (ANCM) starts the process.</summary>
@@ -97,6 +108,10 @@ namespace Homeocentrum.Niga.API.Domain.Logging
             _smtp = config.GetSection("smtp").Get<SmtpSettingsModel>();
             if (bool.TryParse(config["DeployNotice:Enabled"], out var deployNotice))
                 IsDeployNoticeEnabled = deployNotice;
+            if (bool.TryParse(config["DeployNotice:OnlyOnFreshPublish"], out var onlyFresh))
+                DeployNoticeOnlyOnFreshPublish = onlyFresh;
+            if (int.TryParse(config["DeployNotice:FreshPublishMaxAgeMinutes"], out var freshMinutes) && freshMinutes > 0)
+                FreshPublishMaxAgeMinutes = freshMinutes;
             _opsAlertSetting = bool.TryParse(config["OpsAlert:Enabled"], out var opsAlert) ? opsAlert : null;
             if (IsFileEnabled)
             {
@@ -333,6 +348,8 @@ namespace Homeocentrum.Niga.API.Domain.Logging
         /// <summary>
         /// IIS app-pool start mail. phase is "started" when the process loads and "ready" when it is listening.
         /// Local dotnet run does not send this. APP_POOL_ID is set only by IIS.
+        /// With OnlyOnFreshPublish (default), only "ready" is mailed and only when the host DLL was just published.
+        /// Idle recycle / wake with unchanged binaries does not mail.
         /// </summary>
         public static void SendDeployNotice(string phase)
         {
@@ -340,7 +357,23 @@ namespace Homeocentrum.Niga.API.Domain.Logging
                 return;
             if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("APP_POOL_ID")))
                 return;
+
             var ready = string.Equals(phase, "ready", StringComparison.OrdinalIgnoreCase);
+            if (DeployNoticeOnlyOnFreshPublish)
+            {
+                // One mail per publish: skip the early "started" phase; idle wakes have old DLLs.
+                if (!ready)
+                {
+                    Write("app", "INFO", "DeployNotice", "Skipped started mail (OnlyOnFreshPublish); waiting for ready.", sendAlert: false);
+                    return;
+                }
+                if (!IsFreshPublish(out var reason))
+                {
+                    Write("app", "INFO", "DeployNotice", "Skipped ready mail — not a fresh publish. " + reason, sendAlert: false);
+                    return;
+                }
+            }
+
             var subject = ready
                 ? _application + " deployment done on IIS"
                 : _application + " deployment started on IIS";
@@ -367,21 +400,88 @@ namespace Homeocentrum.Niga.API.Domain.Logging
         }
 
         /// <summary>
-        /// IIS app-pool stop / recycle mail, sent from ApplicationStopping. Waits a few seconds at most because
-        /// ANCM gives an out-of-process app about 10 seconds to exit.
+        /// IIS app-pool stop mail. With OnlyOnFreshPublish, mails only when newer binaries are already on disk
+        /// (publish copied files before recycle). Idle recycle and config-only restarts do not mail.
         /// </summary>
         public static void SendStopNotice()
         {
             if (!IsDeployNoticeEnabled || !IsIisHosted)
                 return;
+            if (DeployNoticeOnlyOnFreshPublish && !IsStopDueToPublish(out var reason))
+            {
+                Write("app", "INFO", "DeployNotice", "Skipped stop mail — no publish on disk. " + reason, sendAlert: false);
+                return;
+            }
             var uptime = DateTime.Now - Process.GetCurrentProcess().StartTime;
             var subject = _application + " stopping on IIS";
             SendToRecipients(subject, OpsHtml(subject, new Dictionary<string, string>
             {
-                ["What"] = "The API process is shutting down (app pool stop, recycle, IIS stop, deploy, or server restart).",
+                ["What"] = "The API process is shutting down after new files were published (or OnlyOnFreshPublish is off).",
                 ["Uptime"] = $"{(int)uptime.TotalHours}h {uptime.Minutes}m",
                 ["Pool"] = Environment.GetEnvironmentVariable("APP_POOL_ID") ?? "",
             }), "DeployNotice", TimeSpan.FromSeconds(7));
+        }
+
+        /// <summary>True when the entry assembly on disk was written within FreshPublishMaxAgeMinutes.</summary>
+        private static bool IsFreshPublish(out string reason)
+        {
+            reason = "";
+            try
+            {
+                var path = HostAssemblyPath();
+                if (path == null)
+                {
+                    reason = "No entry assembly path.";
+                    return false;
+                }
+                var written = File.GetLastWriteTimeUtc(path);
+                var age = DateTime.UtcNow - written;
+                reason = "DLL " + path + " written " + written.ToLocalTime().ToString("dd-MMM-yyyy HH:mm:ss")
+                    + " (age " + (int)age.TotalMinutes + "m, max " + FreshPublishMaxAgeMinutes + "m).";
+                return age >= TimeSpan.Zero && age <= TimeSpan.FromMinutes(FreshPublishMaxAgeMinutes);
+            }
+            catch (Exception ex)
+            {
+                reason = ex.Message;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// True when the DLL on disk is newer than this process start — typical of publish-then-recycle
+        /// while the old worker is still exiting.
+        /// </summary>
+        private static bool IsStopDueToPublish(out string reason)
+        {
+            reason = "";
+            try
+            {
+                var path = HostAssemblyPath();
+                if (path == null)
+                {
+                    reason = "No entry assembly path.";
+                    return false;
+                }
+                var written = File.GetLastWriteTimeUtc(path);
+                var started = Process.GetCurrentProcess().StartTime.ToUniversalTime();
+                reason = "DLL written " + written.ToLocalTime().ToString("dd-MMM-yyyy HH:mm:ss")
+                    + "; process started " + started.ToLocalTime().ToString("dd-MMM-yyyy HH:mm:ss") + ".";
+                // Small skew: file must be clearly newer than when this worker started.
+                return written > started.AddSeconds(15);
+            }
+            catch (Exception ex)
+            {
+                reason = ex.Message;
+                return false;
+            }
+        }
+
+        private static string? HostAssemblyPath()
+        {
+            var path = Assembly.GetEntryAssembly()?.Location;
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                path = typeof(AppFileLog).Assembly.Location;
+            return string.IsNullOrWhiteSpace(path) || !File.Exists(path) ? null : path;
         }
 
         /// <summary>

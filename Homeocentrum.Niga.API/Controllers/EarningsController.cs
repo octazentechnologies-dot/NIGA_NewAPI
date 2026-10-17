@@ -45,6 +45,11 @@ public class EarningsController : ControllerBase
     public Task<IActionResult> Payouts([FromQuery] DateTime? from, [FromQuery] DateTime? to)
         => Done(_s4.DoctorPayoutHistoryAsync(from, to, Caller()));
 
+    /// <summary>BE-PMT-004 alias — same as GET /api/Invoices/ByPayment/{paymentOrderId}.</summary>
+    [HttpGet("/api/Earnings/Invoices/{paymentOrderId:long}/Pdf")]
+    public Task<IActionResult> InvoicePdf(long paymentOrderId)
+        => Done(_s4.GetOrCreateInvoiceAsync(paymentOrderId, Caller(), false));
+
     private Task<IActionResult> Done(Task<S4ActionResult> work) => this.Respond(work, _logger);
     private S4Caller Caller() => this.S4Caller(_context);
 }

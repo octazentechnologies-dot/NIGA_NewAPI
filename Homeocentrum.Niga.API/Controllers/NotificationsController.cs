@@ -34,7 +34,15 @@ public class NotificationsController : ControllerBase
     public Task<IActionResult> SendNote([FromBody] NotificationSendRequest request) => Done(_s5.SendNotificationAsync(request, Caller()));
 
     [HttpGet("/api/Notifications")]
-    public Task<IActionResult> Notes() => Done(_s5.ListNotificationsAsync(Caller()));
+    public Task<IActionResult> Notes([FromQuery] int? pageNumber, [FromQuery] int? pageSize)
+    {
+        if (pageNumber.HasValue || pageSize.HasValue)
+            return Done(_s5.ListNotificationsPagedAsync(Caller(), pageNumber ?? 1, pageSize ?? 20));
+        return Done(_s5.ListNotificationsAsync(Caller()));
+    }
+
+    [HttpGet("/api/Notifications/UnreadCount")]
+    public Task<IActionResult> UnreadCount() => Done(_s5.UnreadNotificationCountAsync(Caller()));
 
     [HttpPatch("/api/Notifications/{id:long}")]
     public Task<IActionResult> PatchNote(long id, [FromQuery] bool isRead = true) => Done(_s5.PatchNotificationAsync(id, isRead, Caller()));

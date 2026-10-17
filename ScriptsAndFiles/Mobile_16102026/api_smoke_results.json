@@ -1,0 +1,87 @@
+﻿[
+    {
+        "Test":  "AppConfig.supportEmail",
+        "Pass":  true,
+        "Detail":  "support@Homeocentrum.com"
+    },
+    {
+        "Test":  "AppConfig.supportPhone",
+        "Pass":  true,
+        "Detail":  "+91-776 804 6064"
+    },
+    {
+        "Test":  "AppConfig.razorpayKeyId",
+        "Pass":  true,
+        "Detail":  "set=True"
+    },
+    {
+        "Test":  "Directory.search",
+        "Pass":  true,
+        "Detail":  "total=1 firstId=4 photo=False"
+    },
+    {
+        "Test":  "FollowUp.Reopen",
+        "Pass":  true,
+        "Detail":  "{\"success\":true,\"data\":{\"followUpTaskId\":2,\"status\":\"OPEN\"}}"
+    },
+    {
+        "Test":  "FollowUp.Complete",
+        "Pass":  true,
+        "Detail":  "{\"success\":true,\"data\":{\"followUpTaskId\":2,\"status\":\"DONE\"}}"
+    },
+    {
+        "Test":  "ApptsRange.teleSessionIdField",
+        "Pass":  true,
+        "Detail":  "count=92"
+    },
+    {
+        "Test":  "ApptsByDate.GET",
+        "Pass":  false,
+        "Detail":  "type=Object[] count=0"
+    },
+    {
+        "Test":  "Context.teleSessionIdField",
+        "Pass":  true,
+        "Detail":  "appId=27257 teleSessionId= teleStatus="
+    },
+    {
+        "Test":  "CareLink.expiry",
+        "Pass":  true,
+        "Detail":  "expiry=2026-10-17T15:00:27.86"
+    },
+    {
+        "Test":  "CareLink.Package",
+        "Pass":  true,
+        "Detail":  "status=OPEN sections=0"
+    },
+    {
+        "Test":  "CareLink.InfoRequest",
+        "Pass":  true,
+        "Detail":  "id=3"
+    },
+    {
+        "Test":  "Erx.Remedies",
+        "Pass":  true,
+        "Detail":  "first=Arsenicum album [Ars.]"
+    },
+    {
+        "Test":  "Erx.Potencies",
+        "Pass":  true,
+        "Detail":  "count=7"
+    },
+    {
+        "Test":  "Notifications.type",
+        "Pass":  true,
+        "Detail":  "type=system"
+    },
+    {
+        "Test":  "Doctor.SupportTickets",
+        "Pass":  true,
+        "Detail":  "count=25"
+    },
+    {
+        "Test":  "Earnings.Payouts",
+        "Pass":  true,
+        "Detail":  "count=1"
+    }
+]

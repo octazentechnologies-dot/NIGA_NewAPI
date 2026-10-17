@@ -124,11 +124,24 @@ namespace Homeocentrum.Niga.API.Controllers
                         roleEntity.RoleName,
                         doctorId);
 
+                    // Prefer Doctor name parts (includes MiddleName) when this login is a practitioner.
+                    var firstName = doctorEntity?.FirstName ?? userEntity.FirstName;
+                    var middleName = doctorEntity?.MiddleName;
+                    var lastName = doctorEntity?.LastName ?? userEntity.LastName;
+                    var displayFullName = string.Join(" ", new[] { firstName, middleName, lastName }
+                        .Where(p => !string.IsNullOrWhiteSpace(p))
+                        .Select(p => p!.Trim()));
+
                     var userData = new AuthModel
                     {
                         IsSuperUser = roleEntity.RoleId == 1,
                         UserId = userEntity.UserId,
-                        UserName = $"{userEntity.FirstName} {userEntity.LastName}".Trim(),
+                        UserName = displayFullName.Length > 0
+                            ? displayFullName
+                            : (userEntity.UserName ?? "").Trim(),
+                        FirstName = firstName ?? "",
+                        MiddleName = string.IsNullOrWhiteSpace(middleName) ? null : middleName.Trim(),
+                        LastName = lastName ?? "",
                         Role = roleEntity.RoleName,
                         RoleId = userEntity.RoleId,
                         FirmIds = userEntity.FirmIds,
@@ -341,17 +354,25 @@ namespace Homeocentrum.Niga.API.Controllers
                     .FirstOrDefaultAsync();
                 if (string.IsNullOrWhiteSpace(roleName))
                     return Unauthorized(new { success = false, code = "ACCOUNT_INACTIVE", message = "User role not found." });
-                var doctorId = await _context.Doctors.AsNoTracking()
+                var doctorRow = await _context.Doctors.AsNoTracking()
                     .Where(d => d.UserId == userEntity.UserId && !d.DeleteStatus)
-                    .Select(d => (int?)d.DoctorId)
+                    .Select(d => new { d.DoctorId, d.FirstName, d.MiddleName, d.LastName })
                     .FirstOrDefaultAsync();
+                var doctorId = doctorRow?.DoctorId;
                 token = await _tokenService.CreateToken(userEntity, 7 * 24 * 60, roleName, doctorId);
+                var refreshFirst = doctorRow?.FirstName ?? userEntity.FirstName;
+                var refreshMiddle = doctorRow?.MiddleName;
+                var refreshLast = doctorRow?.LastName ?? userEntity.LastName;
+                var refreshFull = string.Join(" ", new[] { refreshFirst, refreshMiddle, refreshLast }
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Select(p => p!.Trim()));
                 user = new
                 {
                     userId = userEntity.UserId,
-                    userName = userEntity.UserName,
-                    firstName = userEntity.FirstName,
-                    lastName = userEntity.LastName,
+                    userName = refreshFull.Length > 0 ? refreshFull : userEntity.UserName,
+                    firstName = refreshFirst,
+                    middleName = string.IsNullOrWhiteSpace(refreshMiddle) ? null : refreshMiddle.Trim(),
+                    lastName = refreshLast,
                     role = roleName,
                     roleId = userEntity.RoleId,
                     doctorId

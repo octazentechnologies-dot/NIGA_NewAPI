@@ -9,6 +9,7 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public long UserId { get; set; }
         public string UserName { get; set; }
         public string FirstName { get; set; }
+        public string? MiddleName { get; set; }
         public string LastName { get; set; }
         public bool IsSuperUser { get; set; }
         public string  Role { get; set; }
