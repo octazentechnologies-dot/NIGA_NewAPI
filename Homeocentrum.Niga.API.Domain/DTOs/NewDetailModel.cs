@@ -66,6 +66,7 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string NewsDate { get; set; }
         public string NewsHeading { get; set; }
         public string NewsSubHeading { get; set; }
+        public string NewsCategory { get; set; }
 
     }
 

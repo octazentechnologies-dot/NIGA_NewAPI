@@ -22,28 +22,28 @@ namespace Homeocentrum.Niga.API.Domain.Business.Interface
         /// <param name=""></param>
         /// <returns></returns>
         PaginationResult GetSubSectionBySectionIdAndQueryString(int sectionId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetDrugSystem(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetDrugGroup(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetDrugSystem(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetDrugGroup(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
         PaginationResult GetAllopathicDrug(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetLanguage(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetLanguage(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
         PaginationResult GetQuestionSections(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetQuestionGroupExistance(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetQuestionSubGroup(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetQuestionGroupExistance(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel, int? questionGroupId = null, int? questionSectionId = null);
+        PaginationResult GetQuestionSubGroup(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel, int? questionSubgroupId = null, int? questionGroupId = null, int? questionSectionId = null);
         PaginationResult GetAuthor(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
         PaginationResult GetRemedies(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetMateriaMedica(int authorId, int remedyId, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetMateriaMedicaHead(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetIntensities(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetSections(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetDiagnosisSystem(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetBodyParts(int sectionId, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetMateriaMedica(int authorId, int remedyId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetMateriaMedicaHead(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetIntensities(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetSections(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetDiagnosisSystem(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetBodyParts(int sectionId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
         PaginationResult GetClinicalQuestionBodyPartList(int questionGroupId, int questionSubgroupId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetDiagnosisTherapeuticsDetails(int diagonosisId, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetDiagnosisTherapeuticsDetails(int diagonosisId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
         PaginationResult GetDiagnosis(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetPatientLabTests(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetPatientLabTests(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
         PaginationResult GetUser(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetAllNewsDetails(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetAllBlogDetail(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetAllNewsDetails(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetAllBlogDetail(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
         PaginationResult GetSubSectionForRubric(int SectionId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
         PaginationResult GetRepertorizarionRemedyForAccordion(int SectionId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
     }
