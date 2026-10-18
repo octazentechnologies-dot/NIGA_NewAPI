@@ -4,6 +4,8 @@ using System.Threading;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
+using Homeocentrum.Niga.API.Domain.Configuration;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Interfaces;
@@ -13,17 +15,31 @@ namespace Homeocentrum.Niga.API.Domain.Repositories;
 
 /// <summary>
 /// S5 Week 5 — SMS log, notifications, receipt email, and clinic reports.
-/// Provider calls run only when the matching key is present in appsettings.json.
+/// SMS goes through <see cref="ISmsSender"/> (Twilio / Msg91 from Sms:* appsettings).
 /// </summary>
 public partial class S5Week5Service : IS5Week5Service
 {
     private readonly NIGACentrumContext _context;
     private readonly IConfiguration _config;
+    private readonly ISmsSender _sms;
+    private readonly ISmsTemplateRenderer _templates;
+    private readonly IPushNotificationSender _push;
+    private readonly SmsOptions _smsOptions;
 
-    public S5Week5Service(NIGACentrumContext context, IConfiguration config)
+    public S5Week5Service(
+        NIGACentrumContext context,
+        IConfiguration config,
+        ISmsSender sms,
+        ISmsTemplateRenderer templates,
+        IPushNotificationSender push,
+        IOptions<SmsOptions> smsOptions)
     {
         _context = context;
         _config = config;
+        _sms = sms;
+        _templates = templates;
+        _push = push;
+        _smsOptions = smsOptions.Value ?? new SmsOptions();
     }
 
     public Task<S4ActionResult> ListSmsTemplatesAsync(S4Caller caller) => Guard(async () =>
@@ -75,12 +91,9 @@ public partial class S5Week5Service : IS5Week5Service
         var code = (request?.TemplateCode ?? "").Trim();
         var body = (request?.Body ?? "").Trim();
         if (body.Length == 0 && code.Length > 0)
-        {
-            var template = await _context.Database.SqlQuery<SmsTemplateRow>($@"
-                SELECT SmsTemplateId, Code, Body, IsActive, CreatedAt
-                FROM dbo.SmsTemplate WHERE Code = {code} AND IsActive = 1").FirstOrDefaultAsync();
-            body = template?.Body ?? "";
-        }
+            body = await _templates.RenderAsync(code, request?.Tokens);
+        else if (body.Length > 0 && request?.Tokens != null)
+            body = SmsTemplateRenderer.ApplyTokens(body, request.Tokens);
         if (body.Length == 0)
             return S4ActionResult.Fail(400, "VALIDATION", "Body or an active template code is required.");
         if (caller.DoctorId.HasValue && code.Length > 0)
@@ -93,20 +106,22 @@ public partial class S5Week5Service : IS5Week5Service
                 return S4ActionResult.Fail(409, "EVENT_OFF", "This doctor has turned off SMS for that event.");
         }
 
-        var status = "LOGGED";
-        var providerId = "";
-        var authKey = _config["Sms:AuthKey"];
-        var endpoint = _config["Sms:Endpoint"];
-        if (!string.IsNullOrWhiteSpace(authKey) && !string.IsNullOrWhiteSpace(endpoint))
-        {
-            status = await PostProviderAsync(endpoint, authKey, mobile, body) ? "SENT" : "FAILED";
-            providerId = status == "SENT" ? "provider" : "";
-        }
+        // Real send via ConfigurableSmsSender (Twilio when Sms:Provider=Twilio).
+        var sent = await _sms.SendAsync(mobile, body);
+        var status = sent ? "SENT" : (SmsOtpPolicy.RealSmsLive(_smsOptions) ? "FAILED" : "LOGGED");
+        var providerId = sent ? (_smsOptions.Provider ?? "Twilio") : "";
 
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.SmsMessageLog (TemplateCode, Mobile, Body, Status, ProviderMessageId)
             VALUES ({code}, {mobile}, {body}, {status}, {providerId})");
-        return S4ActionResult.Ok(new { success = true, status, mobile });
+        return S4ActionResult.Ok(new
+        {
+            success = true,
+            status,
+            delivered = sent,
+            mobile,
+            message = sent ? "SMS sent." : "SMS was not accepted by the provider. Check Twilio logs."
+        });
     });
 
     public Task<S4ActionResult> SmsHistoryAsync(S4Caller caller) => Guard(async () =>
@@ -169,9 +184,12 @@ public partial class S5Week5Service : IS5Week5Service
         if (token.Length < 8)
             return S4ActionResult.Fail(400, "VALIDATION", "A device token is required.");
         if (token.Length > 512) token = token.Substring(0, 512);
-        var platform = (request?.Platform ?? "web").Trim().ToLowerInvariant();
-        if (platform != "android" && platform != "ios" && platform != "web")
-            platform = "web";
+        var deviceType = DeviceTypeNormalizer.Normalize(
+            !string.IsNullOrWhiteSpace(request?.DeviceType) ? request!.DeviceType : request?.Platform);
+        var platform = deviceType.Equals("iOS", StringComparison.OrdinalIgnoreCase) ? "ios"
+            : deviceType.Equals("Android", StringComparison.OrdinalIgnoreCase) ? "android"
+            : "web";
+        var now = DateTime.UtcNow;
         var existing = await _context.Database.SqlQuery<CountRow>($@"
             SELECT COUNT(1) AS Value FROM dbo.DeviceToken
             WHERE UserId = {caller.UserId} AND Token = {token}").FirstAsync();
@@ -187,7 +205,34 @@ public partial class S5Week5Service : IS5Week5Service
                 INSERT INTO dbo.DeviceToken (UserId, Token, Platform)
                 VALUES ({caller.UserId}, {token}, {platform})");
         }
-        return S4ActionResult.Ok(new { success = true, platform });
+
+        // Canonical store for FCM send + logout clear.
+        var pushRow = await _context.DevicePushTokens
+            .FirstOrDefaultAsync(d => d.UserId == caller.UserId && d.Token == token && !d.DeleteStatus);
+        if (pushRow == null)
+        {
+            _context.DevicePushTokens.Add(new Master.DevicePushToken
+            {
+                UserId = caller.UserId,
+                Platform = "FCM",
+                DeviceType = deviceType,
+                Token = token,
+                DeviceId = string.IsNullOrWhiteSpace(request?.DeviceId) ? null : request!.DeviceId!.Trim(),
+                CreatedAt = now,
+                UpdatedAt = now,
+                DeleteStatus = false
+            });
+        }
+        else
+        {
+            pushRow.DeviceType = deviceType;
+            pushRow.Platform = "FCM";
+            pushRow.UpdatedAt = now;
+            if (!string.IsNullOrWhiteSpace(request?.DeviceId))
+                pushRow.DeviceId = request!.DeviceId!.Trim();
+        }
+        await _context.SaveChangesAsync();
+        return S4ActionResult.Ok(new { success = true, platform, deviceType });
     });
 
     public Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request) => Guard(async () =>
@@ -663,47 +708,11 @@ public partial class S5Week5Service : IS5Week5Service
         return (row?.Value ?? "").Trim();
     }
 
-    /// <summary>COM-03.04 — FCM for android/web tokens when a server key is set. iOS stays logged until an APNs key exists.</summary>
+    /// <summary>COM-03.04 — FCM via the shared Firebase sender (Website / Android / iOS).</summary>
     private async Task<string> DeliverPushAsync(long userId, string title, string body)
     {
-        var serverKey = _config["Fcm:ServerKey"];
-        var tokens = await _context.Database.SqlQuery<DeviceRow>($@"
-            SELECT Token, Platform FROM dbo.DeviceToken WHERE UserId = {userId}").ToListAsync();
-        if (tokens.Count == 0 || string.IsNullOrWhiteSpace(serverKey))
-            return "LOGGED";
-        var attempted = 0;
-        var sent = 0;
-        foreach (var token in tokens)
-        {
-            var platform = (token.Platform ?? "").ToLowerInvariant();
-            if (platform == "ios")
-                continue;
-            attempted++;
-            if (await PostFcmAsync(serverKey, token.Token, title, body))
-                sent++;
-        }
-        if (attempted == 0)
-            return "LOGGED";
-        return sent > 0 ? "SENT" : "FAILED";
-    }
-
-    private static async Task<bool> PostFcmAsync(string serverKey, string token, string title, string body)
-    {
-        try
-        {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "key=" + serverKey);
-            var payload = "{\"to\":\"" + token.Replace("\"", "") + "\",\"notification\":{\"title\":\""
-                + title.Replace("\"", "") + "\",\"body\":\"" + body.Replace("\"", "") + "\"}}";
-            var response = await client.PostAsync(
-                "https://fcm.googleapis.com/fcm/send",
-                new StringContent(payload, Encoding.UTF8, "application/json"));
-            return response.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
+        var push = await _push.SendToUserAsync(userId, title, body);
+        return push.Status.ToUpperInvariant();
     }
 
     private static async Task<bool> PostProviderAsync(string endpoint, string authKey, string mobile, string body)

@@ -4,9 +4,11 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Homeocentrum.Niga.API.Domain.Configuration;
 using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Master;
+using Homeocentrum.Niga.API.Domain.Security;
 using Homeocentrum.Niga.API.Domain.Services;
 
 namespace Homeocentrum.Niga.API.Domain.Repositories;
@@ -255,7 +257,12 @@ public partial class S4Week4Service
             .FirstOrDefaultAsync();
         var code = await IssueOtpAsync("PayoutApprove", "Payout", entityId, caller.UserId);
         var amountText = payout.Amount.ToString("0.00", CultureInfo.InvariantCulture);
-        var text = $"Homeocentrum payout #{payoutId} approval code: {code}. Amount INR {amountText}. Valid {PayoutOtpTtlMinutes} minutes. Do not share.";
+        var text = await _templates.RenderAsync("PAYOUT_OTP", new Dictionary<string, string?>
+        {
+            ["otp"] = code,
+            ["amount"] = "INR " + amountText,
+            ["minutes"] = PayoutOtpTtlMinutes.ToString()
+        });
 
         var channels = new List<string>();
         var delivered = false;
@@ -267,21 +274,36 @@ public partial class S4Week4Service
         }
         if (!string.IsNullOrWhiteSpace(user?.MobileNo))
         {
-            await _outbox.EnqueueAsync("SMS", "PayoutApproveOtp", user.MobileNo.Trim(), text, "QUEUED");
+            // Send immediately via Twilio (ISmsSender). Also queue so outbox history stays complete.
+            var sms = await _sms.SendAsync(user.MobileNo.Trim(), text);
+            delivered = delivered || sms.Accepted;
+            if (!string.IsNullOrWhiteSpace(sms.EmbeddedOtp))
+                await SyncOtpHashAsync("PayoutApprove", "Payout", entityId, sms.EmbeddedOtp!);
             channels.Add("SMS " + MaskOtpDestination(user.MobileNo));
+            await _outbox.EnqueueAsync(
+                "SMS",
+                "PayoutApproveOtp",
+                user.MobileNo.Trim(),
+                text,
+                sms.Accepted ? "SENT" : "QUEUED",
+                sms.Accepted ? null : "Immediate Twilio send did not confirm; worker will retry.");
         }
 
         var sentTo = channels.Count == 0 ? "no email or mobile on your user" : string.Join(" and ", channels);
-        return Ok(new
+        var payload = new Dictionary<string, object?>
         {
-            success = true,
-            message = delivered ? $"OTP sent to {sentTo}." : $"OTP created. Delivery to {sentTo} did not confirm; use the code shown.",
-            delivered,
-            sentTo,
-            expiresInMinutes = PayoutOtpTtlMinutes,
-            resendAfterSeconds = PayoutOtpResendSeconds,
-            devCode = code
-        });
+            ["success"] = true,
+            ["message"] = delivered
+                ? $"OTP sent to {sentTo}."
+                : $"OTP created. Delivery to {sentTo} did not confirm.",
+            ["delivered"] = delivered,
+            ["sentTo"] = sentTo,
+            ["expiresInMinutes"] = PayoutOtpTtlMinutes,
+            ["resendAfterSeconds"] = PayoutOtpResendSeconds
+        };
+        var dev = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
+        if (dev != null) payload["devCode"] = dev;
+        return Ok(payload);
     }
 
     private static string MaskOtpDestination(string value)
@@ -471,7 +493,47 @@ public partial class S4Week4Service
             SELECT COUNT(1) AS Value FROM dbo.Payee WHERE PayeeId = {payeeId}").FirstAsync();
         if (exists.Value == 0) return Fail(404, "NOT_FOUND", "Payee not found.");
         var code = await IssueOtpAsync("PayeeBank", "Payee", payeeId.ToString(), caller.UserId);
-        return Ok(new { success = true, message = "OTP created for the bank change.", devCode = code });
+        var user = await _context.UserMasters.AsNoTracking()
+            .Where(u => u.UserId == caller.UserId)
+            .Select(u => new { u.MobileNo })
+            .FirstOrDefaultAsync();
+        var text = await _templates.RenderAsync("PAYEE_OTP", new Dictionary<string, string?>
+        {
+            ["otp"] = code,
+            ["payeeId"] = payeeId.ToString(),
+            ["minutes"] = "10"
+        });
+        var delivered = false;
+        if (!string.IsNullOrWhiteSpace(user?.MobileNo))
+        {
+            var sms = await _sms.SendAsync(user.MobileNo.Trim(), text);
+            delivered = sms.Accepted;
+            if (!string.IsNullOrWhiteSpace(sms.EmbeddedOtp))
+                await SyncOtpHashAsync("PayeeBank", "Payee", payeeId.ToString(), sms.EmbeddedOtp!);
+        }
+        var payload = new Dictionary<string, object?>
+        {
+            ["success"] = true,
+            ["delivered"] = delivered,
+            ["message"] = delivered
+                ? "OTP sent by SMS. Enter the code from your phone."
+                : "OTP created but SMS delivery did not confirm."
+        };
+        var dev = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
+        if (dev != null) payload["devCode"] = dev;
+        return Ok(payload);
+    }
+
+    private async Task SyncOtpHashAsync(string action, string entityType, string entityId, string plainCode)
+    {
+        var hash = SecurityTokenHash.Sha256Hex(plainCode);
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.OtpChallenge
+            SET OtpHash = {hash}
+            WHERE OtpChallengeId = (
+                SELECT TOP 1 OtpChallengeId FROM dbo.OtpChallenge
+                WHERE Action = {action} AND EntityType = {entityType} AND EntityId = {entityId} AND VerifiedAt IS NULL
+                ORDER BY OtpChallengeId DESC)");
     }
 
     public async Task<S4ActionResult> ClinicCollectionsAsync(DateTime? from, DateTime? to, int? doctorId, S4Caller caller)

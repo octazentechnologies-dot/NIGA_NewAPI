@@ -155,6 +155,30 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 };
                 _context.PatientAppointments.Add(patientAppEntity);
                 _context.SaveChanges();
+                try
+                {
+                    var mobile = _context.Patients.AsNoTracking()
+                        .Where(p => p.PatientId == patientAppEntity.PatientId)
+                        .Select(p => p.MobileNo)
+                        .FirstOrDefault();
+                    var doctor = _context.Doctors.AsNoTracking()
+                        .Where(d => d.DoctorId == patientAppEntity.DoctorId)
+                        .Select(d => new { d.FirstName, d.MiddleName, d.LastName })
+                        .FirstOrDefault();
+                    var doctorLabel = doctor == null
+                        ? "your doctor"
+                        : string.Join(" ", new[] { doctor.FirstName, doctor.MiddleName, doctor.LastName }
+                            .Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
+                    if (string.IsNullOrWhiteSpace(doctorLabel)) doctorLabel = "your doctor";
+                    var dateLabel = patientAppEntity.AppointmentDate?.ToString("dd MMM yyyy") ?? "";
+                    var timeLabel = patientAppEntity.AppointmentTime?.ToString("HH:mm") ?? "";
+                    _rescheduleNotifier.NotifyConfirmAsync(mobile, false, doctorLabel, dateLabel, timeLabel)
+                        .GetAwaiter().GetResult();
+                }
+                catch
+                {
+                    // Appointment is saved; SMS must not roll back the booking.
+                }
                 return "Patient Appointment Saved Successfully";
             }
 

@@ -91,6 +91,8 @@ namespace Homeocentrum.Niga.API.Controllers
             if (daysError != null)
                 return daysError;
 
+            await ClearScheduleDatesAsync(doctor.DoctorId, request?.ClearScheduleDates);
+
             await _context.SaveChangesAsync();
             if (request?.GapMinutes != null || request?.BookingHorizonDays != null)
                 await SaveBookingRuleAsync(doctor.DoctorId, request.GapMinutes, request.BookingHorizonDays);
@@ -226,10 +228,30 @@ namespace Homeocentrum.Niga.API.Controllers
                         existing.BreakStartTime = day.BreakStartTime;
                         existing.BreakEndTime = day.BreakEndTime;
                     }
+                    else if (day.IncludeBreak == false)
+                    {
+                        existing.BreakStartTime = null;
+                        existing.BreakEndTime = null;
+                    }
                 }
             }
 
             return null;
+        }
+
+        private async Task ClearScheduleDatesAsync(int doctorId, List<DateTime>? dates)
+        {
+            if (dates == null || dates.Count == 0)
+                return;
+            var clear = dates.Select(d => d.Date).Distinct().ToList();
+            var from = clear.Min();
+            var to = clear.Max();
+            var candidates = await _context.DoctorDailySchedules
+                .Where(s => s.DoctorId == doctorId && s.ScheduleDate >= from && s.ScheduleDate <= to)
+                .ToListAsync();
+            var rows = candidates.Where(s => clear.Contains(s.ScheduleDate.Date)).ToList();
+            if (rows.Count > 0)
+                _context.DoctorDailySchedules.RemoveRange(rows);
         }
 
         private IActionResult? BreakError(AvailabilityDayHours day, DateTime scheduleDate)
@@ -272,18 +294,32 @@ namespace Homeocentrum.Niga.API.Controllers
 
         private async Task SaveBookingRuleAsync(int doctorId, int? gapMinutes, int? horizonDays)
         {
-            if (gapMinutes is < 0 or > 240 || horizonDays is < 1 or > 90)
+            if (gapMinutes is < 0 or > 240)
+                gapMinutes = null;
+            if (horizonDays is < 1 or > 90)
+                horizonDays = null;
+            if (gapMinutes == null && horizonDays == null)
                 return;
+
             await EnsureBookingRuleTableAsync();
-            var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                UPDATE dbo.DoctorBookingRule
-                SET GapMinutes = {gapMinutes}, BookingHorizonDays = {horizonDays}
-                WHERE DoctorId = {doctorId}");
-            if (updated == 0)
+            var existing = await _context.Database.SqlQuery<BookingRuleRow>($@"
+                SELECT GapMinutes, BookingHorizonDays
+                FROM dbo.DoctorBookingRule
+                WHERE DoctorId = {doctorId}").FirstOrDefaultAsync();
+            var nextGap = gapMinutes ?? existing?.GapMinutes;
+            var nextHorizon = horizonDays ?? existing?.BookingHorizonDays;
+            if (existing == null)
             {
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
                     INSERT INTO dbo.DoctorBookingRule (DoctorId, GapMinutes, BookingHorizonDays)
-                    VALUES ({doctorId}, {gapMinutes}, {horizonDays})");
+                    VALUES ({doctorId}, {nextGap}, {nextHorizon})");
+            }
+            else
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE dbo.DoctorBookingRule
+                    SET GapMinutes = {nextGap}, BookingHorizonDays = {nextHorizon}
+                    WHERE DoctorId = {doctorId}");
             }
         }
 

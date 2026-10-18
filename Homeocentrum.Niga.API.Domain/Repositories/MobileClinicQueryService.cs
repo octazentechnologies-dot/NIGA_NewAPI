@@ -2,6 +2,7 @@ using System.Threading;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Interfaces;
+using Homeocentrum.Niga.API.Domain.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -20,12 +21,24 @@ public class MobileClinicQueryService
     private readonly NIGACentrumContext _context;
     private readonly IHttpContextAccessor _http;
     private readonly IConfiguration _config;
+    private readonly IAppointmentRescheduleNotifier _notify;
+    private readonly ISmsTemplateRenderer _templates;
+    private readonly ISmsSender _sms;
 
-    public MobileClinicQueryService(NIGACentrumContext context, IHttpContextAccessor http, IConfiguration config)
+    public MobileClinicQueryService(
+        NIGACentrumContext context,
+        IHttpContextAccessor http,
+        IConfiguration config,
+        IAppointmentRescheduleNotifier notify,
+        ISmsTemplateRenderer templates,
+        ISmsSender sms)
     {
         _context = context;
         _http = http;
         _config = config;
+        _notify = notify;
+        _templates = templates;
+        _sms = sms;
     }
 
     public async Task<S4ActionResult> DoctorFollowUpsAsync(S4Caller caller, string? status, DateTime? from, DateTime? to)
@@ -371,6 +384,22 @@ public class MobileClinicQueryService
         appt.Status = next;
         appt.QueuePosition = ahead + 1;
         await _context.SaveChangesAsync();
+        try
+        {
+            var mobile = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == appt.PatientId)
+                .Select(p => p.MobileNo)
+                .FirstOrDefaultAsync();
+            var doctor = await DoctorLabelAsync(appt.DoctorId);
+            var body = await _templates.RenderAsync("CHECK_IN", new Dictionary<string, string?>
+            {
+                ["doctor"] = doctor,
+                ["status"] = appt.Status
+            });
+            if (!string.IsNullOrWhiteSpace(mobile))
+                await _sms.SendAsync(mobile, body);
+        }
+        catch { /* check-in already saved */ }
         // readyAt / ETA not stored in clinic queue module yet (BE-007) — always null.
         return Ok(new
         {
@@ -750,6 +779,21 @@ public class MobileClinicQueryService
             FROM dbo.AppointmentRequest r
             WHERE r.PatientId = {caller.PatientId.Value}
             ORDER BY r.AppointmentRequestId DESC").FirstAsync();
+        try
+        {
+            var mobile = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == caller.PatientId.Value)
+                .Select(p => p.MobileNo)
+                .FirstOrDefaultAsync();
+            var body = await _templates.RenderAsync("APPT_REQUEST", new Dictionary<string, string?>
+            {
+                ["date"] = request.RequestedDate!.Value.ToString("dd MMM yyyy"),
+                ["time"] = request.RequestedTime!.Trim()
+            });
+            if (!string.IsNullOrWhiteSpace(mobile))
+                await _sms.SendAsync(mobile, body);
+        }
+        catch { /* request already saved */ }
         return Ok(new { appointmentRequestId = created.AppointmentRequestId, status = "PENDING" });
     }
 
@@ -893,6 +937,20 @@ public class MobileClinicQueryService
             SET Status = N'ACCEPTED', PatientAppId = {appt.PatientAppId},
                 RequestedDate = {row.ProposedDate.Value.Date}, RequestedTime = {row.ProposedTime}
             WHERE AppointmentRequestId = {id}");
+        try
+        {
+            var mobile = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == caller.PatientId.Value)
+                .Select(p => p.MobileNo)
+                .FirstOrDefaultAsync();
+            await _notify.NotifyConfirmAsync(
+                mobile,
+                false,
+                row.DoctorName ?? "your doctor",
+                row.ProposedDate.Value.ToString("dd MMM yyyy"),
+                row.ProposedTime!);
+        }
+        catch { /* booking already saved */ }
         return Ok(new { appointmentRequestId = id, status = "ACCEPTED", patientAppId = appt.PatientAppId });
     }
 
@@ -941,6 +999,21 @@ public class MobileClinicQueryService
             UPDATE dbo.AppointmentRequest
             SET Status = N'ACCEPTED', PatientAppId = {appt.PatientAppId}
             WHERE AppointmentRequestId = {id}");
+        try
+        {
+            var mobile = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == row.PatientId)
+                .Select(p => p.MobileNo)
+                .FirstOrDefaultAsync();
+            var doctorLabel = await DoctorLabelAsync(caller.DoctorId.Value);
+            await _notify.NotifyConfirmAsync(
+                mobile,
+                false,
+                doctorLabel,
+                row.RequestedDate.ToString("dd MMM yyyy"),
+                row.RequestedTime);
+        }
+        catch { /* booking already saved */ }
         return Ok(new { status = "ACCEPTED", patientAppId = appt.PatientAppId });
     }
 
@@ -969,7 +1042,38 @@ public class MobileClinicQueryService
             WHERE AppointmentRequestId = {id} AND DoctorId = {caller.DoctorId.Value}
               AND Status IN (N'PENDING', N'PROPOSED')");
         if (updated == 0) return Fail(404, "NOT_FOUND", "Open request not found.");
+        try
+        {
+            var req = await LoadRequestAsync(id, caller.DoctorId.Value);
+            if (req != null)
+            {
+                var mobile = await _context.Patients.AsNoTracking()
+                    .Where(p => p.PatientId == req.PatientId)
+                    .Select(p => p.MobileNo)
+                    .FirstOrDefaultAsync();
+                var body = await _templates.RenderAsync("APPT_PROPOSED", new Dictionary<string, string?>
+                {
+                    ["date"] = date.Value.ToString("dd MMM yyyy"),
+                    ["time"] = time.Trim()
+                });
+                if (!string.IsNullOrWhiteSpace(mobile))
+                    await _sms.SendAsync(mobile, body);
+            }
+        }
+        catch { /* proposal already saved */ }
         return Ok(new { status = "PROPOSED" });
+    }
+
+    private async Task<string> DoctorLabelAsync(int doctorId)
+    {
+        var d = await _context.Doctors.AsNoTracking()
+            .Where(x => x.DoctorId == doctorId)
+            .Select(x => new { x.FirstName, x.MiddleName, x.LastName })
+            .FirstOrDefaultAsync();
+        if (d == null) return "your doctor";
+        var label = string.Join(" ", new[] { d.FirstName, d.MiddleName, d.LastName }
+            .Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
+        return string.IsNullOrWhiteSpace(label) ? "your doctor" : label;
     }
 
     public async Task<S4ActionResult> ListCareLinksAsync(S4Caller caller)

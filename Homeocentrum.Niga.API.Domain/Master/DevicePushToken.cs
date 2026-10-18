@@ -2,12 +2,18 @@ using System;
 
 namespace Homeocentrum.Niga.API.Domain.Master;
 
-/// <summary>DMO-03.02 / COM-03 — FCM or APNs device token for the JWT user.</summary>
+/// <summary>FCM device token for a login (Website / Android / iOS).</summary>
 public class DevicePushToken
 {
     public long DevicePushTokenId { get; set; }
     public long UserId { get; set; }
-    public string Platform { get; set; } = null!;
+
+    /// <summary>Legacy channel label (FCM). Prefer <see cref="DeviceType"/>.</summary>
+    public string Platform { get; set; } = "FCM";
+
+    /// <summary>Website | Android | iOS</summary>
+    public string DeviceType { get; set; } = "Website";
+
     public string Token { get; set; } = null!;
     public string? DeviceId { get; set; }
     public DateTime CreatedAt { get; set; }

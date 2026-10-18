@@ -8,6 +8,7 @@ using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Enums;
 using Homeocentrum.Niga.API.Domain.Master;
 using Homeocentrum.Niga.API.Domain.Security;
+using Homeocentrum.Niga.API.Domain.Services;
 
 namespace Homeocentrum.Niga.API.Controllers
 {
@@ -24,17 +25,20 @@ namespace Homeocentrum.Niga.API.Controllers
         private readonly IWebHostEnvironment _env;
         private readonly IPatientAppointmentService _appointments;
         private readonly IS4Week4Service _fees;
+        private readonly IAppointmentRescheduleNotifier _notify;
 
         public PublicController(
             NIGACentrumContext context,
             IWebHostEnvironment env,
             IPatientAppointmentService appointments,
-            IS4Week4Service fees)
+            IS4Week4Service fees,
+            IAppointmentRescheduleNotifier notify)
         {
             _context = context;
             _env = env;
             _appointments = appointments;
             _fees = fees;
+            _notify = notify;
         }
 
         [HttpGet("Doctors")]
@@ -438,6 +442,24 @@ namespace Homeocentrum.Niga.API.Controllers
                     INSERT INTO dbo.PublicBookingIdempotency
                         (IdempotencyKey, DoctorId, PatientMobile, BodyFingerprint, PatientAppId, BookingToken, CreatedAt)
                     VALUES ({idemKey}, {id}, {mobile}, {bodyFingerprint}, {appt.PatientAppId}, {appt.BookingToken}, SYSUTCDATETIME())");
+            }
+
+            try
+            {
+                var doctorLabel = string.Join(" ", new[] { doctor.FirstName, doctor.MiddleName, doctor.LastName }
+                    .Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
+                if (string.IsNullOrWhiteSpace(doctorLabel))
+                    doctorLabel = "your doctor";
+                await _notify.NotifyConfirmAsync(
+                    mobile,
+                    patient.IsWhatsAppOptIn == true,
+                    doctorLabel,
+                    day.ToString("dd MMM yyyy"),
+                    time.ToString("HH:mm"));
+            }
+            catch
+            {
+                // Booking is already saved; SMS failure must not fail the response.
             }
 
             return Ok(new

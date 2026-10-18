@@ -66,16 +66,20 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSingleton<ISignedFileUrlService, SignedFileUrlService>();
             // PRE-03 — Sms:Provider = Stub | Msg91 | Twilio (keys empty → stub log). OTP + appointment notices use ISmsSender.
             services.Configure<SmsOptions>(config.GetSection(SmsOptions.SectionName));
+            services.Configure<FirebaseOptions>(config.GetSection(FirebaseOptions.SectionName));
             services.Configure<TeleVideoOptions>(config.GetSection(TeleVideoOptions.SectionName));
             services.AddHttpClient("SmsVendor", client => client.Timeout = TimeSpan.FromSeconds(3));
             services.AddSingleton<INotificationOutbox, NotificationOutbox>();
             services.AddSingleton<ISmsSender, ConfigurableSmsSender>();
+            services.AddSingleton<ISmsTemplateRenderer, SmsTemplateRenderer>();
+            services.AddSingleton<ISmsOtpVerifyService, SmsOtpVerifyService>();
+            services.AddScoped<IPushNotificationSender, FirebasePushNotificationSender>();
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.StubTeleVideoVendor>();
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.AgoraTeleVideoVendor>();
             services.AddHttpClient(Homeocentrum.Niga.API.Domain.Services.Tele.HundredMsTeleVideoVendor.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.HundredMsTeleVideoVendor>();
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.ITeleVideoVendor, Homeocentrum.Niga.API.Domain.Services.Tele.ConfigurableTeleVideoVendor>();
-            // Scoped: WhatsApp Meta typed client + SMS for reschedule/cancel/waitlist/tele notices.
+            // Scoped: WhatsApp Meta typed client + SMS/push for reschedule/cancel/waitlist/tele notices.
             services.AddScoped<IAppointmentRescheduleNotifier, AppointmentRescheduleNotifier>();
             services.Configure<Homeocentrum.Niga.API.Domain.DTOs.SmtpSettingsModel>(config.GetSection("smtp"));
             services.AddScoped<IUserService, UserService>();
@@ -103,6 +107,7 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddScoped<IPatientLabEntryServices, PatientLabEntryServices>();
             services.AddScoped<ILabTestMasterServices, LabTestMasterServices>();
             services.AddScoped<IPatientService, PatientService>();
+            services.AddScoped<IPatientAccountService, PatientAccountService>();
             services.AddScoped<IBlogDetailService, BlogService>();
             services.AddScoped<INewsDetailService, NewsDetailService>();
             services.AddScoped<IPatientAppointmentService, PatientAppointmentService>();
@@ -328,6 +333,7 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddHostedService<WhatsAppBulkSendBackgroundService>();
             services.AddHostedService<SmsTemplateSeeder>();
             services.AddHostedService<SmsOutboxWorker>();
+            services.AddHostedService<AppointmentReminderWorker>();
             services.AddHostedService<DailyIssueMatrixEmailService>();
             services.AddHostedService<Logging.DiskSpaceMonitor>();
             services.AddMvc();

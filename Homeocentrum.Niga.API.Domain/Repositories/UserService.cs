@@ -131,7 +131,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     (string.IsNullOrWhiteSpace(mailError) ? "The mail server did not accept the message." : mailError);
             }
 
-            return "Registration successful. Check your email to activate the account. Directory listing stays pending until verification.";
+            return "Registration successful. Check your email to activate the account. Your profile stays hidden from Find a Doctor until you turn on Public Visibility after login (and after verification).";
         }
 
         public string AddUser(UserModel model, SmtpSettingsModel smtpSettingsModel, ref ErrorResponseModel errorResponseModel)
@@ -181,7 +181,12 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                         EmailId = userEntity.EmailId,
                         EnteredBy = userEntity.EnteredBy,
                         EnteredDate = DateTime.Now,
-                        DeleteStatus = false
+                        DeleteStatus = false,
+                        // Hidden from Find a Doctor until the doctor turns Public Visibility on after login.
+                        DirectoryVisible = false,
+                        VerificationStatus = "Pending",
+                        PracticeActivated = false,
+                        IsOnline = false
                     };
                     _context.Doctors.Add(doctorEntity);
                     _context.SaveChanges();

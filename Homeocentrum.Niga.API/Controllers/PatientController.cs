@@ -29,12 +29,18 @@ namespace Homeocentrum.Niga.API.Controllers
         IPatientService _patientService;
         private readonly NIGACentrumContext _context;
         private readonly ITokenService _tokenService;
+        private readonly IPatientAccountService _patientAccounts;
 
-        public PatientController(IPatientService patientService, NIGACentrumContext context, ITokenService tokenService)
+        public PatientController(
+            IPatientService patientService,
+            NIGACentrumContext context,
+            ITokenService tokenService,
+            IPatientAccountService patientAccounts)
         {
             _patientService = patientService;
             _context = context;
             _tokenService = tokenService;
+            _patientAccounts = patientAccounts;
         }
 
         /// <summary>
@@ -128,8 +134,49 @@ namespace Homeocentrum.Niga.API.Controllers
                     model.UserId = doctorUserId.Value;
                 }
 
-                if (!isCreate && !await CanAccessPatientByIdAsync(model.PatientID))
+                var mobileDigits = PhoneNormalizer.Digits(model.MobileNo);
+                if (!string.IsNullOrWhiteSpace(model.MobileNo) && mobileDigits.Length < 8)
+                    return BadRequest(new { success = false, message = "Mobile number is invalid." });
+
+                // Claim an existing chart (no Patient-role login yet) instead of inserting a duplicate Patient.
+                var claimedExistingChart = false;
+                if (isCreate && mobileDigits.Length >= 8)
+                {
+                    var existingLogin = await _patientAccounts.FindPatientLoginByMobileAsync(mobileDigits);
+                    if (existingLogin != null)
+                    {
+                        return Conflict(new
+                        {
+                            success = false,
+                            message = "This mobile number is already registered. The patient can sign in with OTP on the Patient app.",
+                            isUserAlreadyRegistered = true
+                        });
+                    }
+
+                    var existingChart = await _patientAccounts.FindPatientByMobileAsync(mobileDigits);
+                    if (existingChart != null)
+                    {
+                        model.PatientID = existingChart.Value.PatientId;
+                        isCreate = false;
+                        claimedExistingChart = true;
+                    }
+                }
+                else if (!isCreate && mobileDigits.Length >= 8)
+                {
+                    if (await _patientAccounts.IsPatientMobileTakenInUserMasterAsync(mobileDigits, model.PatientID))
+                    {
+                        return Conflict(new
+                        {
+                            success = false,
+                            message = "This mobile number is already registered to another patient login.",
+                            isUserAlreadyRegistered = true
+                        });
+                    }
+                }
+
+                if (!isCreate && !claimedExistingChart && !await CanAccessPatientByIdAsync(model.PatientID))
                     return PatientForbidden();
+                // Claim paths: authenticated clinic may attach a case; PatientMobile may complete profile on the chart.
 
                 var userModel = await _patientService.SavePatient(model);
                 if (
@@ -137,9 +184,13 @@ namespace Homeocentrum.Niga.API.Controllers
                     && userModel.Message.Contains("Successfully", StringComparison.OrdinalIgnoreCase)
                 )
                 {
-                    await AttachTokenForExistingMobileAsync(userModel);
-                    if (userModel.IsUserAlreadyRegistered != true && isCreate && isMobile)
-                        await CreatePatientLoginAsync(userModel);
+                    // Clinic/doctor/web and mobile onboard all get a Patient-role login when the mobile is free.
+                    if (mobileDigits.Length >= 8)
+                        await _patientAccounts.EnsurePatientLoginAsync(userModel);
+
+                    if (isAuthenticated && userModel.PatientID > 0)
+                        await EnsureDoctorCaseForPatientAsync(userModel);
+
                     return Ok(userModel);
                 }
 
@@ -688,115 +739,45 @@ namespace Homeocentrum.Niga.API.Controllers
         }
 
         /// <summary>
-        /// Token when this mobile is already on another Patient row.
+        /// When clinic onboard claims or creates a patient, ensure this doctor has a CaseEntryDetail.
         /// </summary>
-        private async Task AttachTokenForExistingMobileAsync(PatientModel model)
+        private async Task EnsureDoctorCaseForPatientAsync(PatientModel model)
         {
-            var digits = PhoneNormalizer.Digits(model.MobileNo);
-            model.IsUserAlreadyRegistered = false;
-            if (digits.Length < 8)
+            int? doctorId = model.DoctorID > 0
+                ? model.DoctorID
+                : DoctorOwnership.GetDoctorId(User);
+            if (!doctorId.HasValue && model.LoggedInUser <= 0 && model.UserId <= 0)
                 return;
 
-            var patients = await _context.Patients.AsNoTracking()
-                .Where(p => p.DeleteStatus != true && p.MobileNo != null && p.PatientId != model.PatientID)
-                .Select(p => new { p.PatientId, p.MobileNo })
-                .ToListAsync();
-            var existing = patients.FirstOrDefault(p => PhoneNormalizer.EqualsNormalized(p.MobileNo, digits));
-            if (existing == null)
-                return;
-
-            var mappedUserId = await _context.PatientUserMaps.AsNoTracking()
-                .Where(m => m.PatientId == existing.PatientId && !m.DeleteStatus)
-                .OrderByDescending(m => m.IsPrimary)
-                .Select(m => (long?)m.UserId)
-                .FirstOrDefaultAsync();
-
-            var user = mappedUserId.HasValue
-                ? await _context.UserMasters.FirstOrDefaultAsync(u => u.UserId == mappedUserId.Value && !u.DeleteStatus)
+            var doctor = doctorId.HasValue
+                ? await _context.Doctors.AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.DoctorId == doctorId.Value && d.DeleteStatus == false)
                 : null;
-            if (user == null)
+            if (doctor == null && model.LoggedInUser > 0)
             {
-                var rows = await _context.UserMasters.AsNoTracking()
-                    .Where(u => !u.DeleteStatus && u.MobileNo != null && u.IsUserActivated == true)
-                    .Select(u => new { u.UserId, u.MobileNo, u.RoleId })
-                    .ToListAsync();
-                var patientRoleId = await _context.RoleMasters.AsNoTracking()
-                    .Where(r => r.RoleName == "Patient" && !r.DeleteStatus)
-                    .Select(r => (int?)r.RoleId)
-                    .FirstOrDefaultAsync();
-                var chosen = rows
-                    .Where(u => PhoneNormalizer.EqualsNormalized(u.MobileNo, digits))
-                    .OrderByDescending(u => patientRoleId.HasValue && u.RoleId == patientRoleId.Value)
-                    .FirstOrDefault();
-                if (chosen == null)
-                    return;
-                user = await _context.UserMasters.FirstOrDefaultAsync(u => u.UserId == chosen.UserId && !u.DeleteStatus);
+                doctor = await _context.Doctors.AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.UserId == model.LoggedInUser && d.DeleteStatus == false);
             }
-            if (user == null || user.IsUserActivated != true)
+            if (doctor == null)
                 return;
 
-            // Knowing a mobile number is not proof of owning it: the caller signs in by OTP instead.
-            model.IsUserAlreadyRegistered = true;
-        }
-
-        /// <summary>
-        /// Mobile create with no existing login: add a Patient login for this mobile, link it to the new
-        /// patient as primary. No token is returned; the app signs in by OTP. Password is random.
-        /// </summary>
-        private async Task CreatePatientLoginAsync(PatientModel model)
-        {
-            var digits = PhoneNormalizer.Digits(model.MobileNo);
-            if (digits.Length < 8 || model.PatientID <= 0)
+            var hasCase = await _context.CaseEntryDetails.AnyAsync(c =>
+                c.PatientId == model.PatientID
+                && c.DoctorId == doctor.DoctorId
+                && c.DeleteStatus != true);
+            if (hasCase)
                 return;
 
-            var patientRoleId = await _context.RoleMasters.AsNoTracking()
-                .Where(r => r.RoleName == "Patient" && !r.DeleteStatus)
-                .Select(r => (int?)r.RoleId)
-                .FirstOrDefaultAsync();
-            if (!patientRoleId.HasValue)
-                return;
-
-            var userName = digits;
-            if (await _context.UserMasters.AnyAsync(u => u.UserName == userName && !u.DeleteStatus))
-                userName = $"{digits}_{model.PatientID}";
-
-            var nameParts = (model.PatientName ?? string.Empty).Trim()
-                .Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-            var email = model.Email?.Trim();
-
-            var user = new Homeocentrum.Niga.API.Domain.Master.UserMaster
+            _context.CaseEntryDetails.Add(new Homeocentrum.Niga.API.Domain.Master.CaseEntryDetail
             {
-                UserName = userName,
-                UserPassword = UserPasswordHasher.Hash(Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(24))),
-                MobileNo = digits,
-                EmailId = string.IsNullOrEmpty(email) ? null : (email.Length > 50 ? email[..50] : email),
-                FirstName = nameParts.Length > 0 ? nameParts[0] : null,
-                LastName = nameParts.Length > 1 ? nameParts[1] : null,
-                CountryId = model.CountryId > 0 ? model.CountryId : null,
-                StateId = model.StateId > 0 ? model.StateId : null,
-                RoleId = patientRoleId.Value,
-                UserStatus = true,
-                IsUserActivated = true,
-                DeleteStatus = false,
-                EnteredBy = model.EntityType?.Trim(),
-                EnteredDate = DateTime.Now
-            };
-            _context.UserMasters.Add(user);
-            await _context.SaveChangesAsync();
-
-            _context.PatientUserMaps.Add(new Homeocentrum.Niga.API.Domain.Master.PatientUserMap
-            {
-                UserId = user.UserId,
                 PatientId = model.PatientID,
-                IsPrimary = true,
-                DeleteStatus = false,
-                EnteredBy = user.UserId.ToString(),
-                EnteredDate = DateTime.UtcNow
+                DoctorId = doctor.DoctorId,
+                UserId = doctor.UserId ?? model.LoggedInUser,
+                DateodFirstVisit = model.DateodFirstVisit ?? DateTime.Now,
+                RefBy = model.RefBy,
+                DeleteStatus = false
             });
             await _context.SaveChangesAsync();
-
-            model.UserId = (int)user.UserId;
-            model.IsUserAlreadyRegistered = false;
         }
 
     }

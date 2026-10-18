@@ -30,6 +30,7 @@ namespace Homeocentrum.Niga.API.Controllers
         private readonly ISubscriptionStatusService _subscriptionStatusService;
         private readonly IAuditEventWriter _auditEventWriter;
         private readonly IJwtDenylistService _jwtDenylist;
+        private readonly IPushNotificationSender _push;
         private readonly IOptions<SmtpSettingsModel> _mailSettings;
         private readonly IConfiguration _configuration;
         private readonly IWebHostEnvironment _env;
@@ -42,6 +43,7 @@ namespace Homeocentrum.Niga.API.Controllers
             ISubscriptionStatusService subscriptionStatusService,
             IAuditEventWriter auditEventWriter,
             IJwtDenylistService jwtDenylist,
+            IPushNotificationSender push,
             IOptions<SmtpSettingsModel> mailSettings,
             IConfiguration configuration,
             IWebHostEnvironment env)
@@ -52,6 +54,7 @@ namespace Homeocentrum.Niga.API.Controllers
             _subscriptionStatusService = subscriptionStatusService;
             _auditEventWriter = auditEventWriter;
             _jwtDenylist = jwtDenylist;
+            _push = push;
             _mailSettings = mailSettings;
             _configuration = configuration;
             _env = env;
@@ -71,8 +74,16 @@ namespace Homeocentrum.Niga.API.Controllers
                 if (string.IsNullOrWhiteSpace(model.UserName) || string.IsNullOrWhiteSpace(model.Password))
                     return BadRequest(new { message = "Username and password are required" });
 
+                // Username and password are case-sensitive. SQL Server CI collation may still return a
+                // row for a different casing; Ordinal rejects that so only the exact UserName matches.
+                var enteredUserName = model.UserName;
                 var userEntity = await _context.UserMasters
-                    .FirstOrDefaultAsync(x => x.UserName == model.UserName);
+                    .FirstOrDefaultAsync(x => x.UserName == enteredUserName);
+                if (userEntity != null
+                    && !string.Equals(userEntity.UserName, enteredUserName, StringComparison.Ordinal))
+                {
+                    userEntity = null;
+                }
 
                 if (userEntity != null)
                 {
@@ -83,6 +94,7 @@ namespace Homeocentrum.Niga.API.Controllers
                         return Unauthorized(new { message = "Invalid username or password" });
                     }
 
+                    // Password verify is already case-sensitive (exact bytes / hash).
                     if (!UserPasswordHasher.Verify(model.Password, userEntity.UserPassword))
                         return Unauthorized(new { message = "Invalid username or password" });
 
@@ -258,6 +270,16 @@ namespace Homeocentrum.Niga.API.Controllers
                     catch
                     {
                         // Table may be missing or LoginId constraints — ignore.
+                    }
+
+                    try
+                    {
+                        // Clear all FCM tokens for this login so the next sign-in registers a fresh one.
+                        await _push.ClearUserTokensAsync(userId);
+                    }
+                    catch
+                    {
+                        // Push clear is best-effort; logout must still succeed.
                     }
                 }
 

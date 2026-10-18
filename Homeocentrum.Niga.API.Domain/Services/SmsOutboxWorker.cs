@@ -71,7 +71,7 @@ public sealed class SmsOutboxWorker : BackgroundService
         var rows = await db.Database.SqlQuery<OutboxRow>($@"
             SELECT TOP 20 NotificationOutboxId, EventType, Destination, Body
             FROM dbo.NotificationOutbox
-            WHERE Channel = N'SMS' AND Status IN (N'PENDING', N'PENDING_KEYS')
+            WHERE Channel = N'SMS' AND Status IN (N'PENDING', N'PENDING_KEYS', N'QUEUED')
             ORDER BY NotificationOutboxId").ToListAsync(cancellationToken);
 
         foreach (var row in rows)

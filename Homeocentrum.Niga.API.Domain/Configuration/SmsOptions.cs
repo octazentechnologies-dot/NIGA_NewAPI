@@ -38,6 +38,12 @@ public class TwilioSmsOptions
     public string AuthToken { get; set; } = string.Empty;
     public string FromNumber { get; set; } = string.Empty;
 
+    /// <summary>
+    /// null = auto-detect from Twilio Account.type (Trial → templates, Full → custom Body).
+    /// true = force trial templates. false = force custom real messages (upgraded account).
+    /// </summary>
+    public bool? UseTrialTemplates { get; set; }
+
     public bool IsConfigured() =>
         !string.IsNullOrWhiteSpace(AccountSid)
         && !string.IsNullOrWhiteSpace(AuthToken)

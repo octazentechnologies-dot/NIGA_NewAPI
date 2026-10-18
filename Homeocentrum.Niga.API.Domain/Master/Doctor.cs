@@ -67,7 +67,8 @@ public partial class Doctor
 
     public bool IsOnline { get; set; }
 
-    public bool DirectoryVisible { get; set; }
+    /// <summary>Find-a-Doctor listing. New doctors start false; doctor toggles after login.</summary>
+    public bool DirectoryVisible { get; set; } = false;
 
     public string VerificationStatus { get; set; } = "Pending";
 

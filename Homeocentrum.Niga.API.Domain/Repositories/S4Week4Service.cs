@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
+using Homeocentrum.Niga.API.Domain.Configuration;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Helpers;
@@ -29,6 +31,9 @@ public partial class S4Week4Service : IS4Week4Service
     private readonly ILogger<S4Week4Service> _logger;
     private readonly IAppointmentRescheduleNotifier _notify;
     private readonly INotificationOutbox _outbox;
+    private readonly ISmsSender _sms;
+    private readonly ISmsTemplateRenderer _templates;
+    private readonly SmsOptions _smsOptions;
 
     public S4Week4Service(
         NIGACentrumContext context,
@@ -37,7 +42,10 @@ public partial class S4Week4Service : IS4Week4Service
         IHttpContextAccessor http,
         ILogger<S4Week4Service> logger,
         IAppointmentRescheduleNotifier notify,
-        INotificationOutbox outbox)
+        INotificationOutbox outbox,
+        ISmsSender sms,
+        ISmsTemplateRenderer templates,
+        IOptions<SmsOptions> smsOptions)
     {
         _context = context;
         _config = config;
@@ -46,6 +54,9 @@ public partial class S4Week4Service : IS4Week4Service
         _logger = logger;
         _notify = notify;
         _outbox = outbox;
+        _sms = sms;
+        _templates = templates;
+        _smsOptions = smsOptions.Value ?? new SmsOptions();
     }
 
     public async Task<bool> PayAtClinicEnabledAsync(int doctorId)
@@ -468,11 +479,11 @@ public partial class S4Week4Service : IS4Week4Service
                     .Select(p => p.MobileNo)
                     .FirstOrDefaultAsync();
                 var site = (_config["ConfigurationModel:SiteUrl"] ?? "http://localhost:3000").TrimEnd('/');
-                await _notify.NotifyChannelsAsync(
-                    mobile,
-                    true,
-                    "Pay for your Homeocentrum visit: " + site + payLinkUrl,
-                    default);
+                var payBody = await _templates.RenderAsync("PAY_LINK", new Dictionary<string, string?>
+                {
+                    ["url"] = site + payLinkUrl
+                });
+                await _notify.NotifyChannelsAsync(mobile, true, payBody, default);
             }
             catch (Exception ex)
             {
@@ -908,6 +919,23 @@ public partial class S4Week4Service : IS4Week4Service
         if (order != null)
             await WriteLedgerAsync(order, "CREDIT", amount, gst.Amount, "Appointment", appointment.PatientAppId.ToString());
         await QueueReceiptLogAsync(orderId, appointment.PatientId, amount, "INR", "COLLECTED");
+        try
+        {
+            var mobile = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == appointment.PatientId)
+                .Select(p => p.MobileNo)
+                .FirstOrDefaultAsync();
+            var body = await _templates.RenderAsync("PAYMENT", new Dictionary<string, string?>
+            {
+                ["amount"] = amount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " INR"
+            });
+            if (!string.IsNullOrWhiteSpace(mobile))
+                await _sms.SendAsync(mobile, body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Payment SMS failed for order {OrderId}", orderId);
+        }
         _ = userId;
     }
 
@@ -1070,7 +1098,10 @@ public partial class S4Week4Service : IS4Week4Service
                 .Where(p => p.PatientId == order.PatientId)
                 .Select(p => p.MobileNo)
                 .FirstOrDefaultAsync();
-            var message = "Your medicine order #" + orderId + " is now " + status + ".";
+            var message = await _templates.RenderAsync("MEDICINE_ORDER", new Dictionary<string, string?>
+            {
+                ["status"] = "#" + orderId + " is now " + status
+            });
             await _notify.NotifyChannelsAsync(mobile, true, message, default);
             await _outbox.EnqueueAsync(
                 "Push",

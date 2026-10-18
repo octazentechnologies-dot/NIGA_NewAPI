@@ -345,6 +345,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public int? GapMinutes { get; set; }
         public int? BookingHorizonDays { get; set; }
         public List<AvailabilityDayHours>? Days { get; set; }
+        /// <summary>Dates to remove from DoctorDailySchedule (day marked unavailable in the Hours UI).</summary>
+        public List<DateTime>? ClearScheduleDates { get; set; }
     }
 
     public class CogRubricInput

@@ -118,6 +118,8 @@ public class SmsSendRequest
     public string? TemplateCode { get; set; }
     public string? Mobile { get; set; }
     public string? Body { get; set; }
+    /// <summary>Optional placeholder values for template bodies, e.g. doctor, date, time, otp.</summary>
+    public Dictionary<string, string?>? Tokens { get; set; }
 }
 
 public class DoctorSmsPreferenceWrite

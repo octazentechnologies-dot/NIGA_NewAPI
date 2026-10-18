@@ -121,14 +121,18 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 && (excludeReceptionStaffId == null || x.ReceptionStaffId != excludeReceptionStaffId));
         }
 
-        public Task<DoctorReceptionStaff?> GetActiveReceptionStaffByUserIdAsync(string userId)
+        public async Task<DoctorReceptionStaff?> GetActiveReceptionStaffByUserIdAsync(string userId)
         {
-            var normalizedUserId = userId.Trim().ToLower();
-            return _context.DoctorReceptionStaffs
+            // Login username is case-sensitive (same rule as UserMaster login).
+            var entered = userId.Trim();
+            var row = await _context.DoctorReceptionStaffs
                 .FirstOrDefaultAsync(x =>
                     !x.DeleteStatus
                     && x.IsActive
-                    && x.UserId.ToLower() == normalizedUserId);
+                    && x.UserId == entered);
+            if (row != null && !string.Equals(row.UserId, entered, StringComparison.Ordinal))
+                return null;
+            return row;
         }
 
         public void AddReceptionStaff(DoctorReceptionStaff receptionStaff)

@@ -5,11 +5,13 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Homeocentrum.Niga.API.Domain.Configuration;
 using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Master;
 using Homeocentrum.Niga.API.Domain.Privacy;
+using Homeocentrum.Niga.API.Domain.Security;
 using Homeocentrum.Niga.API.Domain.Services;
 
 namespace Homeocentrum.Niga.API.Domain.Repositories;
@@ -487,6 +489,20 @@ public partial class S4Week4Service
                     (ErxSnapshotId, RemedyId, RemedyCode, RemedyName, PotencyCode, Dose, Frequency, Duration, Instructions)
                 VALUES
                     ({snapshotId}, {line.RemedyId}, {code}, {line.RemedyName}, {line.PotencyCode}, {line.Dose}, {line.Frequency}, {line.Duration}, {line.Instructions})");
+        }
+        try
+        {
+            var mobile = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == appointment.PatientId)
+                .Select(p => p.MobileNo)
+                .FirstOrDefaultAsync();
+            var body = await _templates.RenderAsync("PRESCRIPTION", null);
+            if (!string.IsNullOrWhiteSpace(mobile))
+                await _sms.SendAsync(mobile, body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Prescription SMS failed for appointment {PatientAppId}", appointment.PatientAppId);
         }
         return Ok(new { success = true, message = "Prescription signed and locked.", data = new { erxSnapshotId = snapshotId } });
     }
@@ -971,7 +987,45 @@ public partial class S4Week4Service
         if (!order.ConsentGranted)
             return Fail(409, "CONFLICT", "Patient consent is required before accept.");
         var code = await IssueOtpAsync("PharmacyAccept", "MedicineOrder", orderId.ToString(), caller.UserId);
-        return Ok(new { success = true, message = "OTP created for pharmacy accept.", devCode = code });
+        var user = await _context.UserMasters.AsNoTracking()
+            .Where(u => u.UserId == caller.UserId)
+            .Select(u => new { u.MobileNo })
+            .FirstOrDefaultAsync();
+        var text = await _templates.RenderAsync("PHARMACY_OTP", new Dictionary<string, string?>
+        {
+            ["otp"] = code,
+            ["orderId"] = orderId.ToString(),
+            ["minutes"] = "10"
+        });
+        var delivered = false;
+        if (!string.IsNullOrWhiteSpace(user?.MobileNo))
+        {
+            var sms = await _sms.SendAsync(user.MobileNo.Trim(), text);
+            delivered = sms.Accepted;
+            if (!string.IsNullOrWhiteSpace(sms.EmbeddedOtp))
+            {
+                var hash = SecurityTokenHash.Sha256Hex(sms.EmbeddedOtp!);
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE dbo.OtpChallenge
+                    SET OtpHash = {hash}
+                    WHERE OtpChallengeId = (
+                        SELECT TOP 1 OtpChallengeId FROM dbo.OtpChallenge
+                        WHERE Action = N'PharmacyAccept' AND EntityType = N'MedicineOrder'
+                          AND EntityId = {orderId.ToString()} AND VerifiedAt IS NULL
+                        ORDER BY OtpChallengeId DESC)");
+            }
+        }
+        var payload = new Dictionary<string, object?>
+        {
+            ["success"] = true,
+            ["delivered"] = delivered,
+            ["message"] = delivered
+                ? "OTP sent by SMS. Enter the code from your phone."
+                : "OTP created but SMS delivery did not confirm."
+        };
+        var dev = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
+        if (dev != null) payload["devCode"] = dev;
+        return Ok(payload);
     }
 
     public async Task<S4ActionResult> AcceptMedicineOrderAsync(PharmacyAcceptRequest request, S4Caller caller)
@@ -1573,6 +1627,33 @@ public partial class S4Week4Service
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.FollowUpTask (FollowUpPlanId, Title, DueDate, Status)
             VALUES ({planId}, {request.Title.Trim()}, {request.DueDate.Value.Date}, N'OPEN')");
+        try
+        {
+            var mobile = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == appointment.PatientId)
+                .Select(p => p.MobileNo)
+                .FirstOrDefaultAsync();
+            var doctor = await _context.Doctors.AsNoTracking()
+                .Where(d => d.DoctorId == appointment.DoctorId)
+                .Select(d => new { d.FirstName, d.MiddleName, d.LastName })
+                .FirstOrDefaultAsync();
+            var doctorLabel = doctor == null
+                ? "your doctor"
+                : string.Join(" ", new[] { doctor.FirstName, doctor.MiddleName, doctor.LastName }
+                    .Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
+            if (string.IsNullOrWhiteSpace(doctorLabel)) doctorLabel = "your doctor";
+            var body = await _templates.RenderAsync("FOLLOW_UP", new Dictionary<string, string?>
+            {
+                ["doctor"] = doctorLabel,
+                ["date"] = request.DueDate.Value.ToString("dd MMM yyyy")
+            });
+            if (!string.IsNullOrWhiteSpace(mobile))
+                await _sms.SendAsync(mobile, body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Follow-up SMS failed for appointment {PatientAppId}", appointment.PatientAppId);
+        }
         return Ok(new { success = true, data = new { followUpPlanId = planId } });
     }
 
