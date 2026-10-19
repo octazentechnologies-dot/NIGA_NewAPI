@@ -17,8 +17,7 @@ public class SmsOptions
 
     /// <summary>
     /// true = real OTP mode: Twilio/Msg91 send, API never returns <c>devCode</c>.
-    /// false = dummy/dev mode: still send SMS when Enabled + provider configured, and also return <c>devCode</c>
-    /// so the UI can fill/verify like before.
+    /// false = dummy/dev mode: no provider SMS. The API returns <c>devCode</c> for the UI to verify.
     /// Exposed on GET /api/Public/AppConfig as <c>realSms</c>.
     /// </summary>
     public bool RealSms { get; set; }

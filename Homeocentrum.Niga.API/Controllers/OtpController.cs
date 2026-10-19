@@ -118,7 +118,7 @@ namespace Homeocentrum.Niga.API.Controllers
                     isHtml = true
                 }, _mailSettings.Value);
             }
-            else
+            else if (SmsOtpPolicy.RealSmsLive(_smsOptions))
             {
                 smsSend = await _smsSender.SendAsync(request.Destination, otpText);
                 delivered = smsSend.Accepted;
@@ -174,13 +174,15 @@ namespace Homeocentrum.Niga.API.Controllers
                 ["expiresAt"] = challenge.ExpiresAt,
                 ["channel"] = channel,
                 ["delivered"] = delivered,
-                ["trialTemplate"] = smsSend?.UsedTrialTemplate,
+                ["trialTemplate"] = smsSend?.UsedTrialTemplate == true,
                 ["message"] = delivered
                     ? $"OTP sent via {channel}. Enter the code from your phone or email."
-                    : $"OTP created but {channel} delivery did not confirm. Check provider/SMTP settings."
+                    : SmsOtpPolicy.RealSmsLive(_smsOptions)
+                        ? $"OTP created but {channel} delivery did not confirm. Check provider/SMTP settings."
+                        : "OTP created. SMS is not live; use the development code."
             };
-            // Sms:RealSms false (dummy) → always return devCode even when Twilio delivered to the phone.
-            // Sms:RealSms true → DevCodeOrNull is null; phone is the only source of the OTP.
+            // Sms:RealSms false → no provider SMS, always return devCode.
+            // Sms:RealSms true → DevCodeOrNull is null; the phone is the only source of the OTP.
             var devCode = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
             if (devCode != null)
                 payload["devCode"] = devCode;

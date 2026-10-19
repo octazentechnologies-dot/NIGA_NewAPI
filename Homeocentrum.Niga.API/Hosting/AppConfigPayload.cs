@@ -17,7 +17,7 @@ public static class AppConfigPayload
 
     public static object Build(IConfiguration configuration)
     {
-        // Sms:RealSms — true = production OTP (no devCode). false = dummy: SMS may still send + API returns devCode.
+        // Sms:RealSms — true = production OTP (no devCode). false = dummy: no SMS, API returns devCode.
         var realSms = configuration.GetValue("Sms:RealSms", false);
 
         return new

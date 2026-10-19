@@ -1049,7 +1049,7 @@ public partial class S4Week4Service
             ["minutes"] = "10"
         });
         var delivered = false;
-        if (!string.IsNullOrWhiteSpace(user?.MobileNo))
+        if (SmsOtpPolicy.RealSmsLive(_smsOptions) && !string.IsNullOrWhiteSpace(user?.MobileNo))
         {
             var sms = await _sms.SendAsync(user.MobileNo.Trim(), text);
             delivered = sms.Accepted;
@@ -1072,7 +1072,9 @@ public partial class S4Week4Service
             ["delivered"] = delivered,
             ["message"] = delivered
                 ? "OTP sent by SMS. Enter the code from your phone."
-                : "OTP created but SMS delivery did not confirm."
+                : SmsOtpPolicy.RealSmsLive(_smsOptions)
+                    ? "OTP created but SMS delivery did not confirm."
+                    : "OTP created. SMS is not live; use the development code."
         };
         var dev = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
         if (dev != null) payload["devCode"] = dev;

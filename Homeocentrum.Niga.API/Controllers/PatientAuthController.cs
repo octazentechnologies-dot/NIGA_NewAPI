@@ -72,12 +72,14 @@ namespace Homeocentrum.Niga.API.Controllers
                 ["otp"] = code,
                 ["minutes"] = OtpTtlMinutes.ToString()
             });
-            // Send first: Trial uses sms_2fa (embedded code); full account uses custom Body.
-            var send = await _smsSender.SendAsync(digits, otpText);
+            // Real SMS only when Sms:RealSms is true. Dummy mode keeps the generated code as devCode.
+            var live = SmsOtpPolicy.RealSmsLive(_smsOptions);
+            var send = live
+                ? await _smsSender.SendAsync(digits, otpText)
+                : SmsSendResult.Fail();
             if (!string.IsNullOrWhiteSpace(send.EmbeddedOtp))
                 code = send.EmbeddedOtp!;
             var delivered = send.Accepted;
-            var live = SmsOtpPolicy.RealSmsLive(_smsOptions);
 
             var challenge = new OtpChallenge
             {

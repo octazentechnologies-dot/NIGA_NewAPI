@@ -5,7 +5,7 @@ namespace Homeocentrum.Niga.API.Domain.Configuration;
 /// <summary>
 /// Real vs dummy OTP mode.
 /// <see cref="SmsOptions.RealSms"/> true → production (no <c>devCode</c> in API).
-/// false → dummy: SMS can still go out via Twilio, and <c>devCode</c> is returned for UI/testing.
+/// false → dummy: no provider SMS, and <c>devCode</c> is returned for UI/testing.
 /// </summary>
 public static class SmsOtpPolicy
 {

@@ -47,6 +47,15 @@ public sealed class ConfigurableSmsSender : ISmsSender
             return SmsSendResult.Fail();
         }
 
+        // RealSms false = dummy OTP mode. Do not call Twilio/Msg91; callers return devCode instead.
+        if (!_options.RealSms)
+        {
+            _logger.LogInformation(
+                "SMS dummy mode (RealSms false). Provider send skipped. DestinationMasked={Masked}",
+                PhoneNormalizer.Mask(destination));
+            return SmsSendResult.Fail();
+        }
+
         var to = NormalizeTo(destination);
         if (string.IsNullOrWhiteSpace(to))
         {
