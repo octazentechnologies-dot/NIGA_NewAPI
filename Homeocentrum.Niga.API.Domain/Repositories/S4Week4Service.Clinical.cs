@@ -1349,6 +1349,7 @@ public partial class S4Week4Service
             .Where(d => doctorIds.Contains(d.DoctorId))
             .Select(d => new { d.DoctorId, d.ConsultFeeInClinic, d.ConsultFeeTele, d.FeeCurrency, d.MobileNo, d.PermanantAddress })
             .ToListAsync();
+        var now = DateTime.Now;
         var data = rows.Select(r =>
         {
             var fee = fees.FirstOrDefault(d => d.DoctorId == r.DoctorId);
@@ -1374,7 +1375,9 @@ public partial class S4Week4Service
                 clinicPhone = fee?.MobileNo,
                 clinicAddressLine = string.IsNullOrWhiteSpace(fee?.PermanantAddress) ? null : fee!.PermanantAddress,
                 clinicAddress = fee?.PermanantAddress,
-                reasonText = (string?)null
+                reasonText = (string?)null,
+                // Mobile: true when appointment date+time is already past local server time.
+                IsExpired = IsVisitSlotExpired(r.AppointmentDate, r.AppointmentTime, now)
             };
         });
         return Ok(new
@@ -1385,6 +1388,26 @@ public partial class S4Week4Service
             pageSize = size,
             data
         });
+    }
+
+    /// <summary>
+    /// True when appointment date + time is strictly before <paramref name="now"/> (server local).
+    /// Missing date → false. Missing time → start of that calendar day.
+    /// </summary>
+    private static bool IsVisitSlotExpired(DateTime? appointmentDate, string? appointmentTime, DateTime? now = null)
+    {
+        if (!appointmentDate.HasValue)
+            return false;
+
+        var tod = TimeSpan.Zero;
+        if (!string.IsNullOrWhiteSpace(appointmentTime)
+            && TimeSpan.TryParse(appointmentTime.Trim(), out var parsed))
+        {
+            tod = parsed;
+        }
+
+        var slotAt = appointmentDate.Value.Date.Add(tod);
+        return slotAt < (now ?? DateTime.Now);
     }
 
     private async Task EnsureOpenTeleSessionsForPatientAsync(int patientId)
@@ -1512,6 +1535,7 @@ public partial class S4Week4Service
                 visit.Status,
                 visit.ConsultMode,
                 visit.IsTele,
+                IsExpired = IsVisitSlotExpired(visit.AppointmentDate, visit.AppointmentTime),
                 appointment.VisitType,
                 appointment.QueuePosition,
                 visit.DoctorId,
