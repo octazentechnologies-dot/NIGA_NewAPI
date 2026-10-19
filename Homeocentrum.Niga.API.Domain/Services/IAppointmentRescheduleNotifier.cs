@@ -42,6 +42,16 @@ namespace Homeocentrum.Niga.API.Domain.Services
             string slotTime,
             CancellationToken cancellationToken = default);
 
+        /// <summary>Same as confirm SMS/WhatsApp, with FCM targeted at <paramref name="recipientUserId"/> when set.</summary>
+        Task<AppointmentNotificationResult> NotifyConfirmAsync(
+            string? mobile,
+            bool whatsAppOptIn,
+            string doctorName,
+            string slotDate,
+            string slotTime,
+            long? recipientUserId,
+            CancellationToken cancellationToken = default);
+
         Task<AppointmentNotificationResult> NotifyReminderAsync(
             string? mobile,
             bool whatsAppOptIn,

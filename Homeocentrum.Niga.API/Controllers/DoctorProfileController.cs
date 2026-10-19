@@ -7,6 +7,7 @@ using Homeocentrum.Niga.API.Domain.Extensions;
 using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Master;
 using Homeocentrum.Niga.API.Domain.Security;
+using Homeocentrum.Niga.API.Domain.Services;
 
 namespace Homeocentrum.Niga.API.Controllers
 {
@@ -18,11 +19,13 @@ namespace Homeocentrum.Niga.API.Controllers
     {
         private readonly NIGACentrumContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly IStoredFileStore _files;
 
-        public DoctorProfileController(NIGACentrumContext context, IWebHostEnvironment env)
+        public DoctorProfileController(NIGACentrumContext context, IWebHostEnvironment env, IStoredFileStore files)
         {
             _context = context;
             _env = env;
+            _files = files;
         }
 
         /// <summary>The file name changes on every upload, so ?v= makes browsers fetch a replaced photo.</summary>
@@ -228,16 +231,25 @@ namespace Homeocentrum.Niga.API.Controllers
             if (doctor == null)
                 return NotFound(new { success = false, message = "Doctor profile not found." });
 
-            var folder = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.DoctorPhotos);
-            Directory.CreateDirectory(folder);
-            var name = $"doctor_{doctor.DoctorId}_{Guid.NewGuid():N}{ext}";
-            var path = Path.Combine(folder, name);
-            await using (var stream = System.IO.File.Create(path))
-                await file.CopyToAsync(stream);
+            string stored;
+            try
+            {
+                await using var upload = file.OpenReadStream();
+                using var memory = new MemoryStream();
+                await upload.CopyToAsync(memory);
+                stored = await _files.SaveAsync($"doctors/{doctor.DoctorId}/profile-images", ext, memory.ToArray());
+            }
+            catch (InvalidOperationException)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { success = false, message = "File storage is unavailable." });
+            }
 
-            doctor.PhotoPath = UploadedMedia.MediaRelative(UploadedMedia.DoctorPhotos, name);
+            var previous = doctor.PhotoPath;
+            doctor.PhotoPath = stored;
             doctor.ChangedDate = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            if (!string.IsNullOrWhiteSpace(previous) && !string.Equals(previous, stored, StringComparison.Ordinal))
+                await _files.DeleteAsync(_env.ContentRootPath, previous);
             return Ok(new { success = true, data = new { doctor.PhotoPath, photoUrl = PhotoUrlFor(doctor) } });
         }
 
@@ -309,12 +321,18 @@ namespace Homeocentrum.Niga.API.Controllers
                 return NotFound(new { success = false, message = "Doctor profile not found." });
 
             var verification = await EnsurePendingVerificationAsync(doctor.DoctorId);
-            var folder = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.DoctorCredentials);
-            Directory.CreateDirectory(folder);
-            var name = $"doc_{doctor.DoctorId}_{Guid.NewGuid():N}{ext}";
-            var path = Path.Combine(folder, name);
-            await using (var stream = System.IO.File.Create(path))
-                await file.CopyToAsync(stream);
+            string stored;
+            try
+            {
+                await using var upload = file.OpenReadStream();
+                using var memory = new MemoryStream();
+                await upload.CopyToAsync(memory);
+                stored = await _files.SaveAsync($"doctors/{doctor.DoctorId}/credentials", ext, memory.ToArray());
+            }
+            catch (InvalidOperationException)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { success = false, message = "File storage is unavailable." });
+            }
 
             var canonical = CredentialFileRules.CanonicalType(documentType);
 
@@ -324,7 +342,7 @@ namespace Homeocentrum.Niga.API.Controllers
                 DoctorVerificationId = verification.DoctorVerificationId,
                 DocumentType = canonical,
                 FileName = Path.GetFileName(file.FileName),
-                FilePath = UploadedMedia.MediaRelative(UploadedMedia.DoctorCredentials, name),
+                FilePath = stored,
                 ContentType = file.ContentType,
                 Degree = TrimTo(degree, 50),
                 Specialization = TrimTo(specialization, 150),
@@ -367,14 +385,24 @@ namespace Homeocentrum.Niga.API.Controllers
                 if (reject != null)
                     return BadRequest(new { success = false, message = reject });
                 CredentialFileRules.TryGetExtension(file.FileName, out var ext);
-                var folder = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.DoctorCredentials);
-                Directory.CreateDirectory(folder);
-                var name = $"doc_{doctor.DoctorId}_{Guid.NewGuid():N}{ext}";
-                await using (var stream = System.IO.File.Create(Path.Combine(folder, name)))
-                    await file.CopyToAsync(stream);
+                string stored;
+                try
+                {
+                    await using var upload = file.OpenReadStream();
+                    using var memory = new MemoryStream();
+                    await upload.CopyToAsync(memory);
+                    stored = await _files.SaveAsync($"doctors/{doctor.DoctorId}/credentials", ext, memory.ToArray());
+                }
+                catch (InvalidOperationException)
+                {
+                    return StatusCode(StatusCodes.Status502BadGateway, new { success = false, message = "File storage is unavailable." });
+                }
+                var previous = row.FilePath;
                 row.FileName = Path.GetFileName(file.FileName);
-                row.FilePath = UploadedMedia.MediaRelative(UploadedMedia.DoctorCredentials, name);
+                row.FilePath = stored;
                 row.ContentType = file.ContentType;
+                if (!string.IsNullOrWhiteSpace(previous) && !string.Equals(previous, stored, StringComparison.Ordinal))
+                    await _files.DeleteAsync(_env.ContentRootPath, previous);
             }
 
             row.Degree = TrimTo(degree, 50);
@@ -412,13 +440,19 @@ namespace Homeocentrum.Niga.API.Controllers
                 .Where(d => d.DoctorId == doctorId && !d.DeleteStatus)
                 .Select(d => d.PhotoPath)
                 .FirstOrDefaultAsync();
-            var full = UploadedMedia.MediaRelativeToFull(_env.ContentRootPath, UploadedMedia.DoctorPhotos, photoPath);
-            if (full == null)
-                return NotFound(new { success = false, message = "No photo." });
-            if (!System.IO.File.Exists(full))
-                return NotFound(new { success = false, message = "Photo file is missing on the server." });
+            byte[]? bytes;
+            try
+            {
+                bytes = await _files.ReadAsync(_env.ContentRootPath, photoPath);
+            }
+            catch (InvalidOperationException)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { success = false, message = "File storage is unavailable." });
+            }
+            if (bytes == null || bytes.Length == 0)
+                return NotFound(new { success = false, message = "Photo file is missing." });
 
-            return PhysicalFile(full, CredentialFileRules.PhotoContentType(full));
+            return File(bytes, CredentialFileRules.PhotoContentType(photoPath));
         }
 
         [HttpDelete("Me/Photo")]
@@ -430,9 +464,11 @@ namespace Homeocentrum.Niga.API.Controllers
             var doctor = await ResolveDoctorAsync();
             if (doctor == null)
                 return NotFound(new { success = false, message = "Doctor profile not found." });
+            var previous = doctor.PhotoPath;
             doctor.PhotoPath = null;
             doctor.ChangedDate = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            await _files.DeleteAsync(_env.ContentRootPath, previous);
             return Ok(new { success = true, message = "Photo removed." });
         }
 
@@ -541,14 +577,20 @@ namespace Homeocentrum.Niga.API.Controllers
                     return Forbid();
             }
 
-            var full = UploadedMedia.MediaRelativeToFull(_env.ContentRootPath, UploadedMedia.DoctorCredentials, row.FilePath);
-            if (full == null)
-                return BadRequest(new { success = false, message = "Document path is not valid." });
-            if (!System.IO.File.Exists(full))
-                return NotFound(new { success = false, message = "Document file is missing on the server." });
+            byte[]? bytes;
+            try
+            {
+                bytes = await _files.ReadAsync(_env.ContentRootPath, row.FilePath);
+            }
+            catch (InvalidOperationException)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { success = false, message = "File storage is unavailable." });
+            }
+            if (bytes == null || bytes.Length == 0)
+                return NotFound(new { success = false, message = "Document file is missing." });
 
             var contentType = string.IsNullOrWhiteSpace(row.ContentType) ? "application/octet-stream" : row.ContentType;
-            return PhysicalFile(full, contentType, row.FileName);
+            return File(bytes, contentType, row.FileName);
         }
 
         private async Task<DoctorVerification> EnsurePendingVerificationAsync(int doctorId)

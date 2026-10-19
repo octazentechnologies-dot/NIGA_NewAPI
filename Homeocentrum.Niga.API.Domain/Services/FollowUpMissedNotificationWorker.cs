@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Homeocentrum.Niga.API.Domain.Data;
+using Homeocentrum.Niga.API.Domain.Helpers;
 
 namespace Homeocentrum.Niga.API.Domain.Services;
 
@@ -177,9 +178,7 @@ public sealed class FollowUpMissedNotificationWorker : BackgroundService
             var patientLabel = string.IsNullOrWhiteSpace(row.PatientName)
                 ? "A patient"
                 : row.PatientName.Trim();
-            var when = row.AppointmentDate.ToString("dd MMM yyyy");
-            if (!string.IsNullOrWhiteSpace(row.AppointmentTime))
-                when += " " + row.AppointmentTime.Trim();
+            var when = NotificationClock.FormatVisit(row.AppointmentDate, row.AppointmentTime);
             var title = "Follow-up appointment missed";
             var body = $"{patientLabel} did not arrive for the follow-up visit on {when}.";
             var deepLink = "/doctor/follow-ups";

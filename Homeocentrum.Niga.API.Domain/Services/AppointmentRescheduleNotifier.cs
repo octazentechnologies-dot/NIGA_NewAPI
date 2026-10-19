@@ -116,12 +116,22 @@ namespace Homeocentrum.Niga.API.Domain.Services
                 }, cancellationToken);
         }
 
+        public Task<AppointmentNotificationResult> NotifyConfirmAsync(
+            string? mobile,
+            bool whatsAppOptIn,
+            string doctorName,
+            string slotDate,
+            string slotTime,
+            CancellationToken cancellationToken = default)
+            => NotifyConfirmAsync(mobile, whatsAppOptIn, doctorName, slotDate, slotTime, null, cancellationToken);
+
         public async Task<AppointmentNotificationResult> NotifyConfirmAsync(
             string? mobile,
             bool whatsAppOptIn,
             string doctorName,
             string slotDate,
             string slotTime,
+            long? recipientUserId,
             CancellationToken cancellationToken = default)
         {
             var doctor = string.IsNullOrWhiteSpace(doctorName) ? "your doctor" : doctorName.Trim();
@@ -132,7 +142,7 @@ namespace Homeocentrum.Niga.API.Domain.Services
                 ["time"] = slotTime
             }, cancellationToken);
             return await NotifyChannelsAsync(
-                mobile, whatsAppOptIn, message, null, "Appointment booked", "appointment_confirm",
+                mobile, whatsAppOptIn, message, recipientUserId, "Appointment booked", "appointment_confirm",
                 new Dictionary<string, string>
                 {
                     ["action"] = "appointment_confirm",

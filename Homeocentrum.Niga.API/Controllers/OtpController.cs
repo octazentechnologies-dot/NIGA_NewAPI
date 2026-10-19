@@ -179,16 +179,11 @@ namespace Homeocentrum.Niga.API.Controllers
                     ? $"OTP sent via {channel}. Enter the code from your phone or email."
                     : $"OTP created but {channel} delivery did not confirm. Check provider/SMTP settings."
             };
-            // When delivery succeeded (or real SMS provider is live), never echo the code.
-            // Only expose devCode for local/stub when SMS is not live and delivery failed.
-            if (!delivered && !isEmailDestination)
-            {
-                var fallback = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
-                if (fallback != null)
-                    payload["devCode"] = fallback;
-            }
-            else if (!delivered && isEmailDestination)
-                payload["devCode"] = code;
+            // Sms:RealSms false (dummy) → always return devCode even when Twilio delivered to the phone.
+            // Sms:RealSms true → DevCodeOrNull is null; phone is the only source of the OTP.
+            var devCode = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
+            if (devCode != null)
+                payload["devCode"] = devCode;
 
             return Ok(new { success = true, data = payload });
         }

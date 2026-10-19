@@ -35,6 +35,7 @@ public partial class S4Week4Service : IS4Week4Service
     private readonly ISmsTemplateRenderer _templates;
     private readonly SmsOptions _smsOptions;
     private readonly IRazorpayPaymentVerifier _razorpay;
+    private readonly IStoredFileStore _files;
 
     public S4Week4Service(
         NIGACentrumContext context,
@@ -47,7 +48,8 @@ public partial class S4Week4Service : IS4Week4Service
         ISmsSender sms,
         ISmsTemplateRenderer templates,
         IOptions<SmsOptions> smsOptions,
-        IRazorpayPaymentVerifier razorpay)
+        IRazorpayPaymentVerifier razorpay,
+        IStoredFileStore files)
     {
         _context = context;
         _config = config;
@@ -60,6 +62,7 @@ public partial class S4Week4Service : IS4Week4Service
         _templates = templates;
         _smsOptions = smsOptions.Value ?? new SmsOptions();
         _razorpay = razorpay;
+        _files = files;
     }
 
     public async Task<bool> PayAtClinicEnabledAsync(int doctorId)
@@ -262,20 +265,9 @@ public partial class S4Week4Service : IS4Week4Service
             return Ok(OrderBody(saved!, "Pay at clinic recorded. The visit stays unpaid until reception collection."));
         }
 
-        string? gatewayOrderId = null;
-        var status = "AWAITING_GATEWAY";
-        var gatewayReady = false;
         var keyId = _config["Razorpay:KeyId"];
         var keySecret = _config["Razorpay:KeySecret"];
-        if (!string.IsNullOrWhiteSpace(keyId) && !string.IsNullOrWhiteSpace(keySecret))
-        {
-            gatewayOrderId = await CreateGatewayOrderAsync(keyId, keySecret, quote.Amount, quote.Currency, correlation);
-            if (gatewayOrderId == null)
-                return Fail(502, "GATEWAY", "The payment gateway did not return an order id.");
-            status = "PENDING";
-            gatewayReady = true;
-        }
-
+        // Insert ledger row first so Razorpay order notes can carry paymentOrderId for webhook matching.
         var createdId = await InsertOrderAsync(new OrderInsert
         {
             Stream = "CONSULT",
@@ -284,14 +276,35 @@ public partial class S4Week4Service : IS4Week4Service
             PatientId = appointment.PatientId,
             Amount = quote.Amount,
             Currency = quote.Currency!,
-            Status = status,
+            Status = "AWAITING_GATEWAY",
             Method = "ONLINE",
-            GatewayOrderId = gatewayOrderId,
+            GatewayOrderId = null,
             IdempotencyKey = key,
             CorrelationId = correlation,
             CreatedBy = caller.UserId
         });
         await SetCorrelationAsync(appointment.PatientAppId, correlation);
+
+        var gatewayReady = false;
+        if (!string.IsNullOrWhiteSpace(keyId) && !string.IsNullOrWhiteSpace(keySecret))
+        {
+            var gatewayOrderId = await CreateGatewayOrderAsync(
+                keyId, keySecret, quote.Amount, quote.Currency!, correlation,
+                new Dictionary<string, string>
+                {
+                    ["stream"] = "CONSULT",
+                    ["paymentOrderId"] = createdId.ToString(),
+                    ["patientAppId"] = appointment.PatientAppId.ToString(),
+                    ["correlationId"] = correlation
+                });
+            if (gatewayOrderId == null)
+                return Fail(502, "GATEWAY", "The payment gateway did not return an order id.");
+            await UpsertGatewayIdsAsync(createdId, gatewayOrderId, null);
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.PaymentOrder SET Status = N'PENDING' WHERE PaymentOrderId = {createdId}");
+            gatewayReady = true;
+        }
+
         var created = await LoadOrderAsync(createdId);
         return Ok(new
         {
@@ -564,9 +577,12 @@ public partial class S4Week4Service : IS4Week4Service
 
             var payment = ReadEntity(root, "payment");
             var refund = ReadEntity(root, "refund");
-            var gatewayOrderId = payment?.GetPropertyOrNull("order_id");
+            var orderEntity = ReadEntity(root, "order");
+            var gatewayOrderId = payment?.GetPropertyOrNull("order_id")
+                ?? orderEntity?.GetPropertyOrNull("id");
             var gatewayPaymentId = payment?.GetPropertyOrNull("id") ?? refund?.GetPropertyOrNull("payment_id");
-            var order = await FindOrderByGatewayAsync(gatewayOrderId, gatewayPaymentId);
+            var order = await FindOrderByGatewayAsync(gatewayOrderId, gatewayPaymentId)
+                ?? await ResolveOrderFromNotesAsync(payment, orderEntity);
 
             await InsertAsync(
                 @"INSERT INTO dbo.PaymentEvent (PaymentOrderId, GatewayEventId, EventType, RawJson, At)
@@ -578,7 +594,9 @@ public partial class S4Week4Service : IS4Week4Service
                 P("@Json", rawBody, -1),
                 P("@At", DateTime.Now));
 
-            if (eventType == "payment.captured")
+            // payment.captured and order.paid both mean funds are captured — mark PAID / activate subscription.
+            // payment.authorized alone does not mark paid (auto-capture still sends payment.captured / order.paid).
+            if (eventType is "payment.captured" or "order.paid")
             {
                 await ApplyCapturedAsync(order, payment, gatewayPaymentId);
                 if (order == null)
@@ -762,18 +780,6 @@ public partial class S4Week4Service : IS4Week4Service
 
         var keyId = _config["Razorpay:KeyId"];
         var keySecret = _config["Razorpay:KeySecret"];
-        string? gatewayOrderId = null;
-        var status = "AWAITING_GATEWAY";
-        var gatewayReady = false;
-        if (!string.IsNullOrWhiteSpace(keyId) && !string.IsNullOrWhiteSpace(keySecret))
-        {
-            gatewayOrderId = await CreateGatewayOrderAsync(keyId, keySecret, order.QuoteAmount.Value, medicineCurrency, correlation);
-            if (gatewayOrderId == null)
-                return Fail(502, "GATEWAY", "The payment gateway did not return an order id.");
-            status = "PENDING";
-            gatewayReady = true;
-        }
-
         var paymentId = await InsertOrderAsync(new OrderInsert
         {
             Stream = "MEDICINE",
@@ -781,13 +787,35 @@ public partial class S4Week4Service : IS4Week4Service
             PatientId = order.PatientId,
             Amount = order.QuoteAmount.Value,
             Currency = medicineCurrency,
-            Status = status,
+            Status = "AWAITING_GATEWAY",
             Method = "ONLINE",
-            GatewayOrderId = gatewayOrderId,
+            GatewayOrderId = null,
             IdempotencyKey = key,
             CorrelationId = correlation,
             CreatedBy = caller.UserId
         });
+
+        var gatewayReady = false;
+        string? gatewayOrderId = null;
+        if (!string.IsNullOrWhiteSpace(keyId) && !string.IsNullOrWhiteSpace(keySecret))
+        {
+            gatewayOrderId = await CreateGatewayOrderAsync(
+                keyId, keySecret, order.QuoteAmount.Value, medicineCurrency, correlation,
+                new Dictionary<string, string>
+                {
+                    ["stream"] = "MEDICINE",
+                    ["paymentOrderId"] = paymentId.ToString(),
+                    ["medicineOrderId"] = order.MedicineOrderId.ToString(),
+                    ["correlationId"] = correlation
+                });
+            if (gatewayOrderId == null)
+                return Fail(502, "GATEWAY", "The payment gateway did not return an order id.");
+            await UpsertGatewayIdsAsync(paymentId, gatewayOrderId, null);
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.PaymentOrder SET Status = N'PENDING' WHERE PaymentOrderId = {paymentId}");
+            gatewayReady = true;
+        }
+
         return Ok(new
         {
             success = true,
@@ -968,7 +996,19 @@ public partial class S4Week4Service : IS4Week4Service
             }
         }
 
-        var method = NormalizeGatewayMethod(payment?.GetPropertyOrNull("method")) ?? "ONLINE";
+        var method = NormalizeGatewayMethod(payment?.GetPropertyOrNull("method"));
+        if (string.IsNullOrWhiteSpace(method) && !string.IsNullOrWhiteSpace(gatewayPaymentId))
+        {
+            var details = await _razorpay.GetPaymentAsync(gatewayPaymentId);
+            if (details != null)
+            {
+                method = NormalizeGatewayMethod(details.Method);
+                await StorePaymentEventAsync(order.PaymentOrderId, details);
+            }
+        }
+
+        method ??= "ONLINE";
+        await UpsertGatewayIdsAsync(order.PaymentOrderId, order.GatewayOrderId, gatewayPaymentId);
         await ApplyCapturedCoreAsync(order, gatewayPaymentId, method, notifyConfirm: true);
     }
 
@@ -1054,8 +1094,9 @@ public partial class S4Week4Service : IS4Week4Service
                 return;
             var doctorLabel = string.IsNullOrWhiteSpace(row.Doctor) ? "your doctor" : row.Doctor;
             var day = row.AppointmentDate?.ToString("dd MMM yyyy") ?? "";
-            var time = row.AppointmentTime?.ToString("HH:mm") ?? "";
-            await _notify.NotifyConfirmAsync(row.MobileNo, row.OptIn, doctorLabel, day, time);
+            var time = NotificationClock.Format12Hour(row.AppointmentTime);
+            // Prefer BookedByUserId so FCM hits the patient app login that held the slot.
+            await _notify.NotifyConfirmAsync(row.MobileNo, row.OptIn, doctorLabel, day, time, row.BookedByUserId);
         }
         catch (Exception ex)
         {
@@ -1427,10 +1468,19 @@ IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
         }
     }
 
-    private async Task<string?> CreateGatewayOrderAsync(string keyId, string keySecret, decimal amount, string currency, string receipt)
+    private async Task<string?> CreateGatewayOrderAsync(
+        string keyId,
+        string keySecret,
+        decimal amount,
+        string currency,
+        string receipt,
+        IReadOnlyDictionary<string, string>? notes = null)
     {
         var paise = (long)Math.Round(amount * 100m, 0);
-        var payload = JsonSerializer.Serialize(new { amount = paise, currency, receipt });
+        object payloadObj = notes == null || notes.Count == 0
+            ? new { amount = paise, currency, receipt }
+            : new { amount = paise, currency, receipt, notes };
+        var payload = JsonSerializer.Serialize(payloadObj);
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(keyId + ":" + keySecret));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
@@ -1444,6 +1494,66 @@ IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
         }
         using var doc = JsonDocument.Parse(body);
         return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+    }
+
+    /// <summary>
+    /// When GatewayOrderId is not yet on PaymentOrder (race / legacy), resolve via Razorpay notes
+    /// written at CreateConsultOrder / CreateMedicinePayment.
+    /// </summary>
+    private async Task<OrderRow?> ResolveOrderFromNotesAsync(JsonElement? payment, JsonElement? orderEntity)
+    {
+        var notes = ReadNotes(payment) ?? ReadNotes(orderEntity);
+        if (notes == null)
+            return null;
+
+        if (notes.TryGetValue("paymentOrderId", out var po)
+            && long.TryParse(po, out var paymentOrderId)
+            && paymentOrderId > 0)
+        {
+            return await LoadOrderAsync(paymentOrderId);
+        }
+
+        if (notes.TryGetValue("patientAppId", out var app)
+            && int.TryParse(app, out var patientAppId)
+            && patientAppId > 0)
+        {
+            return await FindLatestConsultOrderAsync(patientAppId);
+        }
+
+        if (notes.TryGetValue("medicineOrderId", out var med)
+            && int.TryParse(med, out var medicineOrderId)
+            && medicineOrderId > 0)
+        {
+            return await _context.Database.SqlQuery<OrderRow>($@"
+                SELECT TOP 1 PaymentOrderId, Stream, PatientAppId, MedicineOrderId, DoctorId, PatientId, Amount, Currency,
+                       Status, Method, GatewayOrderId, GatewayPaymentId, IdempotencyKey, CorrelationId, CreatedAt
+                FROM dbo.PaymentOrder
+                WHERE MedicineOrderId = {medicineOrderId} AND Stream = N'MEDICINE'
+                ORDER BY PaymentOrderId DESC").FirstOrDefaultAsync();
+        }
+
+        return null;
+    }
+
+    private static Dictionary<string, string>? ReadNotes(JsonElement? entity)
+    {
+        if (entity == null || !entity.Value.TryGetProperty("notes", out var notes) || notes.ValueKind != JsonValueKind.Object)
+            return null;
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var prop in notes.EnumerateObject())
+        {
+            var value = prop.Value.ValueKind switch
+            {
+                JsonValueKind.String => prop.Value.GetString(),
+                JsonValueKind.Number => prop.Value.ToString(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                _ => null
+            };
+            if (!string.IsNullOrWhiteSpace(value))
+                map[prop.Name] = value!;
+        }
+        return map.Count == 0 ? null : map;
     }
 
     private static bool SignatureMatches(string body, string? signature, string secret)
@@ -1592,11 +1702,18 @@ IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
 
     private async Task<(string Path, long DocumentId)> StorePdfAsync(byte[] pdf, string fileName, string ownerType, long ownerId, long userId, string mime = "application/pdf")
     {
-        var root = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.SecureDocuments);
-        Directory.CreateDirectory(root);
-        var stored = Guid.NewGuid().ToString("N") + "_" + fileName;
-        var relative = UploadedMedia.ContentRelative(UploadedMedia.SecureDocuments, stored);
-        await File.WriteAllBytesAsync(Path.Combine(root, stored), pdf);
+        var ext = Path.GetExtension(fileName);
+        if (string.IsNullOrWhiteSpace(ext))
+            ext = ".pdf";
+        var folder = ownerType.Trim().ToLowerInvariant() switch
+        {
+            "patient" => $"patients/{ownerId}/documents",
+            "erxpdf" => $"prescriptions/{ownerId}/generated-pdfs",
+            "invoice" => $"invoices/{ownerId}/generated-pdfs",
+            "doctor" => $"doctors/{ownerId}/documents",
+            _ => $"documents/{ownerType.Trim().ToLowerInvariant()}/{ownerId}"
+        };
+        var relative = await _files.SaveAsync(folder, ext, pdf);
         var hash = Convert.ToHexString(SHA256.HashData(pdf));
         var doc = new SecureDocument
         {

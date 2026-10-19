@@ -52,6 +52,10 @@ public class PaymentsController : ControllerBase
     [HttpGet("/api/Payments/Appointments/{patientAppId:int}")]
     public Task<IActionResult> AppointmentPayment(int patientAppId) => Done(_s4.AppointmentPaymentAsync(patientAppId, Caller()));
 
+    /// <summary>
+    /// Razorpay server callback (PAY-02). Configure dashboard URL to this path; verify with X-Razorpay-Signature.
+    /// Handles payment.captured, order.paid, payment.failed, refund.processed.
+    /// </summary>
     [AllowAnonymous]
     [HttpPost("/api/Payments/Webhook")]
     public async Task<IActionResult> Webhook()

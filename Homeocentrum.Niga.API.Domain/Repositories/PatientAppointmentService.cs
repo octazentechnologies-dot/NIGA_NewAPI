@@ -176,7 +176,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                             .Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
                     if (string.IsNullOrWhiteSpace(doctorLabel)) doctorLabel = "your doctor";
                     var dateLabel = patientAppEntity.AppointmentDate?.ToString("dd MMM yyyy") ?? "";
-                    var timeLabel = patientAppEntity.AppointmentTime?.ToString("HH:mm") ?? "";
+                    var timeLabel = NotificationClock.Format12Hour(patientAppEntity.AppointmentTime);
                     _rescheduleNotifier.NotifyConfirmAsync(mobile, false, doctorLabel, dateLabel, timeLabel)
                         .GetAwaiter().GetResult();
                 }
@@ -434,9 +434,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 }
 
                 var patientLabel = string.IsNullOrWhiteSpace(patientName) ? "A patient" : patientName.Trim();
-                var when = visitDate.ToString("dd MMM yyyy");
-                if (appointment.AppointmentTime.HasValue)
-                    when += " " + appointment.AppointmentTime.Value.ToString("HH:mm");
+                var when = NotificationClock.FormatVisit(visitDate, appointment.AppointmentTime);
                 var title = "Follow-up appointment missed";
                 var body = $"{patientLabel} did not arrive for the follow-up visit on {when}.";
                 var deepLink = "/doctor/follow-ups";
@@ -1102,6 +1100,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
 
             var oldValue = $"{appointment.AppointmentDate:yyyy-MM-dd} {appointment.AppointmentTime:HH\\:mm\\:ss}";
             var newValue = $"{targetDate:yyyy-MM-dd} {targetTime:HH\\:mm\\:ss}";
+            var oldWhen = NotificationClock.FormatVisit(appointment.AppointmentDate ?? targetDate, appointment.AppointmentTime);
+            var newWhen = NotificationClock.FormatVisit(targetDate, targetTime);
             var timeError = new ErrorResponseModel();
             var updated = UpdateAppointmentTime(new UpdateAppointmentTimeModel
             {
@@ -1127,8 +1127,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 result.Notification = await _rescheduleNotifier.NotifyAsync(
                     appointment.Patient?.MobileNo,
                     appointment.Patient?.IsWhatsAppOptIn == true,
-                    oldValue,
-                    newValue);
+                    oldWhen,
+                    newWhen);
             }
             catch (Exception ex)
             {
@@ -1137,7 +1137,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     Sms = "logged",
                     WhatsApp = "logged",
                     Push = "later",
-                    Message = $"Your appointment moved from {oldValue} to {newValue}.",
+                    Message = $"Your appointment moved from {oldWhen} to {newWhen}.",
                     Detail = "The appointment change is saved. The patient notice was logged and was not sent."
                 };
                 System.Diagnostics.Trace.TraceWarning("Reschedule notify failed after save: {0}", ex.Message);
@@ -1228,8 +1228,9 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
 
             try
             {
-                var slotLabel =
-                    $"{appointment.AppointmentDate:yyyy-MM-dd} {appointment.AppointmentTime:HH\\:mm\\:ss}";
+                var slotLabel = appointment.AppointmentDate.HasValue
+                    ? NotificationClock.FormatVisit(appointment.AppointmentDate.Value, appointment.AppointmentTime)
+                    : NotificationClock.Format12Hour(appointment.AppointmentTime);
                 result.Notification = await _rescheduleNotifier.NotifyCancelAsync(
                     appointment.Patient?.MobileNo,
                     appointment.Patient?.IsWhatsAppOptIn == true,
@@ -1316,8 +1317,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 var notice = await _rescheduleNotifier.NotifyWaitlistOfferAsync(
                     next.ContactMobile,
                     next.ContactName,
-                    offer.SlotDate,
-                    offer.SlotTime);
+                    appointment.AppointmentDate?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture),
+                    NotificationClock.Format12Hour(appointment.AppointmentTime));
                 offer.Sms = notice.Sms;
                 offer.WhatsApp = notice.WhatsApp;
                 offer.Push = notice.Push;

@@ -1577,7 +1577,15 @@ public partial class S4Week4Service
         using var memory = new MemoryStream();
         await stream.CopyToAsync(memory);
         var bytes = memory.ToArray();
-        var stored = await StorePdfAsync(bytes, Path.GetFileName(file.FileName), "Patient", caller.PatientId.Value, caller.UserId, file.ContentType);
+        (string Path, long DocumentId) stored;
+        try
+        {
+            stored = await StorePdfAsync(bytes, Path.GetFileName(file.FileName), "Patient", caller.PatientId.Value, caller.UserId, file.ContentType);
+        }
+        catch (InvalidOperationException)
+        {
+            return Fail(502, "STORAGE", "File storage is unavailable.");
+        }
         return Ok(new
         {
             success = true,
@@ -1624,10 +1632,18 @@ public partial class S4Week4Service
         if (doc == null) return Fail(404, "NOT_FOUND", "Document not found.");
         var owned = await ResolvePatientAsync((int)doc.OwnerId, caller, write: false);
         if (owned.Error != null) return owned.Error;
-        var full = ResolveStoredPath(doc.BlobPath);
-        if (full == null || !File.Exists(full)) return Fail(404, "NOT_FOUND", "The file is missing on the server.");
+        byte[]? bytes;
+        try
+        {
+            bytes = await _files.ReadAsync(_env.ContentRootPath, doc.BlobPath);
+        }
+        catch (InvalidOperationException)
+        {
+            return Fail(502, "STORAGE", "File storage is unavailable.");
+        }
+        if (bytes == null || bytes.Length == 0) return Fail(404, "NOT_FOUND", "The file is missing on the server.");
         var mime = string.IsNullOrWhiteSpace(doc.Mime) ? "application/octet-stream" : doc.Mime;
-        return S4ActionResult.File(await File.ReadAllBytesAsync(full), doc.FileName ?? Path.GetFileName(full), mime);
+        return S4ActionResult.File(bytes, doc.FileName ?? "document", mime);
     }
 
     public async Task<S4ActionResult> DeletePatientDocumentAsync(long documentId, S4Caller caller)
@@ -1637,13 +1653,16 @@ public partial class S4Week4Service
             .FirstOrDefaultAsync(d => d.SecureDocumentId == documentId && d.OwnerType == "Patient");
         if (doc == null) return Fail(404, "NOT_FOUND", "Document not found.");
         if (doc.OwnerId != caller.PatientId.Value) return Fail(403, "FORBIDDEN", "This document belongs to another patient.");
-        var full = ResolveStoredPath(doc.BlobPath);
+        var stored = doc.BlobPath;
         _context.SecureDocuments.Remove(doc);
         await _context.SaveChangesAsync();
-        if (full != null && File.Exists(full))
+        try
         {
-            try { File.Delete(full); }
-            catch (IOException ex) { _logger.LogWarning(ex, "Could not delete document file {Path}", full); }
+            await _files.DeleteAsync(_env.ContentRootPath, stored);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not delete stored document {DocumentId}", documentId);
         }
         return Ok(new { success = true, message = "Document deleted." });
     }

@@ -17,6 +17,9 @@ public static class AppConfigPayload
 
     public static object Build(IConfiguration configuration)
     {
+        // Sms:RealSms — true = production OTP (no devCode). false = dummy: SMS may still send + API returns devCode.
+        var realSms = configuration.GetValue("Sms:RealSms", false);
+
         return new
         {
             success = true,
@@ -26,7 +29,9 @@ public static class AppConfigPayload
                 siteUrl = Blank(configuration["ConfigurationModel:SiteUrl"]),
                 supportPhone = Blank(configuration["Support:Phone"]),
                 supportWhatsApp = Blank(configuration["Support:WhatsApp"]),
-                supportEmail = Blank(configuration["Support:Email"])
+                supportEmail = Blank(configuration["Support:Email"]),
+                realSms,
+                smsMode = realSms ? "real" : "dummy"
             }
         };
     }

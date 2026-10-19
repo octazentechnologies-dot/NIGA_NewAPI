@@ -963,7 +963,7 @@ public class MobileClinicQueryService
                 false,
                 row.DoctorName ?? "your doctor",
                 row.ProposedDate.Value.ToString("dd MMM yyyy"),
-                row.ProposedTime!);
+                NotificationClock.Format12Hour(time));
         }
         catch { /* booking already saved */ }
         return Ok(new { appointmentRequestId = id, status = "ACCEPTED", patientAppId = appt.PatientAppId });
@@ -1026,7 +1026,7 @@ public class MobileClinicQueryService
                 false,
                 doctorLabel,
                 row.RequestedDate.ToString("dd MMM yyyy"),
-                row.RequestedTime);
+                NotificationClock.Format12Hour(time));
         }
         catch { /* booking already saved */ }
         return Ok(new { status = "ACCEPTED", patientAppId = appt.PatientAppId });

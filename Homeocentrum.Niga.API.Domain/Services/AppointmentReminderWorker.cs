@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Homeocentrum.Niga.API.Domain.Configuration;
 using Homeocentrum.Niga.API.Domain.Data;
+using Homeocentrum.Niga.API.Domain.Helpers;
 
 namespace Homeocentrum.Niga.API.Domain.Services;
 
@@ -116,7 +117,7 @@ public sealed class AppointmentReminderWorker : BackgroundService
         foreach (var row in rows)
         {
             var dateLabel = row.AppointmentDate.ToString("dd MMM yyyy");
-            var timeLabel = string.IsNullOrWhiteSpace(row.AppointmentTime) ? "" : row.AppointmentTime.Trim();
+            var timeLabel = NotificationClock.Format12Hour(row.AppointmentTime);
             var doctor = string.IsNullOrWhiteSpace(row.DoctorName) ? "your doctor" : row.DoctorName.Trim();
             var notice = await notify.NotifyReminderAsync(
                 row.MobileNo,

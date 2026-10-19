@@ -61,6 +61,9 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSingleton<Security.Uploads.IAntivirusScanner, Security.Uploads.DefenderAntivirusScanner>();
             services.AddScoped<Security.Uploads.UploadSecurityFilter>();
             services.AddScoped<Security.IPatientAccessGuard, Security.PatientAccessGuard>();
+            services.Configure<BunnyOptions>(config.GetSection(BunnyOptions.SectionName));
+            services.AddHttpClient(BunnyFileStore.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(2));
+            services.AddSingleton<IStoredFileStore, BunnyFileStore>();
             services.AddHttpClient(RazorpayPaymentVerifier.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
             services.AddSingleton<IRazorpayPaymentVerifier, RazorpayPaymentVerifier>();
             services.AddSingleton<ISignedFileUrlService, SignedFileUrlService>();

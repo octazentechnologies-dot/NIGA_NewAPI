@@ -8,6 +8,7 @@ using Homeocentrum.Niga.API.Domain.Extensions;
 using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Master;
 using Homeocentrum.Niga.API.Domain.Security;
+using Homeocentrum.Niga.API.Domain.Services;
 
 namespace Homeocentrum.Niga.API.Controllers
 {
@@ -21,12 +22,14 @@ namespace Homeocentrum.Niga.API.Controllers
         private readonly NIGACentrumContext _context;
         private readonly IWebHostEnvironment _env;
         private readonly IPatientAccessGuard _patientAccess;
+        private readonly IStoredFileStore _files;
 
-        public SecureDocumentController(NIGACentrumContext context, IWebHostEnvironment env, IPatientAccessGuard patientAccess)
+        public SecureDocumentController(NIGACentrumContext context, IWebHostEnvironment env, IPatientAccessGuard patientAccess, IStoredFileStore files)
         {
             _context = context;
             _env = env;
             _patientAccess = patientAccess;
+            _files = files;
         }
 
         /// <summary>User owner = the caller; Doctor owner = caller's clinic; Patient owner = patient the caller may access.</summary>
@@ -63,28 +66,35 @@ namespace Homeocentrum.Niga.API.Controllers
             if (!await OwnerAllowedAsync(ownerType, ownerId))
                 return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied for this owner." });
 
-            var root = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.SecureDocuments);
-            Directory.CreateDirectory(root);
-
             var safeName = Path.GetFileName(file.FileName);
-            var storedName = Homeocentrum.Niga.API.Domain.Security.Uploads.UploadGuard.RandomStoredName(safeName);
-            var relativePath = UploadedMedia.ContentRelative(UploadedMedia.SecureDocuments, storedName);
-            var fullPath = Path.Combine(root, storedName);
-
-            string hashHex;
-            await using (var fs = System.IO.File.Create(fullPath))
+            var extension = Path.GetExtension(safeName);
+            var folder = ownerType.Trim().ToLowerInvariant() switch
             {
-                using var hashStream = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-                var buffer = new byte[81920];
-                int read;
-                await using var upload = file.OpenReadStream();
-                while ((read = await upload.ReadAsync(buffer)) > 0)
-                {
-                    hashStream.AppendData(buffer.AsSpan(0, read));
-                    await fs.WriteAsync(buffer.AsMemory(0, read));
-                }
-                hashHex = Convert.ToHexString(hashStream.GetHashAndReset());
+                "patient" => $"patients/{ownerId}/documents",
+                "doctor" => $"doctors/{ownerId}/documents",
+                "user" => $"users/{ownerId}/documents",
+                _ => $"documents/{ownerId}"
+            };
+
+            byte[] bytes;
+            await using (var upload = file.OpenReadStream())
+            {
+                using var memory = new MemoryStream();
+                await upload.CopyToAsync(memory);
+                bytes = memory.ToArray();
             }
+
+            string relativePath;
+            try
+            {
+                relativePath = await _files.SaveAsync(folder, string.IsNullOrWhiteSpace(extension) ? ".bin" : extension, bytes);
+            }
+            catch (InvalidOperationException)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { success = false, message = "File storage is unavailable." });
+            }
+
+            var hashHex = Convert.ToHexString(SHA256.HashData(bytes));
 
             var doc = new SecureDocument
             {
@@ -134,16 +144,28 @@ namespace Homeocentrum.Niga.API.Controllers
                 || (doc.OwnerType.Equals("Doctor", StringComparison.OrdinalIgnoreCase)
                     && User.GetDoctorId() == (int)doc.OwnerId);
 
+            if (!allowed
+                && doc.OwnerType.Equals("Patient", StringComparison.OrdinalIgnoreCase)
+                && doc.OwnerId <= int.MaxValue)
+                allowed = await _patientAccess.CanAccessPatientAsync(User, (int)doc.OwnerId);
+
             if (!allowed)
                 return Forbid();
 
-            var fullPath = UploadedMedia.Resolve(_env.ContentRootPath, doc.BlobPath);
-
-            if (!System.IO.File.Exists(fullPath))
+            byte[]? bytes;
+            try
+            {
+                bytes = await _files.ReadAsync(_env.ContentRootPath, doc.BlobPath);
+            }
+            catch (InvalidOperationException)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { success = false, message = "File storage is unavailable." });
+            }
+            if (bytes == null || bytes.Length == 0)
                 return NotFound(new { success = false, message = "Blob missing on server." });
 
             var mime = string.IsNullOrWhiteSpace(doc.Mime) ? "application/octet-stream" : doc.Mime;
-            return PhysicalFile(fullPath, mime, doc.FileName ?? Path.GetFileName(fullPath));
+            return File(bytes, mime, doc.FileName ?? "document");
         }
     }
 }
