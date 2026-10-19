@@ -34,7 +34,6 @@ public interface IS5Week5Service
     Task<S4ActionResult> EarningsBucketsAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> ExportUsersAsync(S4Caller caller);
     Task<S4ActionResult> ImportUsersAsync(UserImportRequest request, S4Caller caller);
-    Task<S4ActionResult> SecurityPostureAsync(S4Caller caller);
     Task<S4ActionResult> ListRemindersAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> SaveReminderAsync(int? reminderId, DoctorReminderWrite request, S4Caller caller);
     Task<S4ActionResult> DeleteReminderAsync(int reminderId, S4Caller caller);

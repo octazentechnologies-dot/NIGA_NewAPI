@@ -402,40 +402,57 @@ public partial class S4Week4Service
         var access = await EnsureSnapshotAccessAsync(snapshot, caller, patientView);
         if (access != null) return access;
         var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, revealNames: !patientView);
-        string? notes = null;
         object itemPayload = items;
-        if (!string.Equals(snapshot.Status, "SIGNED", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(snapshot.Status, "SIGNED", StringComparison.OrdinalIgnoreCase) && items.Count == 0)
         {
-            var noteRow = await _context.Database.SqlQuery<ErxNoteRow>($@"
-                SELECT Notes FROM dbo.ErxSnapshot WHERE ErxSnapshotId = {snapshot.ErxSnapshotId}").FirstOrDefaultAsync();
-            notes = noteRow?.Notes;
-            if (items.Count == 0)
+            var lines = await _context.Database.SqlQuery<RemedyLineRow>($@"
+                SELECT r.PrescriptionRemedyId, r.RemedyId, m.RemedyName, r.Dose, p.Code AS PotencyCode, r.Frequency, r.Duration, r.Instructions
+                FROM dbo.PrescriptionRemedyDetail r
+                INNER JOIN dbo.RemedyMaster m ON m.RemedyId = r.RemedyId
+                LEFT JOIN dbo.PotencyMaster p ON p.PotencyId = r.PotencyId
+                WHERE r.AppointmentId = {patientAppId} AND ISNULL(r.DeletedStatus, 0) = 0").ToListAsync();
+            var sequence = 0;
+            itemPayload = lines.Select(line =>
             {
-                var lines = await _context.Database.SqlQuery<RemedyLineRow>($@"
-                    SELECT r.PrescriptionRemedyId, r.RemedyId, m.RemedyName, r.Dose, p.Code AS PotencyCode, r.Frequency, r.Duration, r.Instructions
-                    FROM dbo.PrescriptionRemedyDetail r
-                    INNER JOIN dbo.RemedyMaster m ON m.RemedyId = r.RemedyId
-                    LEFT JOIN dbo.PotencyMaster p ON p.PotencyId = r.PotencyId
-                    WHERE r.AppointmentId = {patientAppId} AND ISNULL(r.DeletedStatus, 0) = 0").ToListAsync();
-                var sequence = 0;
-                itemPayload = lines.Select(line =>
+                sequence++;
+                return new
                 {
-                    sequence++;
-                    return new
-                    {
-                        remedyId = line.RemedyId,
-                        remedyCode = "R" + sequence.ToString("D4"),
-                        remedyName = patientView ? "" : line.RemedyName,
-                        potencyCode = line.PotencyCode,
-                        dose = line.Dose,
-                        frequency = line.Frequency,
-                        duration = line.Duration,
-                        instructions = line.Instructions
-                    };
-                }).ToList();
-            }
+                    prescriptionRemedyId = line.PrescriptionRemedyId,
+                    prescriptionRemedyDetailId = line.PrescriptionRemedyId,
+                    remedyId = line.RemedyId,
+                    remedyCode = "R" + sequence.ToString("D4"),
+                    remedyName = patientView ? "" : line.RemedyName,
+                    potencyCode = line.PotencyCode,
+                    dose = line.Dose,
+                    frequency = line.Frequency,
+                    duration = line.Duration,
+                    instructions = line.Instructions
+                };
+            }).ToList();
         }
-        return Ok(new { success = true, data = new { snapshot.ErxSnapshotId, snapshot.PatientAppId, snapshot.Status, snapshot.SignedAt, items = itemPayload, notes, notesIncluded = notes != null } });
+
+        var patientName = await _context.Patients.AsNoTracking()
+            .Where(p => p.PatientId == snapshot.PatientId)
+            .Select(p => p.PatientName)
+            .FirstOrDefaultAsync();
+
+        // ERX-03 — clinical visit notes stay off GetErx / patient-pharmacy prescription payload.
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                snapshot.ErxSnapshotId,
+                snapshot.PatientAppId,
+                snapshot.PatientId,
+                patientName,
+                snapshot.Status,
+                snapshot.SignedAt,
+                items = itemPayload,
+                notes = (string?)null,
+                notesIncluded = false
+            }
+        });
     }
 
     public async Task<S4ActionResult> SignErxAsync(SignErxRequest request, S4Caller caller)
@@ -661,7 +678,7 @@ public partial class S4Week4Service
 
         var doctor = await _context.Doctors.AsNoTracking()
             .Where(d => d.DoctorId == snapshot.DoctorId)
-            .Select(d => new { d.FirstName, d.LastName, d.ClinicName, d.City, d.MobileNo, d.EmailId })
+            .Select(d => new { d.FirstName, d.LastName, d.ClinicName, d.City, d.MobileNo, d.EmailId, d.PassingCertNo })
             .FirstOrDefaultAsync();
         var patient = await _context.Patients.AsNoTracking()
             .Where(p => p.PatientId == snapshot.PatientId)
@@ -674,6 +691,7 @@ public partial class S4Week4Service
             PatientAppId = snapshot.PatientAppId,
             ClinicName = doctor?.ClinicName ?? "",
             DoctorName = doctor == null ? "Doctor" : $"Dr. {doctor.FirstName} {doctor.LastName}".Trim(),
+            RegistrationNo = string.IsNullOrWhiteSpace(doctor?.PassingCertNo) ? null : doctor!.PassingCertNo,
             ClinicContact = string.Join(" · ", new[] { doctor?.City, doctor?.MobileNo, doctor?.EmailId }.Where(s => !string.IsNullOrWhiteSpace(s))),
             PatientName = patient?.PatientName ?? ("Patient " + snapshot.PatientId),
             PatientMeta = string.Join(" · ", new[] { patient?.Age is > 0 ? patient.Age + " yrs" : null, gender }.Where(s => !string.IsNullOrWhiteSpace(s))),
@@ -688,7 +706,8 @@ public partial class S4Week4Service
             Duration = i.Duration,
             Instructions = i.Instructions
         }).ToList();
-        var pdf = Helpers.ErxPdfBuilder.Build(header, lines);
+        var labLabels = ParseLabOrderLabels(snapshot.LabOrdersJson);
+        var pdf = Helpers.ErxPdfBuilder.Build(header, lines, labLabels);
         if (reveal && !await _context.SecureDocuments.AnyAsync(d => d.OwnerType == "ErxPdf" && d.OwnerId == snapshot.ErxSnapshotId))
             await StorePdfAsync(pdf, fileName, "ErxPdf", snapshot.ErxSnapshotId, caller.UserId);
         return S4ActionResult.File(pdf, fileName, "application/pdf");
@@ -843,6 +862,20 @@ public partial class S4Week4Service
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.PharmacyPartner SET Status = N'ACTIVE' WHERE PharmacyPartnerId = {pharmacyId}");
         return Ok(new { success = true, data = new { pharmacyId, status = "ACTIVE" } });
+    }
+
+    public async Task<S4ActionResult> SuspendPharmacyAsync(int pharmacyId, S4Caller caller)
+    {
+        if (!caller.IsAdmin) return Fail(403, "FORBIDDEN", "Only admin can suspend a pharmacy.");
+        var row = await _context.Database.SqlQuery<SellerRow>($@"
+            SELECT PharmacyPartnerId, Name, Area, Status
+            FROM dbo.PharmacyPartner WHERE PharmacyPartnerId = {pharmacyId}").FirstOrDefaultAsync();
+        if (row == null) return Fail(404, "NOT_FOUND", "Pharmacy not found.");
+        if (string.Equals(row.Status, "SUSPENDED", StringComparison.OrdinalIgnoreCase))
+            return Ok(new { success = true, data = new { pharmacyId, status = "SUSPENDED" }, message = "Pharmacy is already suspended." });
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.PharmacyPartner SET Status = N'SUSPENDED' WHERE PharmacyPartnerId = {pharmacyId}");
+        return Ok(new { success = true, data = new { pharmacyId, status = "SUSPENDED" } });
     }
 
     public async Task<S4ActionResult> SweepLicencesAsync(S4Caller caller)
@@ -1681,7 +1714,7 @@ public partial class S4Week4Service
         if (owned.Error != null) return owned.Error;
         var id = owned.PatientId;
         var rows = await _context.Database.SqlQuery<FollowUpRow>($@"
-            SELECT t.FollowUpTaskId, t.Title, t.DueDate, t.Status, p.PatientId, p.DoctorId
+            SELECT t.FollowUpTaskId, t.Title, t.DueDate, t.Status, t.CompletedAt, p.PatientId, p.DoctorId
             FROM dbo.FollowUpTask t
             INNER JOIN dbo.FollowUpPlan p ON p.FollowUpPlanId = t.FollowUpPlanId
             WHERE p.PatientId = {id}
@@ -2105,8 +2138,45 @@ public partial class S4Week4Service
 
     private async Task<SnapshotRow?> LoadSnapshotAsync(int id)
         => await _context.Database.SqlQuery<SnapshotRow>($@"
-            SELECT ErxSnapshotId, PatientAppId, PatientId, DoctorId, Status, SignedAt
+            SELECT ErxSnapshotId, PatientAppId, PatientId, DoctorId, Status, SignedAt, LabOrdersJson
             FROM dbo.ErxSnapshot WHERE ErxSnapshotId = {id}").FirstOrDefaultAsync();
+
+    private static List<string> ParseLabOrderLabels(string? labOrdersJson)
+    {
+        var labels = new List<string>();
+        if (string.IsNullOrWhiteSpace(labOrdersJson))
+            return labels;
+        try
+        {
+            using var doc = JsonDocument.Parse(labOrdersJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return labels;
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.ValueKind == JsonValueKind.String)
+                {
+                    var s = el.GetString();
+                    if (!string.IsNullOrWhiteSpace(s)) labels.Add(s.Trim());
+                    continue;
+                }
+                if (el.ValueKind != JsonValueKind.Object)
+                    continue;
+                var name = el.TryGetProperty("LabName", out var lab) ? lab.GetString()
+                    : el.TryGetProperty("labName", out var lab2) ? lab2.GetString() : null;
+                if (string.IsNullOrWhiteSpace(name) && el.TryGetProperty("PatientOrderedTestId", out var id))
+                    name = "Lab order #" + id;
+                else if (string.IsNullOrWhiteSpace(name) && el.TryGetProperty("patientOrderedTestId", out var id2))
+                    name = "Lab order #" + id2;
+                if (!string.IsNullOrWhiteSpace(name))
+                    labels.Add(name.Trim());
+            }
+        }
+        catch (JsonException)
+        {
+            // Ignore bad JSON left on older rows.
+        }
+        return labels;
+    }
 
     private async Task NotifyTrustDecisionAsync(Doctor doctor, string status, string? note)
     {
@@ -2137,7 +2207,7 @@ public partial class S4Week4Service
 
     private async Task<SnapshotRow?> LoadSnapshotByAppointmentAsync(int patientAppId)
         => await _context.Database.SqlQuery<SnapshotRow>($@"
-            SELECT ErxSnapshotId, PatientAppId, PatientId, DoctorId, Status, SignedAt
+            SELECT ErxSnapshotId, PatientAppId, PatientId, DoctorId, Status, SignedAt, LabOrdersJson
             FROM dbo.ErxSnapshot WHERE PatientAppId = {patientAppId}").FirstOrDefaultAsync();
 
     private async Task<List<SnapshotItemRow>> LoadSnapshotItemsAsync(int id, bool revealNames)
@@ -2265,6 +2335,7 @@ public partial class S4Week4Service
         public int DoctorId { get; set; }
         public string Status { get; set; } = "";
         public DateTime? SignedAt { get; set; }
+        public string? LabOrdersJson { get; set; }
     }
 
     private sealed class SnapshotItemRow
@@ -2361,6 +2432,7 @@ public partial class S4Week4Service
         public string Title { get; set; } = "";
         public DateTime DueDate { get; set; }
         public string Status { get; set; } = "";
+        public DateTime? CompletedAt { get; set; }
         public int PatientId { get; set; }
         public int DoctorId { get; set; }
     }

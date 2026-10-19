@@ -361,13 +361,18 @@ public partial class S4Week4Service
         var deny = AccountOnly(caller);
         if (deny != null) return deny;
         var filter = string.IsNullOrWhiteSpace(status) ? "OPEN" : status.Trim().ToUpperInvariant();
-        if (filter is not ("OPEN" or "RESOLVED" or "RETRIED"))
-            return Fail(400, "VALIDATION", "Status must be OPEN, RESOLVED, or RETRIED.");
-        var rows = await _context.Database.SqlQuery<ExceptionRow>($@"
-            SELECT PaymentExceptionId, PaymentOrderId, Kind, Detail, Status, CreatedAt
-            FROM dbo.PaymentException
-            WHERE Status = {filter}
-            ORDER BY CreatedAt DESC").ToListAsync();
+        if (filter is not ("OPEN" or "RESOLVED" or "RETRIED" or "ALL"))
+            return Fail(400, "VALIDATION", "Status must be OPEN, RESOLVED, RETRIED, or ALL.");
+        var rows = filter == "ALL"
+            ? await _context.Database.SqlQuery<ExceptionRow>($@"
+                SELECT PaymentExceptionId, PaymentOrderId, Kind, Detail, Status, CreatedAt
+                FROM dbo.PaymentException
+                ORDER BY CreatedAt DESC").ToListAsync()
+            : await _context.Database.SqlQuery<ExceptionRow>($@"
+                SELECT PaymentExceptionId, PaymentOrderId, Kind, Detail, Status, CreatedAt
+                FROM dbo.PaymentException
+                WHERE Status = {filter}
+                ORDER BY CreatedAt DESC").ToListAsync();
         return Ok(new { success = true, data = rows });
     }
 

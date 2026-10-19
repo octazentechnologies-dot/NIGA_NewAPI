@@ -40,6 +40,14 @@ public class PaymentsController : ControllerBase
     [HttpPost("/api/Payments/Verify")]
     public Task<IActionResult> Verify([FromBody] VerifyPaymentRequest request) => Done(_s4.VerifyPaymentAsync(request, Caller()));
 
+    /// <summary>
+    /// Pay anytime / pay later after hold or pay-at-clinic.
+    /// Fetches Razorpay GET /v1/payments/{id}, stores method + gateway ids, marks PAID when captured.
+    /// </summary>
+    [HttpPost("/api/Payments/Bookings/UpdatePayment")]
+    public Task<IActionResult> UpdateBookingPayment([FromBody] UpdateBookingPaymentRequest request)
+        => Done(_s4.UpdateBookingPaymentAsync(request, Caller()));
+
     /// <summary>PAT-18.02 / PAT-19 — poll appointment payment state for checkout UI.</summary>
     [HttpGet("/api/Payments/Appointments/{patientAppId:int}")]
     public Task<IActionResult> AppointmentPayment(int patientAppId) => Done(_s4.AppointmentPaymentAsync(patientAppId, Caller()));

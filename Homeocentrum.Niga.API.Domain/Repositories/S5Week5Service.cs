@@ -611,12 +611,20 @@ public partial class S5Week5Service : IS5Week5Service
             LEFT JOIN dbo.Patient p ON p.PatientId = o.PatientId
             LEFT JOIN dbo.PharmacyPartner ph ON ph.PharmacyPartnerId = o.PharmacyPartnerId
             ORDER BY o.MedicineOrderId DESC").ToListAsync();
+        // Distinct patients/pharmacies across all statuses (do not sum per-status counts).
+        var totalRow = (await _context.Database.SqlQuery<MedicineReportTotalsRow>($@"
+            SELECT
+                COUNT(1) AS Orders,
+                COUNT(DISTINCT PatientId) AS Patients,
+                COUNT(DISTINCT PharmacyPartnerId) AS Pharmacies,
+                ISNULL(SUM(QuoteAmount), 0) AS QuoteTotal
+            FROM dbo.MedicineOrder").ToListAsync()).FirstOrDefault();
         var totals = new
         {
-            orders = byStatus.Sum(r => r.Orders),
-            patients = byStatus.Sum(r => r.Patients),
-            pharmacies = byStatus.Sum(r => r.Pharmacies),
-            quoteTotal = byStatus.Sum(r => r.QuoteTotal),
+            orders = totalRow?.Orders ?? byStatus.Sum(r => r.Orders),
+            patients = totalRow?.Patients ?? 0,
+            pharmacies = totalRow?.Pharmacies ?? 0,
+            quoteTotal = totalRow?.QuoteTotal ?? byStatus.Sum(r => r.QuoteTotal),
         };
         return S4ActionResult.Ok(new
         {
@@ -714,31 +722,6 @@ public partial class S5Week5Service : IS5Week5Service
             unknown = names.Where(n => !known.Contains(n)).ToList()
         });
     });
-
-    public Task<S4ActionResult> SecurityPostureAsync(S4Caller caller)
-    {
-        var deny = Admin(caller);
-        if (deny != null) return Task.FromResult(deny);
-        return Task.FromResult(S4ActionResult.Ok(new
-        {
-            success = true,
-            directoryBrowsingEnabled = false,
-            secretsStoredIn = "appsettings.json",
-            keyVaultConfigured = !string.IsNullOrWhiteSpace(_config["KeyVault:VaultUri"]),
-            smsConfigured = TwilioSmsReady() || !string.IsNullOrWhiteSpace(_config["Sms:Msg91:AuthKey"]) || !string.IsNullOrWhiteSpace(_config["Sms:AuthKey"]),
-            smsProvider = _config["Sms:Provider"] ?? "Stub",
-            smsSendingEnabled = bool.TryParse(_config["Sms:Enabled"], out var smsOn) && smsOn,
-            fcmConfigured = !string.IsNullOrWhiteSpace(_config["Fcm:ServerKey"]),
-            message = TwilioSmsReady() && !(bool.TryParse(_config["Sms:Enabled"], out var sending) && sending)
-                ? "Twilio is saved. SMS sending is off until Sms:Enabled is true. This page does not send a message."
-                : "Live keys are not rotated by this API. Change them in appsettings.json."
-        }));
-    }
-
-    private bool TwilioSmsReady() =>
-        !string.IsNullOrWhiteSpace(_config["Sms:Twilio:AccountSid"])
-        && !string.IsNullOrWhiteSpace(_config["Sms:Twilio:AuthToken"])
-        && !string.IsNullOrWhiteSpace(_config["Sms:Twilio:FromNumber"]);
 
     private async Task<S4ActionResult> Guard(Func<Task<S4ActionResult>> work)
     {
@@ -1068,6 +1051,13 @@ public partial class S5Week5Service : IS5Week5Service
         public int Pharmacies { get; set; }
         public decimal QuoteTotal { get; set; }
         public DateTime? LastCreatedAt { get; set; }
+    }
+    private sealed class MedicineReportTotalsRow
+    {
+        public int Orders { get; set; }
+        public int Patients { get; set; }
+        public int Pharmacies { get; set; }
+        public decimal QuoteTotal { get; set; }
     }
     private sealed class MedicineReportOrderRow
     {

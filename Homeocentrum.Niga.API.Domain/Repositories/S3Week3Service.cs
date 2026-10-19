@@ -771,6 +771,13 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             var now = DateTime.Now;
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
                 UPDATE dbo.TeleSession SET Status = N'Ended', EndedAt = {now} WHERE TeleSessionId = {sessionId}");
+            // Mark the visit completed so tele board + clinic queues drop Join/Waiting consistently.
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.PatientAppointment
+                SET Status = N'COMPLETED'
+                WHERE PatientAppId = {session.PatientAppId}
+                  AND ISNULL(DeleteStatus, 0) = 0
+                  AND ISNULL(Status, N'') NOT IN (N'CANCELLED', N'COMPLETED')");
             await LogEventAsync(sessionId, "Ended", null);
             return S3ActionResult.Ok(new { success = true, status = "Ended", teleSessionId = sessionId });
         }

@@ -85,6 +85,16 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string? ConsentPolicyVersion { get; set; }
         /// <summary>When true, the hold is pay-at-clinic. Rejected when the doctor fee config disables it.</summary>
         public bool? PayAtClinic { get; set; }
+        /// <summary>Logged-in patient user id from VerifyOtp / JWT. When JWT is present must match claim.</summary>
+        public long? UserId { get; set; }
+        /// <summary>Razorpay order id. Usually null on first hold; accepted for late retry.</summary>
+        [JsonPropertyName("razorpay_order_id")]
+        [MaxLength(80)]
+        public string? RazorpayOrderId { get; set; }
+        /// <summary>Razorpay payment id. Usually null on first hold; accepted for late retry.</summary>
+        [JsonPropertyName("razorpay_payment_id")]
+        [MaxLength(80)]
+        public string? RazorpayPaymentId { get; set; }
     }
 
     public class PatientAuthRequestOtpModel

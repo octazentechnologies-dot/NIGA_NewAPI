@@ -476,6 +476,12 @@ namespace Homeocentrum.Niga.API.Controllers
                 return BadRequest(new { success = false, message = "AppointmentTime must be HH:mm." });
 
             var userId = (long)User.GetUserId();
+            if (request.UserId is > 0 && request.UserId.Value != userId)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    new { success = false, message = "userId does not match the signed-in user." });
+            }
+
             var reason = await TryBookAsReasonAsync(userId, request.MemberPatientId);
             if (reason == null)
             {
@@ -503,6 +509,16 @@ namespace Homeocentrum.Niga.API.Controllers
             if (clash)
                 return Conflict(new { success = false, message = "That slot is already booked." });
 
+            var payAtClinicEnabled = await _fees.PayAtClinicEnabledAsync(request.DoctorId);
+            var payAtClinic = request.PayAtClinic == true;
+            if (payAtClinic && !payAtClinicEnabled)
+                return BadRequest(new { success = false, code = "PAY_AT_CLINIC_DISABLED", message = "This doctor does not accept pay at clinic." });
+
+            var razorpayOrderId = payAtClinic ? null : NullIfWhite(request.RazorpayOrderId);
+            var razorpayPaymentId = payAtClinic ? null : NullIfWhite(request.RazorpayPaymentId);
+
+            await EnsureBookedByUserIdColumnAsync();
+
             var rawMode = request.ConsultMode ?? request.VisitType;
             var mode = string.IsNullOrWhiteSpace(rawMode)
                 ? (request.IsTele ? S3AppointmentRules.Tele : S3AppointmentRules.InClinic)
@@ -514,6 +530,7 @@ namespace Homeocentrum.Niga.API.Controllers
                 PatientId = request.MemberPatientId,
                 DoctorId = request.DoctorId,
                 UserId = doctor.UserId ?? 0,
+                BookedByUserId = userId,
                 AppointmentDate = day,
                 AppointmentTime = time,
                 Status = PatientsStatus.NotArrived.GetDisplayName(),
@@ -523,6 +540,9 @@ namespace Homeocentrum.Niga.API.Controllers
                 ConsultMode = mode,
                 IsTele = isTele,
                 PaymentStatus = "PENDING",
+                PaymentMethod = payAtClinic ? "PAY_AT_CLINIC" : null,
+                PayAtClinicAllowed = payAtClinic,
+                BookingChannel = "PatientApp",
                 HoldExpiresAt = DateTime.UtcNow.AddMinutes(15)
             };
             _context.PatientAppointments.Add(appt);
@@ -542,12 +562,32 @@ namespace Homeocentrum.Niga.API.Controllers
                     appointmentTime = appt.AppointmentTime.ToString(),
                     bookingToken = appt.BookingToken,
                     status = appt.Status,
+                    paymentStatus = appt.PaymentStatus,
+                    paymentMethod = appt.PaymentMethod,
                     consultMode = appt.ConsultMode,
                     consultFee = isTele ? fees.TeleFee : fees.InClinicFee,
-                    currency = fees.Currency
+                    currency = fees.Currency,
+                    payAtClinicAllowed = appt.PayAtClinicAllowed,
+                    payAtClinicEnabled,
+                    payAtClinic,
+                    userId = appt.BookedByUserId,
+                    razorpay_order_id = razorpayOrderId,
+                    razorpay_payment_id = razorpayPaymentId,
+                    holdExpiresAt = appt.HoldExpiresAt
                 }
             });
         }
+
+        private async Task EnsureBookedByUserIdColumnAsync()
+        {
+            await _context.Database.ExecuteSqlRawAsync("""
+                IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
+                    ALTER TABLE dbo.PatientAppointment ADD BookedByUserId BIGINT NULL;
+                """);
+        }
+
+        private static string? NullIfWhite(string? value)
+            => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
         private async Task<string?> TryBookAsReasonAsync(long userId, int patientId)
         {

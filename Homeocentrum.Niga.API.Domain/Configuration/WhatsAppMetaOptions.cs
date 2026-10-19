@@ -1,8 +1,15 @@
+using System;
+
 namespace Homeocentrum.Niga.API.Domain.Configuration;
 
 public class WhatsAppMetaOptions
 {
     public const string SectionName = "WhatsAppMeta";
+
+    /// <summary>
+    /// Twilio | Meta. Twilio reuses Sms:Twilio credentials. Meta uses AccessToken + PhoneNumberId below.
+    /// </summary>
+    public string Provider { get; set; } = "Twilio";
 
     public string AccessToken { get; set; } = string.Empty;
 
@@ -28,6 +35,9 @@ public class WhatsAppMetaOptions
     /// Must match the value configured in Meta → WhatsApp → Configuration → Webhook.
     /// </summary>
     public string VerifyToken { get; set; } = string.Empty;
+
+    public bool IsMetaProvider() =>
+        string.Equals(Provider?.Trim(), "Meta", StringComparison.OrdinalIgnoreCase);
 
     public bool IsConfigured()
     {

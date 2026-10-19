@@ -49,10 +49,10 @@ public partial class S5Week5Service
         var denied = await PharmacyAccessAsync(pharmacyPartnerId, caller);
         if (denied != null) return denied;
         if (request == null) return S4ActionResult.Fail(400, "VALIDATION", "Configuration is required.");
-        if (!TimeSpan.TryParseExact(request.OpenTime ?? "", @"hh\:mm", CultureInfo.InvariantCulture, out var open)
-            || !TimeSpan.TryParseExact(request.CloseTime ?? "", @"hh\:mm", CultureInfo.InvariantCulture, out var close))
+        if (!TryParseClock(request.OpenTime, out var open) || !TryParseClock(request.CloseTime, out var close))
             return S4ActionResult.Fail(400, "VALIDATION", "Opening and closing time must be HH:mm.");
-        if (close <= open) return S4ActionResult.Fail(400, "VALIDATION", "Closing time must be after opening time.");
+        if (close <= open)
+            return S4ActionResult.Fail(400, "VALIDATION", "Closing time must be after opening time on the same day.");
         var days = WeekDays.Where(d => (request.Days ?? new List<string>()).Any(x => string.Equals(x?.Trim(), d, StringComparison.OrdinalIgnoreCase))).ToList();
         if (days.Count == 0) return S4ActionResult.Fail(400, "VALIDATION", "Select at least one working day.");
         var areas = (request.Areas ?? new List<string>()).Select(a => a?.Trim()).Where(a => !string.IsNullOrEmpty(a))
@@ -103,6 +103,16 @@ public partial class S5Week5Service
 
     private static string[] SplitDays(string? value) =>
         (value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static bool TryParseClock(string? value, out TimeSpan time)
+    {
+        var raw = (value ?? "").Trim();
+        if (TimeSpan.TryParseExact(raw, @"hh\:mm", CultureInfo.InvariantCulture, out time)) return true;
+        if (TimeSpan.TryParseExact(raw, @"hh\:mm\:ss", CultureInfo.InvariantCulture, out time)) return true;
+        if (TimeSpan.TryParse(raw, CultureInfo.InvariantCulture, out time)) return true;
+        time = default;
+        return false;
+    }
 
     private sealed class PharmacyConfigRow
     {

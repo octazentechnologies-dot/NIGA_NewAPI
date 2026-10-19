@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.DTOs;
+using Homeocentrum.Niga.API.Domain.Extensions;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Enums;
 using Homeocentrum.Niga.API.Domain.Master;
@@ -25,20 +26,17 @@ namespace Homeocentrum.Niga.API.Controllers
         private readonly IWebHostEnvironment _env;
         private readonly IPatientAppointmentService _appointments;
         private readonly IS4Week4Service _fees;
-        private readonly IAppointmentRescheduleNotifier _notify;
 
         public PublicController(
             NIGACentrumContext context,
             IWebHostEnvironment env,
             IPatientAppointmentService appointments,
-            IS4Week4Service fees,
-            IAppointmentRescheduleNotifier notify)
+            IS4Week4Service fees)
         {
             _context = context;
             _env = env;
             _appointments = appointments;
             _fees = fees;
-            _notify = notify;
         }
 
         [HttpGet("Doctors")]
@@ -261,6 +259,7 @@ namespace Homeocentrum.Niga.API.Controllers
         [HttpGet("Doctors/{id:int}/Slots")]
         public async Task<IActionResult> GetDoctorSlots(int id, [FromQuery] DateTime date)
         {
+            await EnsureBookedByUserIdColumnAsync();
             if (date == default)
                 date = DateTime.Today;
 
@@ -316,7 +315,20 @@ namespace Homeocentrum.Niga.API.Controllers
             if (!TimeOnly.TryParse(request.AppointmentTime, out var time))
                 return BadRequest(new { success = false, message = "AppointmentTime must be HH:mm." });
 
+            long? bookedByUserId = request.UserId is > 0 ? request.UserId : null;
+            if (User?.Identity?.IsAuthenticated == true)
+            {
+                var jwtUserId = (long)User.GetUserId();
+                if (jwtUserId > 0)
+                {
+                    if (bookedByUserId.HasValue && bookedByUserId.Value != jwtUserId)
+                        return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "userId does not match the signed-in user." });
+                    bookedByUserId ??= jwtUserId;
+                }
+            }
+
             var day = request.AppointmentDate.Date;
+            await EnsureBookedByUserIdColumnAsync();
 
             // B-027 — optional Idempotency-Key (same key + same body → original; same key + different body → 409).
             Request.Headers.TryGetValue("Idempotency-Key", out var idemHeader);
@@ -408,8 +420,14 @@ namespace Homeocentrum.Niga.API.Controllers
                 .FirstOrDefaultAsync();
 
             var payAtClinicEnabled = await _fees.PayAtClinicEnabledAsync(id);
-            if (request.PayAtClinic == true && !payAtClinicEnabled)
+            var payAtClinic = request.PayAtClinic == true;
+            if (payAtClinic && !payAtClinicEnabled)
                 return BadRequest(new { success = false, code = "PAY_AT_CLINIC_DISABLED", message = "This doctor does not accept pay at clinic." });
+
+            // Hold only — do not treat as paid / do not send "appointment booked" push here.
+            // Razorpay ids on hold are usually null; when both arrive (late retry) and payAtClinic is false, store later via UpdatePayment.
+            var razorpayOrderId = payAtClinic ? null : NullIfWhite(request.RazorpayOrderId);
+            var razorpayPaymentId = payAtClinic ? null : NullIfWhite(request.RazorpayPaymentId);
 
             var token = Guid.NewGuid().ToString("N");
             var mode = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType);
@@ -420,6 +438,7 @@ namespace Homeocentrum.Niga.API.Controllers
                 PatientId = patient.PatientId,
                 DoctorId = id,
                 UserId = doctor.UserId ?? 0,
+                BookedByUserId = bookedByUserId,
                 AppointmentDate = day,
                 AppointmentTime = time,
                 Status = PatientsStatus.NotArrived.GetDisplayName(),
@@ -429,7 +448,9 @@ namespace Homeocentrum.Niga.API.Controllers
                 ConsultMode = mode,
                 IsTele = isTele,
                 PaymentStatus = "PENDING",
-                PayAtClinicAllowed = request.PayAtClinic ?? payAtClinicEnabled,
+                PaymentMethod = payAtClinic ? "PAY_AT_CLINIC" : null,
+                PayAtClinicAllowed = payAtClinic,
+                BookingChannel = "PatientApp",
                 HoldExpiresAt = DateTime.UtcNow.AddMinutes(15),
                 ConsentPolicyVersion = request.ConsentPolicyVersion ?? policy
             };
@@ -444,24 +465,6 @@ namespace Homeocentrum.Niga.API.Controllers
                     VALUES ({idemKey}, {id}, {mobile}, {bodyFingerprint}, {appt.PatientAppId}, {appt.BookingToken}, SYSUTCDATETIME())");
             }
 
-            try
-            {
-                var doctorLabel = string.Join(" ", new[] { doctor.FirstName, doctor.MiddleName, doctor.LastName }
-                    .Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
-                if (string.IsNullOrWhiteSpace(doctorLabel))
-                    doctorLabel = "your doctor";
-                await _notify.NotifyConfirmAsync(
-                    mobile,
-                    patient.IsWhatsAppOptIn == true,
-                    doctorLabel,
-                    day.ToString("dd MMM yyyy"),
-                    time.ToString("HH:mm"));
-            }
-            catch
-            {
-                // Booking is already saved; SMS failure must not fail the response.
-            }
-
             return Ok(new
             {
                 success = true,
@@ -471,13 +474,18 @@ namespace Homeocentrum.Niga.API.Controllers
                     patientAppId = appt.PatientAppId,
                     bookingToken = appt.BookingToken,
                     paymentStatus = appt.PaymentStatus,
+                    paymentMethod = appt.PaymentMethod,
                     holdExpiresAt = appt.HoldExpiresAt,
                     consentPolicyVersion = appt.ConsentPolicyVersion,
                     consultMode = appt.ConsultMode,
                     consultFee = isTele ? fees.TeleFee : fees.InClinicFee,
                     currency = fees.Currency,
                     payAtClinicAllowed = appt.PayAtClinicAllowed,
-                    payAtClinicEnabled
+                    payAtClinicEnabled,
+                    payAtClinic,
+                    userId = appt.BookedByUserId,
+                    razorpay_order_id = razorpayOrderId,
+                    razorpay_payment_id = razorpayPaymentId
                 }
             });
         }
@@ -794,6 +802,17 @@ namespace Homeocentrum.Niga.API.Controllers
                 );
                 """);
         }
+
+        private async Task EnsureBookedByUserIdColumnAsync()
+        {
+            await _context.Database.ExecuteSqlRawAsync("""
+                IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
+                    ALTER TABLE dbo.PatientAppointment ADD BookedByUserId BIGINT NULL;
+                """);
+        }
+
+        private static string? NullIfWhite(string? value)
+            => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
         private sealed class BookingIdempotencyRow
         {

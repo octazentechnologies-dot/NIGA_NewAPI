@@ -34,6 +34,7 @@ public partial class S4Week4Service : IS4Week4Service
     private readonly ISmsSender _sms;
     private readonly ISmsTemplateRenderer _templates;
     private readonly SmsOptions _smsOptions;
+    private readonly IRazorpayPaymentVerifier _razorpay;
 
     public S4Week4Service(
         NIGACentrumContext context,
@@ -45,7 +46,8 @@ public partial class S4Week4Service : IS4Week4Service
         INotificationOutbox outbox,
         ISmsSender sms,
         ISmsTemplateRenderer templates,
-        IOptions<SmsOptions> smsOptions)
+        IOptions<SmsOptions> smsOptions,
+        IRazorpayPaymentVerifier razorpay)
     {
         _context = context;
         _config = config;
@@ -57,6 +59,7 @@ public partial class S4Week4Service : IS4Week4Service
         _sms = sms;
         _templates = templates;
         _smsOptions = smsOptions.Value ?? new SmsOptions();
+        _razorpay = razorpay;
     }
 
     public async Task<bool> PayAtClinicEnabledAsync(int doctorId)
@@ -313,6 +316,41 @@ public partial class S4Week4Service : IS4Week4Service
         var access = await EnsureOrderAccessAsync(order, caller);
         if (access != null)
             return access;
+
+        var paymentId = FirstNonEmpty(request.RazorpayPaymentId, request.GatewayPaymentId);
+        var orderId = FirstNonEmpty(request.RazorpayOrderId, order.GatewayOrderId);
+        if (!string.IsNullOrWhiteSpace(paymentId) && !string.IsNullOrWhiteSpace(orderId)
+            && !string.IsNullOrWhiteSpace(request.RazorpaySignature)
+            && !_razorpay.SignatureValid(orderId, paymentId, request.RazorpaySignature))
+            return Fail(400, "SIGNATURE", "Razorpay signature is invalid.");
+
+        if (!string.IsNullOrWhiteSpace(paymentId) && _razorpay.Configured)
+        {
+            var details = await _razorpay.GetPaymentAsync(paymentId);
+            if (details == null)
+                return Fail(502, "GATEWAY", "Could not read payment from Razorpay.");
+            if (!string.IsNullOrWhiteSpace(orderId)
+                && !string.IsNullOrWhiteSpace(details.OrderId)
+                && !string.Equals(details.OrderId, orderId.Trim(), StringComparison.Ordinal))
+                return Fail(409, "ORDER_MISMATCH", "Payment does not belong to that Razorpay order.");
+
+            await UpsertGatewayIdsAsync(order.PaymentOrderId, orderId ?? details.OrderId, details.Id);
+            if (details.IsCaptured)
+            {
+                await ApplyCapturedFromDetailsAsync(order, details);
+                order = await LoadOrderAsync(order.PaymentOrderId) ?? order;
+                return Ok(new
+                {
+                    success = true,
+                    message = "Payment captured. Method and gateway ids stored.",
+                    data = order
+                });
+            }
+
+            order = await LoadOrderAsync(order.PaymentOrderId) ?? order;
+            return Fail(409, "NOT_CAPTURED", "Payment is not captured yet. Status=" + details.Status);
+        }
+
         if (!string.IsNullOrWhiteSpace(request.GatewayPaymentId)
             && !string.Equals(order.GatewayPaymentId, request.GatewayPaymentId, StringComparison.Ordinal))
             return Fail(409, "NOT_CAPTURED", "That gateway payment is not recorded. Client success is not accepted.");
@@ -320,8 +358,145 @@ public partial class S4Week4Service : IS4Week4Service
         return Ok(new
         {
             success = true,
-            message = "Status is read from the ledger order. This call does not mark a payment paid.",
+            message = "Status is read from the ledger order.",
             data = order
+        });
+    }
+
+    public async Task<S4ActionResult> UpdateBookingPaymentAsync(UpdateBookingPaymentRequest request, S4Caller caller)
+    {
+        if (request == null || request.PatientAppId <= 0)
+            return Fail(400, "VALIDATION", "PatientAppId is required.");
+        if (request.UserId <= 0)
+            return Fail(400, "VALIDATION", "UserId is required.");
+        if (string.IsNullOrWhiteSpace(request.RazorpayOrderId) || string.IsNullOrWhiteSpace(request.RazorpayPaymentId))
+            return Fail(400, "VALIDATION", "razorpay_order_id and razorpay_payment_id are required.");
+        if (caller.UserId <= 0)
+            return Fail(401, "UNAUTHORIZED", "Sign in required.");
+        if (caller.UserId != request.UserId)
+            return Fail(403, "FORBIDDEN", "userId does not match the signed-in user.");
+
+        await EnsureBookedByUserIdColumnAsync();
+        var appointment = await LoadAppointmentAsync(request.PatientAppId);
+        if (appointment == null)
+            return Fail(404, "NOT_FOUND", "Booking not found.");
+        if (S3AppointmentRules.IsCancelled(appointment.Status))
+            return Fail(409, "CONFLICT", "A cancelled appointment cannot be paid.");
+
+        if (!await UserCanAccessAppointmentPatientAsync(request.UserId, appointment.PatientId)
+            && appointment.BookedByUserId != request.UserId
+            && !(caller.IsAdmin || caller.IsAccount))
+            return Fail(403, "FORBIDDEN", "userId does not own this booking.");
+
+        if (IsPaid(appointment.PaymentStatus))
+        {
+            var paidOrder = request.PaymentOrderId.HasValue
+                ? await LoadOrderAsync(request.PaymentOrderId.Value)
+                : await FindOrderByGatewayAsync(request.RazorpayOrderId.Trim(), request.RazorpayPaymentId.Trim())
+                  ?? await FindLatestConsultOrderAsync(appointment.PatientAppId);
+            if (paidOrder != null
+                && string.Equals(paidOrder.GatewayPaymentId, request.RazorpayPaymentId.Trim(), StringComparison.Ordinal))
+            {
+                return Ok(new
+                {
+                    success = true,
+                    message = "Payment already recorded.",
+                    data = new
+                    {
+                        patientAppId = appointment.PatientAppId,
+                        paymentOrderId = paidOrder.PaymentOrderId,
+                        paymentStatus = appointment.PaymentStatus,
+                        method = appointment.PaymentMethod ?? paidOrder.Method,
+                        gatewayOrderId = paidOrder.GatewayOrderId,
+                        gatewayPaymentId = paidOrder.GatewayPaymentId
+                    }
+                });
+            }
+            return Fail(409, "CONFLICT", "This appointment is already paid.");
+        }
+
+        if (!_razorpay.Configured)
+            return Fail(503, "GATEWAY_NOT_CONFIGURED", "Razorpay keys are not configured.");
+
+        var details = await _razorpay.GetPaymentAsync(request.RazorpayPaymentId.Trim());
+        if (details == null)
+            return Fail(502, "GATEWAY", "Could not read payment from Razorpay.");
+        if (!string.Equals(details.OrderId, request.RazorpayOrderId.Trim(), StringComparison.Ordinal))
+            return Fail(409, "ORDER_MISMATCH", "Payment does not belong to that Razorpay order.");
+
+        OrderRow? order = null;
+        if (request.PaymentOrderId.HasValue && request.PaymentOrderId.Value > 0)
+        {
+            order = await LoadOrderAsync(request.PaymentOrderId.Value);
+            if (order == null)
+                return Fail(404, "NOT_FOUND", "Payment order not found.");
+            if (order.PatientAppId != appointment.PatientAppId)
+                return Fail(409, "CONFLICT", "Payment order does not belong to this booking.");
+        }
+        else
+        {
+            order = await FindOrderByGatewayAsync(request.RazorpayOrderId.Trim(), request.RazorpayPaymentId.Trim())
+                    ?? await FindLatestConsultOrderAsync(appointment.PatientAppId);
+        }
+
+        if (order == null)
+        {
+            var doctor = await _context.Doctors.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.DoctorId == appointment.DoctorId && !d.DeleteStatus);
+            if (doctor == null)
+                return Fail(404, "NOT_FOUND", "Doctor not found.");
+            var quote = await QuoteConsultAsync(doctor, appointment);
+            if (quote.Amount <= 0 || string.IsNullOrWhiteSpace(quote.Currency))
+                return Fail(400, "FEE_NOT_CONFIGURED", "Set consult fee before taking payment.");
+            var createdId = await InsertOrderAsync(new OrderInsert
+            {
+                Stream = "CONSULT",
+                PatientAppId = appointment.PatientAppId,
+                DoctorId = appointment.DoctorId,
+                PatientId = appointment.PatientId,
+                Amount = quote.Amount,
+                Currency = quote.Currency!,
+                Status = "PENDING",
+                Method = "ONLINE",
+                GatewayOrderId = request.RazorpayOrderId.Trim(),
+                CorrelationId = Guid.NewGuid().ToString("N"),
+                CreatedBy = request.UserId
+            });
+            order = await LoadOrderAsync(createdId);
+            if (order == null)
+                return Fail(500, "INTERNAL", "Payment order could not be created.");
+        }
+
+        await UpsertGatewayIdsAsync(order.PaymentOrderId, request.RazorpayOrderId.Trim(), request.RazorpayPaymentId.Trim());
+        await StorePaymentEventAsync(order.PaymentOrderId, details);
+
+        if (!details.IsCaptured)
+        {
+            return Fail(409, "NOT_CAPTURED", "Payment is not captured yet. Status=" + details.Status);
+        }
+
+        await ApplyCapturedFromDetailsAsync(order, details);
+        var refreshed = await LoadOrderAsync(order.PaymentOrderId) ?? order;
+        var method = NormalizeGatewayMethod(details.Method) ?? refreshed.Method ?? "ONLINE";
+
+        return Ok(new
+        {
+            success = true,
+            message = "Payment updated.",
+            data = new
+            {
+                patientAppId = appointment.PatientAppId,
+                paymentOrderId = refreshed.PaymentOrderId,
+                paymentStatus = "PAID",
+                method,
+                gatewayOrderId = refreshed.GatewayOrderId ?? request.RazorpayOrderId.Trim(),
+                gatewayPaymentId = refreshed.GatewayPaymentId ?? request.RazorpayPaymentId.Trim(),
+                bank = details.Bank,
+                wallet = details.Wallet,
+                vpa = details.Vpa,
+                cardNetwork = details.CardNetwork,
+                cardLast4 = details.CardLast4
+            }
         });
     }
 
@@ -793,26 +968,56 @@ public partial class S4Week4Service : IS4Week4Service
             }
         }
 
+        var method = NormalizeGatewayMethod(payment?.GetPropertyOrNull("method")) ?? "ONLINE";
+        await ApplyCapturedCoreAsync(order, gatewayPaymentId, method, notifyConfirm: true);
+    }
+
+    private async Task ApplyCapturedFromDetailsAsync(OrderRow order, RazorpayPaymentDetails details)
+    {
+        if (order.Status is "CAPTURED" or "COLLECTED")
+            return;
+
+        if (details.AmountPaise > 0)
+        {
+            var expected = (long)Math.Round(order.Amount * 100m, 0);
+            if (details.AmountPaise != expected)
+            {
+                await AddExceptionAsync(order.PaymentOrderId, "AMOUNT_MISMATCH",
+                    "Gateway amount " + details.AmountPaise + " paise does not match order " + expected + ".");
+                return;
+            }
+        }
+
+        var method = NormalizeGatewayMethod(details.Method) ?? "ONLINE";
+        await ApplyCapturedCoreAsync(order, details.Id, method, notifyConfirm: true);
+    }
+
+    private async Task ApplyCapturedCoreAsync(OrderRow order, string? gatewayPaymentId, string method, bool notifyConfirm)
+    {
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.PaymentOrder
-            SET Status = N'CAPTURED', GatewayPaymentId = {gatewayPaymentId}, Method = ISNULL(Method, N'ONLINE')
+            SET Status = N'CAPTURED', GatewayPaymentId = {gatewayPaymentId}, Method = {method}
             WHERE PaymentOrderId = {order.PaymentOrderId}");
 
         if (order.Stream == "CONSULT" && order.PatientAppId.HasValue)
         {
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
                 UPDATE dbo.PatientAppointment
-                SET PaymentStatus = N'PAID', PaymentMethod = N'ONLINE'
+                SET PaymentStatus = N'PAID', PaymentMethod = {method}, PayAtClinicAllowed = 0
                 WHERE PatientAppId = {order.PatientAppId.Value}");
             await InsertAsync(
                 @"INSERT INTO dbo.ConsultPayment (PaymentOrderId, PatientAppId, Amount, Method, Status, GstAmount, CreatedAt)
-                  VALUES (@OrderId, @AppId, @Amount, N'ONLINE', N'CAPTURED', 0, @At);
+                  VALUES (@OrderId, @AppId, @Amount, @Method, N'CAPTURED', 0, @At);
                   SELECT CAST(SCOPE_IDENTITY() AS bigint);",
                 P("@OrderId", order.PaymentOrderId),
                 P("@AppId", order.PatientAppId.Value),
                 P("@Amount", order.Amount),
+                P("@Method", method, 30),
                 P("@At", DateTime.Now));
             await WriteLedgerAsync(order, "CREDIT", order.Amount, 0, "Appointment", order.PatientAppId.Value.ToString());
+
+            if (notifyConfirm)
+                await TryNotifyAppointmentConfirmedAsync(order.PatientAppId.Value);
         }
         else if (order.Stream == "MEDICINE" && order.MedicineOrderId.HasValue)
         {
@@ -825,6 +1030,111 @@ public partial class S4Week4Service : IS4Week4Service
         }
 
         await QueueReceiptLogAsync(order.PaymentOrderId, order.PatientId, order.Amount, order.Currency, "CAPTURED");
+    }
+
+    private async Task TryNotifyAppointmentConfirmedAsync(int patientAppId)
+    {
+        try
+        {
+            var row = await (
+                from a in _context.PatientAppointments.AsNoTracking()
+                join p in _context.Patients.AsNoTracking() on a.PatientId equals p.PatientId
+                join d in _context.Doctors.AsNoTracking() on a.DoctorId equals d.DoctorId
+                where a.PatientAppId == patientAppId
+                select new
+                {
+                    p.MobileNo,
+                    OptIn = p.IsWhatsAppOptIn == true,
+                    Doctor = ((d.FirstName ?? "") + " " + (d.MiddleName ?? "") + " " + (d.LastName ?? "")).Trim(),
+                    a.AppointmentDate,
+                    a.AppointmentTime,
+                    a.BookedByUserId
+                }).FirstOrDefaultAsync();
+            if (row == null || string.IsNullOrWhiteSpace(row.MobileNo))
+                return;
+            var doctorLabel = string.IsNullOrWhiteSpace(row.Doctor) ? "your doctor" : row.Doctor;
+            var day = row.AppointmentDate?.ToString("dd MMM yyyy") ?? "";
+            var time = row.AppointmentTime?.ToString("HH:mm") ?? "";
+            await _notify.NotifyConfirmAsync(row.MobileNo, row.OptIn, doctorLabel, day, time);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Appointment confirm notify failed for PatientAppId={Id}", patientAppId);
+        }
+    }
+
+    private async Task UpsertGatewayIdsAsync(long paymentOrderId, string? gatewayOrderId, string? gatewayPaymentId)
+    {
+        var orderId = string.IsNullOrWhiteSpace(gatewayOrderId) ? null : gatewayOrderId.Trim();
+        var paymentId = string.IsNullOrWhiteSpace(gatewayPaymentId) ? null : gatewayPaymentId.Trim();
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.PaymentOrder
+            SET GatewayOrderId = COALESCE({orderId}, GatewayOrderId),
+                GatewayPaymentId = COALESCE({paymentId}, GatewayPaymentId)
+            WHERE PaymentOrderId = {paymentOrderId}");
+    }
+
+    private async Task StorePaymentEventAsync(long paymentOrderId, RazorpayPaymentDetails details)
+    {
+        var eventId = "client-fetch:" + details.Id;
+        if (await EventExistsAsync(eventId))
+            return;
+        await InsertAsync(
+            @"INSERT INTO dbo.PaymentEvent (PaymentOrderId, GatewayEventId, EventType, RawJson, At)
+              VALUES (@OrderId, @EventId, @Type, @Json, @At);
+              SELECT CAST(SCOPE_IDENTITY() AS bigint);",
+            P("@OrderId", paymentOrderId),
+            P("@EventId", eventId, 120),
+            P("@Type", "payment.fetch." + (details.Status ?? ""), 80),
+            P("@Json", details.RawJson, -1),
+            P("@At", DateTime.Now));
+    }
+
+    private async Task<OrderRow?> FindLatestConsultOrderAsync(int patientAppId)
+        => await _context.Database.SqlQuery<OrderRow>($@"
+            SELECT TOP 1 PaymentOrderId, Stream, PatientAppId, MedicineOrderId, DoctorId, PatientId, Amount, Currency,
+                   Status, Method, GatewayOrderId, GatewayPaymentId, IdempotencyKey, CorrelationId, CreatedAt
+            FROM dbo.PaymentOrder
+            WHERE PatientAppId = {patientAppId} AND Stream = N'CONSULT'
+            ORDER BY PaymentOrderId DESC").FirstOrDefaultAsync();
+
+    private async Task<bool> UserCanAccessAppointmentPatientAsync(long userId, int patientId)
+    {
+        if (await _context.PatientUserMaps.AnyAsync(m =>
+                m.UserId == userId && m.PatientId == patientId && !m.DeleteStatus))
+            return true;
+        if (await _context.PatientFamilyMembers.AnyAsync(f =>
+                f.OwnerUserId == userId && f.MemberPatientId == patientId && !f.DeleteStatus))
+            return true;
+        if (await _context.CaregiverAuthorizations.AnyAsync(c =>
+                c.CaregiverUserId == userId
+                && c.PatientId == patientId
+                && !c.DeleteStatus
+                && c.RevokedAt == null))
+            return true;
+        return false;
+    }
+
+    private async Task EnsureBookedByUserIdColumnAsync()
+    {
+        await _context.Database.ExecuteSqlRawAsync(@"
+IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
+    ALTER TABLE dbo.PatientAppointment ADD BookedByUserId BIGINT NULL;");
+    }
+
+    private static string? NormalizeGatewayMethod(string? method)
+    {
+        if (string.IsNullOrWhiteSpace(method))
+            return null;
+        return method.Trim().ToLowerInvariant();
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        return null;
     }
 
     /// <summary>PAY-06.01 — S1 SaaS PackageEntryDetail stays on this webhook; consult/medicine never write that table.</summary>

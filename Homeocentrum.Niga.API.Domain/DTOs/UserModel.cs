@@ -33,6 +33,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public int StateId { get; set; }
         public string  EncryptedUserId { get; set; }
         public int RoleId { get; set; }
+        /// <summary>Email / invite activation completed.</summary>
+        public bool? IsUserActivated { get; set; }
     }
     public class NewUserModel
     {

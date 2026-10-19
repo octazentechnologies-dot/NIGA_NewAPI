@@ -13,6 +13,8 @@ public interface IS4Week4Service
 
     Task<S4ActionResult> CreateConsultOrderAsync(CreateConsultOrderRequest request, S4Caller caller);
     Task<S4ActionResult> VerifyPaymentAsync(VerifyPaymentRequest request, S4Caller caller);
+    /// <summary>Upsert Razorpay ids on a booking, fetch payment method from Razorpay, mark PAID when captured.</summary>
+    Task<S4ActionResult> UpdateBookingPaymentAsync(UpdateBookingPaymentRequest request, S4Caller caller);
     Task<S4ActionResult> AppointmentPaymentAsync(int patientAppId, S4Caller caller);
     Task<S4ActionResult> HandleWebhookAsync(string rawBody, string? signature, string? eventId);
     Task<S4ActionResult> CollectAtReceptionAsync(CollectAtReceptionRequest request, S4Caller caller);
@@ -77,6 +79,7 @@ public interface IS4Week4Service
 
     Task<S4ActionResult> OnboardPharmacyAsync(PharmacyOnboardRequest request, S4Caller caller);
     Task<S4ActionResult> ActivatePharmacyAsync(int pharmacyId, S4Caller caller);
+    Task<S4ActionResult> SuspendPharmacyAsync(int pharmacyId, S4Caller caller);
     Task<S4ActionResult> SweepLicencesAsync(S4Caller caller);
     Task<S4ActionResult> ListSellersAsync(string? area);
     Task<S4ActionResult> ListPharmacyPartnersAsync(S4Caller caller);

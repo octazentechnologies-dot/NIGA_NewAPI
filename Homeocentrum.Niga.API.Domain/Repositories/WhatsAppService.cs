@@ -22,6 +22,7 @@ public class WhatsAppService : IWhatsAppService
     private readonly IWhatsAppMetaApiClient _metaApiClient;
     private readonly IWhatsAppBulkSendQueue _bulkSendQueue;
     private readonly WhatsAppMetaOptions _metaOptions;
+    private readonly SmsOptions _smsOptions;
     private readonly ILogger<WhatsAppService> _logger;
 
     public WhatsAppService(
@@ -29,14 +30,15 @@ public class WhatsAppService : IWhatsAppService
         IWhatsAppMetaApiClient metaApiClient,
         IWhatsAppBulkSendQueue bulkSendQueue,
         IOptions<WhatsAppMetaOptions> metaOptions,
+        IOptions<SmsOptions> smsOptions,
         ILogger<WhatsAppService> logger)
     {
         _repository = repository;
         _metaApiClient = metaApiClient;
         _bulkSendQueue = bulkSendQueue;
-        _metaOptions = metaOptions.Value;
+        _metaOptions = metaOptions.Value ?? new WhatsAppMetaOptions();
+        _smsOptions = smsOptions.Value ?? new SmsOptions();
         _logger = logger;
-        // TODO S5: confirm WhatsApp Meta token in appsettings is still valid; S5 reuses this client.
     }
 
     public Task<(bool Success, string Message, SendWhatsAppMessageResultModel? Result)> SendHospitalServiceMessageAsync(
@@ -767,6 +769,7 @@ public class WhatsAppService : IWhatsAppService
                 uploadedMediaId,
                 context.MetaTemplateName,
                 context.MetaLanguageCode,
+                context.MessageCategory,
                 placeholderContext,
                 cancellationToken);
 
@@ -818,9 +821,33 @@ public class WhatsAppService : IWhatsAppService
         string? mediaId,
         string? metaTemplateName,
         string metaLanguageCode,
+        string? messageCategory,
         WhatsAppPlaceholderContext placeholderContext,
         CancellationToken cancellationToken)
     {
+        // Twilio WhatsApp: ContentSid templates (trial sample fallback). Prefer HX… / category mapping.
+        if (UsesTwilio())
+        {
+            var twilioTemplateKey =
+                !string.IsNullOrWhiteSpace(metaTemplateName)
+                && metaTemplateName.Trim().StartsWith("HX", StringComparison.OrdinalIgnoreCase)
+                    ? metaTemplateName.Trim()
+                    : (messageCategory ?? "HospitalService");
+            return await _metaApiClient.SendTemplateMessageAsync(
+                mobileNumber,
+                twilioTemplateKey,
+                metaLanguageCode,
+                new List<string>
+                {
+                    placeholderContext.PatientName,
+                    placeholderContext.HospitalName,
+                    placeholderContext.DoctorName,
+                    placeholderContext.Date,
+                    string.IsNullOrWhiteSpace(resolvedMessage) ? placeholderContext.Message : resolvedMessage
+                },
+                cancellationToken);
+        }
+
         if (!string.IsNullOrWhiteSpace(metaTemplateName))
         {
             var parameters = new List<string>
@@ -848,11 +875,19 @@ public class WhatsAppService : IWhatsAppService
         return await _metaApiClient.SendImageMessageAsync(mobileNumber, mediaId, resolvedMessage, cancellationToken);
     }
 
+    private bool UsesTwilio() =>
+        !_metaOptions.IsMetaProvider() && _smsOptions.Twilio.IsConfigured();
+
+    private bool IsWhatsAppReady() =>
+        UsesTwilio() || _metaOptions.IsConfigured();
+
     private async Task<string?> ValidateCommonAsync(int doctorId, int? templateId, int languageId)
     {
-        if (!_metaOptions.IsConfigured())
+        if (!IsWhatsAppReady())
         {
-            return "WhatsApp Meta API configuration is missing or incomplete.";
+            return UsesTwilio() || !_metaOptions.IsMetaProvider()
+                ? "WhatsApp Twilio configuration is missing or incomplete. Fill Sms:Twilio AccountSid, AuthToken, and FromNumber."
+                : "WhatsApp Meta API configuration is missing or incomplete.";
         }
 
         if (await _repository.GetActiveDoctorByIdAsync(doctorId) == null)

@@ -243,10 +243,12 @@ namespace Homeocentrum.Niga.API.Domain.Services
             {
                 notice.WhatsApp = "skipped";
             }
-            else if (!_whatsAppOptions.IsConfigured())
+            else if (!IsWhatsAppReady())
             {
                 await _outbox.EnqueueAsync("WhatsApp", "NOTICE", mobile, message, "PENDING_KEYS",
-                    "Fill WhatsAppMeta AccessToken and PhoneNumberId in API appsettings. The appointment change is saved.");
+                    UsesTwilioWhatsApp() || !_whatsAppOptions.IsMetaProvider()
+                        ? "Fill Sms:Twilio AccountSid, AuthToken, and FromNumber for WhatsApp. The appointment change is saved."
+                        : "Fill WhatsAppMeta AccessToken and PhoneNumberId in API appsettings. The appointment change is saved.");
                 notice.WhatsApp = "logged";
             }
             else
@@ -322,6 +324,12 @@ namespace Homeocentrum.Niga.API.Domain.Services
                 notice.Push = "logged";
             }
         }
+
+        private bool UsesTwilioWhatsApp() =>
+            !_whatsAppOptions.IsMetaProvider() && _smsOptions.Twilio.IsConfigured();
+
+        private bool IsWhatsAppReady() =>
+            UsesTwilioWhatsApp() || _whatsAppOptions.IsConfigured();
 
         private bool SmsProviderIsLive()
         {

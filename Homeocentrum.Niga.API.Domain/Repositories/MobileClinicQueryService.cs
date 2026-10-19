@@ -480,13 +480,15 @@ public class MobileClinicQueryService
     {
         await EnsureSchemaAsync();
         request ??= new PreferenceWrite();
+        var quietStart = ParseQuietTime(request.QuietStart);
+        var quietEnd = ParseQuietTime(request.QuietEnd);
         var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.UserNotificationPreference
             SET PushEnabled = {request.PushEnabled},
                 SmsEnabled = {request.SmsEnabled},
                 EmailEnabled = {request.EmailEnabled},
-                QuietStart = {request.QuietStart},
-                QuietEnd = {request.QuietEnd},
+                QuietStart = {quietStart},
+                QuietEnd = {quietEnd},
                 Appointments = {request.Appointments},
                 Prescriptions = {request.Prescriptions},
                 Medicines = {request.Medicines},
@@ -500,10 +502,23 @@ public class MobileClinicQueryService
                 INSERT INTO dbo.UserNotificationPreference
                     (UserId, PushEnabled, SmsEnabled, EmailEnabled, QuietStart, QuietEnd,
                      Appointments, Prescriptions, Medicines, Marketing, QuietHoursEnabled, ReminderOffsets)
-                VALUES ({caller.UserId}, {request.PushEnabled}, {request.SmsEnabled}, {request.EmailEnabled}, {request.QuietStart}, {request.QuietEnd},
+                VALUES ({caller.UserId}, {request.PushEnabled}, {request.SmsEnabled}, {request.EmailEnabled}, {quietStart}, {quietEnd},
                         {request.Appointments}, {request.Prescriptions}, {request.Medicines}, {request.Marketing}, {request.QuietHoursEnabled}, {Trim(request.ReminderOffsets)})");
         }
         return await GetPreferencesAsync(caller);
+    }
+
+    /// <summary>Accepts null, "", "22:00", or "22:00:00". Empty string must not 400 on TimeSpan bind.</summary>
+    private static TimeSpan? ParseQuietTime(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        var text = raw.Trim();
+        if (TimeSpan.TryParse(text, out var span))
+            return span;
+        if (TimeOnly.TryParse(text, out var clock))
+            return clock.ToTimeSpan();
+        return null;
     }
 
     public async Task<S4ActionResult> MarkAllReadAsync(S4Caller caller)
@@ -1601,10 +1616,10 @@ public class PreferenceWrite
     public bool PushEnabled { get; set; } = true;
     public bool SmsEnabled { get; set; }
     public bool EmailEnabled { get; set; }
-    /// <summary>Quiet-hours start, as a time such as 22:00:00. Null when quiet hours are off.</summary>
-    public TimeSpan? QuietStart { get; set; }
-    /// <summary>Quiet-hours end, as a time such as 07:00:00.</summary>
-    public TimeSpan? QuietEnd { get; set; }
+    /// <summary>Quiet-hours start as "HH:mm" or "HH:mm:ss". Null or "" when unset.</summary>
+    public string? QuietStart { get; set; }
+    /// <summary>Quiet-hours end as "HH:mm" or "HH:mm:ss". Null or "" when unset.</summary>
+    public string? QuietEnd { get; set; }
     public bool Appointments { get; set; } = true;
     public bool Prescriptions { get; set; } = true;
     public bool Medicines { get; set; } = true;

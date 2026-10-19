@@ -324,7 +324,20 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddHostedService<AiEmbeddingSemanticCacheWarmupBackgroundService>();
 
             services.Configure<WhatsAppMetaOptions>(config.GetSection(WhatsAppMetaOptions.SectionName));
-            services.AddHttpClient<IWhatsAppMetaApiClient, WhatsAppMetaApiClient>();
+            services.AddHttpClient<WhatsAppMetaApiClient>();
+            services.AddHttpClient<TwilioWhatsAppApiClient>();
+            services.AddScoped<IWhatsAppMetaApiClient>(sp =>
+            {
+                var wa = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WhatsAppMetaOptions>>().Value
+                    ?? new WhatsAppMetaOptions();
+                var sms = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmsOptions>>().Value
+                    ?? new SmsOptions();
+                if (wa.IsMetaProvider() && wa.IsConfigured())
+                    return sp.GetRequiredService<WhatsAppMetaApiClient>();
+                if (sms.Twilio.IsConfigured())
+                    return sp.GetRequiredService<TwilioWhatsAppApiClient>();
+                return sp.GetRequiredService<WhatsAppMetaApiClient>();
+            });
             services.AddScoped<IWhatsAppRepository, WhatsAppRepository>();
             services.AddScoped<IWhatsAppService, WhatsAppService>();
             services.AddSingleton<WhatsAppBulkSendQueue>();

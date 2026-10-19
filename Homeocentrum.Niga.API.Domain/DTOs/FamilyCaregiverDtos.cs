@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Homeocentrum.Niga.API.Domain.DTOs
 {
@@ -172,5 +173,19 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string? ConsultMode { get; set; }
 
         public bool IsTele { get; set; }
+
+        /// <summary>Logged-in user id. When present must match JWT.</summary>
+        public long? UserId { get; set; }
+
+        /// <summary>true = clinic-pay intention (InClinic). Default false = online pay pending.</summary>
+        public bool? PayAtClinic { get; set; }
+
+        [JsonPropertyName("razorpay_order_id")]
+        [MaxLength(80)]
+        public string? RazorpayOrderId { get; set; }
+
+        [JsonPropertyName("razorpay_payment_id")]
+        [MaxLength(80)]
+        public string? RazorpayPaymentId { get; set; }
     }
 }

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Homeocentrum.Niga.API.Domain.DTOs;
 
@@ -58,6 +59,41 @@ public class VerifyPaymentRequest
 
     [StringLength(80)]
     public string? GatewayPaymentId { get; set; }
+
+    [JsonPropertyName("razorpay_order_id")]
+    [StringLength(80)]
+    public string? RazorpayOrderId { get; set; }
+
+    [JsonPropertyName("razorpay_payment_id")]
+    [StringLength(80)]
+    public string? RazorpayPaymentId { get; set; }
+
+    [JsonPropertyName("razorpay_signature")]
+    [StringLength(200)]
+    public string? RazorpaySignature { get; set; }
+}
+
+/// <summary>PAT — pay anytime / pay later after hold or pay-at-clinic. Mobile sends Razorpay Checkout ids.</summary>
+public class UpdateBookingPaymentRequest
+{
+    [Range(1, long.MaxValue)]
+    public long UserId { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int PatientAppId { get; set; }
+
+    [Required]
+    [JsonPropertyName("razorpay_order_id")]
+    [StringLength(80, MinimumLength = 3)]
+    public string RazorpayOrderId { get; set; } = "";
+
+    [Required]
+    [JsonPropertyName("razorpay_payment_id")]
+    [StringLength(80, MinimumLength = 3)]
+    public string RazorpayPaymentId { get; set; } = "";
+
+    [Range(1, long.MaxValue)]
+    public long? PaymentOrderId { get; set; }
 }
 
 public class CollectAtReceptionRequest
