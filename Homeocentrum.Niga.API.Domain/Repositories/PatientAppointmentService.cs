@@ -1520,14 +1520,14 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 .Where(x =>
                     x.DoctorId == doctorId &&
                     x.DeleteStatus != true &&
-                    x.Status != S3AppointmentRules.Cancelled &&
                     x.AppointmentDate.HasValue &&
                     x.AppointmentDate.Value.Date == day);
 
             if (waitingOnly)
             {
                 query = query.Where(x =>
-                    x.Status == "WAITING" || x.Status == "WALK-IN" || x.Status == "E-CONSULT");
+                    x.Status != S3AppointmentRules.Cancelled &&
+                    (x.Status == "WAITING" || x.Status == "WALK-IN" || x.Status == "E-CONSULT"));
             }
 
             var rows = await query
