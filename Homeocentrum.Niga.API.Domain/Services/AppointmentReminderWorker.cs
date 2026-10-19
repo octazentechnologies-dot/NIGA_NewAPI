@@ -11,34 +11,51 @@ namespace Homeocentrum.Niga.API.Domain.Services;
 /// <summary>
 /// Sends appointment reminder SMS the day before the visit (once per appointment).
 /// Uses NotificationOutbox EventType APPT_REMIND_{patientAppId} as a dedupe marker.
+/// Waits for SMS startup grace so IIS recycle / deploy does not blast reminders.
 /// </summary>
 public sealed class AppointmentReminderWorker : BackgroundService
 {
     private readonly IServiceScopeFactory _scopes;
     private readonly IOptions<SmsOptions> _sms;
+    private readonly SmsStartupGate _startup;
     private readonly ILogger<AppointmentReminderWorker> _logger;
 
     public AppointmentReminderWorker(
         IServiceScopeFactory scopes,
         IOptions<SmsOptions> sms,
+        SmsStartupGate startup,
         ILogger<AppointmentReminderWorker> logger)
     {
         _scopes = scopes;
         _sms = sms;
+        _startup = startup;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Stagger first run so app startup is not blocked.
-        try { await Task.Delay(TimeSpan.FromSeconds(45), stoppingToken); }
+        // Wait out startup grace (API/IIS start / deploy) before any reminder SMS.
+        var initialWait = _startup.RemainingGrace;
+        if (initialWait < TimeSpan.FromSeconds(45))
+            initialWait = TimeSpan.FromSeconds(45);
+        _logger.LogInformation(
+            "Appointment reminder worker waiting {Minutes:0.#} min after process start before sending.",
+            initialWait.TotalMinutes);
+        try { await Task.Delay(initialWait, stoppingToken); }
         catch (OperationCanceledException) { return; }
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await SendDueRemindersAsync(stoppingToken);
+                if (_startup.IsInGracePeriod)
+                {
+                    _logger.LogDebug("Appointment reminders skipped — still in startup grace period.");
+                }
+                else
+                {
+                    await SendDueRemindersAsync(stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

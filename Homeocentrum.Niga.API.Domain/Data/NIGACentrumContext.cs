@@ -3243,6 +3243,9 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.Property(e => e.IsBulk).HasDefaultValue(false);
             entity.Property(e => e.SendStatus).HasDefaultValue(false);
             entity.Property(e => e.DeleteStatus).HasDefaultValue(false);
+            entity.Property(e => e.DeliveryStatus).HasMaxLength(30);
+            entity.Property(e => e.ReceiptAt).HasColumnType("datetime");
+            entity.Property(e => e.ReceiptPayload);
 
             entity.HasOne(d => d.Language).WithMany()
                 .HasForeignKey(d => d.LanguageId)

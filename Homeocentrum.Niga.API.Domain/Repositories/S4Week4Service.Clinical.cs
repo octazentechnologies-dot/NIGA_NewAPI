@@ -47,10 +47,28 @@ public partial class S4Week4Service
                 || d.VerificationStatus == "PENDING"
                 || d.VerificationStatus == "NeedsInfo"
                 || d.VerificationStatus == "Unverified");
-        var rows = await query
-            .OrderBy(d => d.VerificationStatus == "Verified" ? 1 : 0)
-            .ThenBy(d => d.DoctorId)
-            .Select(d => new { d.DoctorId, d.FirstName, d.LastName, d.VerificationStatus, d.EmailId })
+        var rows = await (
+            from d in query
+            join q in _context.QualificationMasters.AsNoTracking() on d.QualificationId equals q.QualificationId into qj
+            from q in qj.DefaultIfEmpty()
+            orderby d.VerificationStatus == "Verified" ? 1 : 0, d.DoctorId
+            select new
+            {
+                d.DoctorId,
+                d.FirstName,
+                d.LastName,
+                d.VerificationStatus,
+                d.EmailId,
+                d.MobileNo,
+                d.City,
+                d.ClinicName,
+                d.DirectoryVisible,
+                d.PracticeActivated,
+                d.IsOnline,
+                d.ConsultFeeInClinic,
+                Qualification = q != null ? q.QualificationName : null,
+            }
+        )
             .Take(200)
             .ToListAsync();
         return Ok(new { success = true, filter, count = rows.Count, data = rows });

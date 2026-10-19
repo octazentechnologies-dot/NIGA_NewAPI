@@ -348,6 +348,182 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             });
         }
 
+        public async Task<S3ActionResult> GetPatientCardAsync(int doctorId, int patientId)
+        {
+            if (patientId <= 0)
+                return S3ActionResult.Fail(400, "PatientId is required.");
+
+            var known = await _context.PatientAppointments.AsNoTracking()
+                .AnyAsync(a => a.DoctorId == doctorId && a.PatientId == patientId && a.DeleteStatus != true);
+            if (!known)
+            {
+                known = await _context.CaseEntryDetails.AsNoTracking()
+                    .AnyAsync(c => c.DoctorId == doctorId && c.PatientId == patientId && c.DeleteStatus != true);
+            }
+            if (!known)
+                return S3ActionResult.Fail(403, "This patient is not on your clinic list.");
+
+            var row = await (
+                from p in _context.Patients.AsNoTracking()
+                where p.PatientId == patientId && p.DeleteStatus != true
+                join c in _context.CityMasters.AsNoTracking() on p.CityId equals c.CityId into cj
+                from c in cj.DefaultIfEmpty()
+                select new
+                {
+                    p.PatientId,
+                    p.PatientName,
+                    p.MobileNo,
+                    p.PhoneNo,
+                    p.Email,
+                    p.DateOfBirth,
+                    p.Age,
+                    p.Gender,
+                    p.Address,
+                    p.AddressLine1,
+                    p.AddressLine2,
+                    CityName = c != null ? c.CityName : null,
+                }
+            ).FirstOrDefaultAsync();
+
+            if (row == null)
+                return S3ActionResult.Fail(404, "Patient not found.");
+
+            var sex = row.Gender == 0 ? "Male" : row.Gender == 1 ? "Female" : "";
+            var age = row.Age;
+            if (age == null && row.DateOfBirth.HasValue)
+            {
+                var today = DateTime.Today;
+                age = today.Year - row.DateOfBirth.Value.Year;
+                if (row.DateOfBirth.Value.Date > today.AddYears(-age.Value)) age--;
+            }
+            var address = string.Join(", ", new[] { row.AddressLine1, row.AddressLine2, row.Address }
+                .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).Distinct());
+
+            return S3ActionResult.Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    patientId = row.PatientId,
+                    fullName = row.PatientName,
+                    mobile = row.MobileNo,
+                    phone = row.PhoneNo,
+                    email = row.Email,
+                    dateOfBirth = row.DateOfBirth,
+                    age,
+                    sex,
+                    ageSex = age != null && !string.IsNullOrEmpty(sex) ? $"{age}y / {sex}"
+                        : age != null ? $"{age}y" : sex,
+                    address = string.IsNullOrWhiteSpace(address) ? null : address,
+                    place = row.CityName,
+                    bloodGroup = (string?)null,
+                    emergencyContact = row.PhoneNo,
+                }
+            });
+        }
+
+        public async Task<S3ActionResult> SaveVisitVitalsAsync(ReceptionVitalsRequest request, int doctorId, long userId)
+        {
+            if (request == null || request.PatientAppId <= 0)
+                return S3ActionResult.Fail(400, "PatientAppId is required.");
+            await EnsureVisitVitalsTableAsync();
+
+            var appt = await _context.PatientAppointments.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.PatientAppId == request.PatientAppId && a.DeleteStatus != true);
+            if (appt == null)
+                return S3ActionResult.Fail(404, "Appointment not found.");
+            if (appt.DoctorId != doctorId)
+                return S3ActionResult.Fail(403, "This visit belongs to another clinic.");
+
+            var bp = $"{request.BloodPressureSystolic}/{request.BloodPressureDiastolic}".Trim('/');
+            var now = DateTime.Now;
+            var payload = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                bloodPressureSystolic = request.BloodPressureSystolic,
+                bloodPressureDiastolic = request.BloodPressureDiastolic,
+                bloodPressure = bp,
+                pulse = request.Pulse,
+                temperature = request.Temperature,
+                weight = request.Weight,
+                height = request.Height,
+                spo2 = request.Spo2,
+                respiratoryRate = request.RespiratoryRate,
+                bloodSugar = request.BloodSugar,
+                notes = request.Notes,
+            });
+
+            var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.ReceptionVisitVitals
+                SET VitalsJson = {payload}, UpdatedAt = {now}, UpdatedBy = {userId}
+                WHERE PatientAppId = {request.PatientAppId}");
+            if (updated == 0)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.ReceptionVisitVitals (PatientAppId, PatientId, DoctorId, VitalsJson, CreatedAt, UpdatedAt, UpdatedBy)
+                    VALUES ({request.PatientAppId}, {appt.PatientId}, {doctorId}, {payload}, {now}, {now}, {userId})");
+            }
+
+            return S3ActionResult.Ok(new
+            {
+                success = true,
+                message = "Vitals saved for this visit.",
+                data = new { patientAppId = request.PatientAppId, bloodPressure = bp, pulse = request.Pulse }
+            });
+        }
+
+        public async Task<S3ActionResult> GetVisitVitalsAsync(int patientAppId, int doctorId)
+        {
+            if (patientAppId <= 0)
+                return S3ActionResult.Fail(400, "PatientAppId is required.");
+            await EnsureVisitVitalsTableAsync();
+
+            var apptOk = await _context.PatientAppointments.AsNoTracking()
+                .AnyAsync(a => a.PatientAppId == patientAppId && a.DoctorId == doctorId && a.DeleteStatus != true);
+            if (!apptOk)
+                return S3ActionResult.Fail(404, "Appointment not found.");
+
+            var row = await _context.Database.SqlQuery<VisitVitalsRow>($@"
+                SELECT TOP 1 PatientAppId, VitalsJson, UpdatedAt
+                FROM dbo.ReceptionVisitVitals
+                WHERE PatientAppId = {patientAppId}
+                ORDER BY UpdatedAt DESC").FirstOrDefaultAsync();
+
+            if (row == null || string.IsNullOrWhiteSpace(row.VitalsJson))
+                return S3ActionResult.Ok(new { success = true, data = (object?)null });
+
+            object? parsed = null;
+            try { parsed = System.Text.Json.JsonSerializer.Deserialize<object>(row.VitalsJson); }
+            catch { parsed = new { raw = row.VitalsJson }; }
+
+            return S3ActionResult.Ok(new { success = true, data = parsed, updatedAt = row.UpdatedAt });
+        }
+
+        private async Task EnsureVisitVitalsTableAsync()
+        {
+            await _context.Database.ExecuteSqlRawAsync(@"
+                IF OBJECT_ID(N'dbo.ReceptionVisitVitals', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE dbo.ReceptionVisitVitals (
+                        ReceptionVisitVitalsId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_ReceptionVisitVitals PRIMARY KEY,
+                        PatientAppId INT NOT NULL,
+                        PatientId INT NOT NULL,
+                        DoctorId INT NOT NULL,
+                        VitalsJson NVARCHAR(MAX) NOT NULL,
+                        CreatedAt DATETIME NOT NULL CONSTRAINT DF_ReceptionVisitVitals_CreatedAt DEFAULT (GETDATE()),
+                        UpdatedAt DATETIME NOT NULL CONSTRAINT DF_ReceptionVisitVitals_UpdatedAt DEFAULT (GETDATE()),
+                        UpdatedBy BIGINT NULL
+                    );
+                    CREATE UNIQUE INDEX UX_ReceptionVisitVitals_PatientAppId ON dbo.ReceptionVisitVitals (PatientAppId);
+                END");
+        }
+
+        private sealed class VisitVitalsRow
+        {
+            public int PatientAppId { get; set; }
+            public string VitalsJson { get; set; } = "";
+            public DateTime UpdatedAt { get; set; }
+        }
+
         public async Task<S3ActionResult> SetTeleAvailabilityAsync(int doctorId, bool isOnline)
         {
             await ExpireHeartbeatsAsync();

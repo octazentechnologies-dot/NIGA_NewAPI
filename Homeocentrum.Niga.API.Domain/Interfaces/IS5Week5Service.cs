@@ -6,12 +6,14 @@ public interface IS5Week5Service
 {
     Task<S4ActionResult> ListSmsTemplatesAsync(S4Caller caller);
     Task<S4ActionResult> SaveSmsTemplateAsync(SmsTemplateWrite request, S4Caller caller);
+    Task<S4ActionResult> DeleteSmsTemplateAsync(int smsTemplateId, S4Caller caller);
     Task<S4ActionResult> SendSmsAsync(SmsSendRequest request, S4Caller caller);
     Task<S4ActionResult> SmsHistoryAsync(S4Caller caller);
     Task<S4ActionResult> ListSmsEventsAsync(S4Caller caller);
     Task<S4ActionResult> SaveSmsPreferenceAsync(DoctorSmsPreferenceWrite request, S4Caller caller);
     Task<S4ActionResult> RegisterDeviceAsync(DeviceRegisterRequest request, S4Caller caller);
     Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request);
+    Task<S4ActionResult> WhatsAppReceiptBatchAsync(IReadOnlyList<WhatsAppReceiptRequest> receipts);
     Task<S4ActionResult> WhatsAppBulkAsync(S4Caller caller);
     Task<S4ActionResult> WhatsAppAudienceAsync(S4Caller caller);
     Task<S4ActionResult> SendNotificationAsync(NotificationSendRequest request, S4Caller caller);

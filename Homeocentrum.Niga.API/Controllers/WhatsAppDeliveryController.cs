@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Homeocentrum.Niga.API.Domain.Data;
@@ -30,7 +32,33 @@ public class WhatsAppDeliveryController : ControllerBase
     }
 
     /// <summary>
+    /// Meta webhook subscription handshake.
+    /// Meta calls GET with hub.mode=subscribe, hub.verify_token, hub.challenge.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("/api/WhatsApp/Receipts")]
+    public IActionResult VerifyReceiptWebhook(
+        [FromQuery(Name = "hub.mode")] string? mode,
+        [FromQuery(Name = "hub.verify_token")] string? verifyToken,
+        [FromQuery(Name = "hub.challenge")] string? challenge)
+    {
+        var expected = _configuration["WhatsAppMeta:VerifyToken"];
+        if (string.IsNullOrWhiteSpace(expected))
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { success = false, code = "WEBHOOK_NOT_CONFIGURED", message = "Receipt webhook verify token is not configured." });
+
+        if (!string.Equals(mode, "subscribe", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(verifyToken, expected, StringComparison.Ordinal)
+            || string.IsNullOrEmpty(challenge))
+        {
+            return Unauthorized(new { success = false, message = "Webhook verification failed." });
+        }
+
+        return Content(challenge, "text/plain", Encoding.UTF8);
+    }
+
+    /// <summary>
     /// Meta delivery receipt. Signed with X-Hub-Signature-256 = HMAC-SHA256(raw body, WhatsAppMeta:AppSecret).
+    /// Accepts Meta Cloud API nested payloads and the flat { metaMessageId, status, payload } shape.
     /// Unsigned receipts are never accepted; without an AppSecret the webhook is closed (503).
     /// </summary>
     [AllowAnonymous]
@@ -38,7 +66,7 @@ public class WhatsAppDeliveryController : ControllerBase
     public async Task<IActionResult> Receipt()
     {
         string raw;
-        using (var reader = new StreamReader(Request.Body, System.Text.Encoding.UTF8))
+        using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             raw = await reader.ReadToEndAsync();
 
         var secret = _configuration["WhatsAppMeta:AppSecret"];
@@ -49,12 +77,72 @@ public class WhatsAppDeliveryController : ControllerBase
             return Unauthorized(new { success = false, message = "Invalid signature." });
         }
 
-        WhatsAppReceiptRequest? request;
-        try { request = System.Text.Json.JsonSerializer.Deserialize<WhatsAppReceiptRequest>(raw, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)); }
-        catch (System.Text.Json.JsonException) { request = null; }
-        if (request == null)
+        List<WhatsAppReceiptRequest> receipts;
+        try
+        {
+            receipts = ParseReceiptPayload(raw);
+        }
+        catch (JsonException)
+        {
             return BadRequest(new { success = false, message = "Invalid receipt body." });
-        return await Done(_s5.WhatsAppReceiptAsync(request));
+        }
+
+        if (receipts.Count == 0)
+            return BadRequest(new { success = false, message = "Invalid receipt body." });
+
+        return await Done(_s5.WhatsAppReceiptBatchAsync(receipts));
+    }
+
+    /// <summary>
+    /// Parses Meta Cloud API webhook JSON (entry[].changes[].value.statuses[]) or a flat receipt DTO.
+    /// </summary>
+    internal static List<WhatsAppReceiptRequest> ParseReceiptPayload(string raw)
+    {
+        var results = new List<WhatsAppReceiptRequest>();
+        if (string.IsNullOrWhiteSpace(raw))
+            return results;
+
+        using var doc = JsonDocument.Parse(raw);
+        var root = doc.RootElement;
+
+        if (root.TryGetProperty("entry", out var entryEl) && entryEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in entryEl.EnumerateArray())
+            {
+                if (!entry.TryGetProperty("changes", out var changes) || changes.ValueKind != JsonValueKind.Array)
+                    continue;
+                foreach (var change in changes.EnumerateArray())
+                {
+                    if (!change.TryGetProperty("value", out var value))
+                        continue;
+                    if (!value.TryGetProperty("statuses", out var statuses) || statuses.ValueKind != JsonValueKind.Array)
+                        continue;
+                    foreach (var status in statuses.EnumerateArray())
+                    {
+                        var id = status.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                        var st = status.TryGetProperty("status", out var stEl) ? stEl.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(id))
+                            continue;
+                        results.Add(new WhatsAppReceiptRequest
+                        {
+                            MetaMessageId = id,
+                            Status = st ?? "delivered",
+                            Payload = status.GetRawText(),
+                        });
+                    }
+                }
+            }
+
+            if (results.Count > 0)
+                return results;
+        }
+
+        // Flat body used by internal tests / legacy callers.
+        var flat = JsonSerializer.Deserialize<WhatsAppReceiptRequest>(raw, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        if (!string.IsNullOrWhiteSpace(flat?.MetaMessageId))
+            results.Add(flat!);
+
+        return results;
     }
 
     private static bool MetaSignatureValid(string raw, string header, string secret)
@@ -63,9 +151,9 @@ public class WhatsAppDeliveryController : ControllerBase
         if (string.IsNullOrWhiteSpace(header) || !header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             return false;
         var expected = Convert.ToHexString(System.Security.Cryptography.HMACSHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(secret), System.Text.Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
+            Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
         return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
-            System.Text.Encoding.ASCII.GetBytes(expected), System.Text.Encoding.ASCII.GetBytes(header[prefix.Length..].Trim().ToLowerInvariant()));
+            Encoding.ASCII.GetBytes(expected), Encoding.ASCII.GetBytes(header[prefix.Length..].Trim().ToLowerInvariant()));
     }
 
     [HttpGet("/api/WhatsApp/Bulk")]

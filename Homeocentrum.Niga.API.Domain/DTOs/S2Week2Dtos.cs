@@ -396,6 +396,14 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public bool SlaBreached { get; set; }
     }
 
+    public class EnquiryUpdateRequest
+    {
+        /// <summary>New | Open | In Progress | Closed</summary>
+        public string? TicketStatus { get; set; }
+        public long? AssignedTo { get; set; }
+        public bool ClearAssignee { get; set; }
+    }
+
     public class PatientHomeDashboardDto
     {
         public int? PatientId { get; set; }

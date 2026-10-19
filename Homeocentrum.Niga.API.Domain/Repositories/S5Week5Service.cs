@@ -74,6 +74,19 @@ public partial class S5Week5Service : IS5Week5Service
         return await ListSmsTemplatesAsync(caller);
     });
 
+    public Task<S4ActionResult> DeleteSmsTemplateAsync(int smsTemplateId, S4Caller caller) => Guard(async () =>
+    {
+        var deny = Admin(caller);
+        if (deny != null) return deny;
+        if (smsTemplateId <= 0)
+            return S4ActionResult.Fail(400, "VALIDATION", "SmsTemplateId is required.");
+        var affected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            DELETE FROM dbo.SmsTemplate WHERE SmsTemplateId = {smsTemplateId}");
+        if (affected == 0)
+            return S4ActionResult.Fail(404, "NOT_FOUND", "SMS template was not found.");
+        return await ListSmsTemplatesAsync(caller);
+    });
+
     public Task<S4ActionResult> SendSmsAsync(SmsSendRequest request, S4Caller caller) => Guard(async () =>
     {
         if (!caller.IsAdmin && !caller.IsDoctor && !caller.IsReception)
@@ -235,19 +248,35 @@ public partial class S5Week5Service : IS5Week5Service
         return S4ActionResult.Ok(new { success = true, platform, deviceType });
     });
 
-    public Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request) => Guard(async () =>
+    public Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request) =>
+        WhatsAppReceiptBatchAsync(request == null ? Array.Empty<WhatsAppReceiptRequest>() : new[] { request });
+
+    public Task<S4ActionResult> WhatsAppReceiptBatchAsync(IReadOnlyList<WhatsAppReceiptRequest> receipts) => Guard(async () =>
     {
-        var id = (request?.MetaMessageId ?? "").Trim();
-        if (id.Length == 0)
+        if (receipts == null || receipts.Count == 0)
+            return S4ActionResult.Fail(400, "VALIDATION", "At least one delivery status is required.");
+
+        var now = DateTime.Now;
+        var totalUpdated = 0;
+        foreach (var request in receipts)
+        {
+            var id = (request?.MetaMessageId ?? "").Trim();
+            if (id.Length == 0)
+                continue;
+            var status = (request?.Status ?? "delivered").Trim();
+            if (status.Length > 30) status = status.Substring(0, 30);
+            var payload = (request?.Payload ?? "").Trim();
+            if (payload.Length > 4000) payload = payload.Substring(0, 4000);
+            totalUpdated += await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.WhatsAppMessageLog
+                SET DeliveryStatus = {status}, ReceiptAt = {now}, ReceiptPayload = {payload}
+                WHERE MetaMessageId = {id}");
+        }
+
+        if (totalUpdated == 0 && receipts.All(r => string.IsNullOrWhiteSpace(r?.MetaMessageId)))
             return S4ActionResult.Fail(400, "VALIDATION", "MetaMessageId is required.");
-        var status = (request?.Status ?? "delivered").Trim();
-        var payload = (request?.Payload ?? "").Trim();
-        if (payload.Length > 4000) payload = payload.Substring(0, 4000);
-        var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            UPDATE dbo.WhatsAppMessageLog
-            SET DeliveryStatus = {status}, ReceiptAt = {DateTime.Now}, ReceiptPayload = {payload}
-            WHERE MetaMessageId = {id}");
-        return S4ActionResult.Ok(new { success = true, updated });
+
+        return S4ActionResult.Ok(new { success = true, updated = totalUpdated, received = receipts.Count });
     });
 
     public Task<S4ActionResult> WhatsAppBulkAsync(S4Caller caller) => Guard(async () =>
@@ -553,9 +582,54 @@ public partial class S5Week5Service : IS5Week5Service
     {
         if (!caller.IsAdmin && !caller.IsAccount && !caller.IsPharmacy)
             return S4ActionResult.Fail(403, "FORBIDDEN", "Account or pharmacy can read the medicine report.");
-        var rows = await _context.Database.SqlQuery<GroupRow>($@"
-            SELECT Status AS Name, COUNT(1) AS Cnt FROM dbo.MedicineOrder GROUP BY Status").ToListAsync();
-        return S4ActionResult.Ok(new { success = true, data = rows });
+        var byStatus = await _context.Database.SqlQuery<MedicineStatusSummaryRow>($@"
+            SELECT
+                o.Status AS Status,
+                COUNT(1) AS Orders,
+                COUNT(DISTINCT o.PatientId) AS Patients,
+                COUNT(DISTINCT o.PharmacyPartnerId) AS Pharmacies,
+                ISNULL(SUM(o.QuoteAmount), 0) AS QuoteTotal,
+                MAX(o.CreatedAt) AS LastCreatedAt
+            FROM dbo.MedicineOrder o
+            GROUP BY o.Status
+            ORDER BY Orders DESC").ToListAsync();
+        var recent = await _context.Database.SqlQuery<MedicineReportOrderRow>($@"
+            SELECT TOP 50
+                o.MedicineOrderId,
+                o.Status,
+                o.PatientId,
+                p.PatientName,
+                o.PharmacyPartnerId,
+                ph.Name AS PharmacyName,
+                o.QuoteAmount,
+                o.PayMode,
+                o.ConsentGranted,
+                o.CreatedAt,
+                (SELECT COUNT(1) FROM dbo.MedicineOrderItem i WHERE i.MedicineOrderId = o.MedicineOrderId) AS ItemCount,
+                (SELECT MAX(e.At) FROM dbo.MedicineOrderEvent e WHERE e.MedicineOrderId = o.MedicineOrderId) AS LastEventAt
+            FROM dbo.MedicineOrder o
+            LEFT JOIN dbo.Patient p ON p.PatientId = o.PatientId
+            LEFT JOIN dbo.PharmacyPartner ph ON ph.PharmacyPartnerId = o.PharmacyPartnerId
+            ORDER BY o.MedicineOrderId DESC").ToListAsync();
+        var totals = new
+        {
+            orders = byStatus.Sum(r => r.Orders),
+            patients = byStatus.Sum(r => r.Patients),
+            pharmacies = byStatus.Sum(r => r.Pharmacies),
+            quoteTotal = byStatus.Sum(r => r.QuoteTotal),
+        };
+        return S4ActionResult.Ok(new
+        {
+            success = true,
+            data = new
+            {
+                byStatus,
+                recent,
+                totals,
+                // Keep flat status rows for older clients that expect GroupRow-shaped lists.
+                rows = byStatus.Select(r => new { name = r.Status, cnt = r.Orders }).ToList(),
+            },
+        });
     });
 
     public Task<S4ActionResult> EarningsBucketsAsync(DateTime? from, DateTime? to, S4Caller caller) => Guard(async () =>
@@ -985,6 +1059,30 @@ public partial class S5Week5Service : IS5Week5Service
     {
         public string Name { get; set; } = "";
         public int Cnt { get; set; }
+    }
+    private sealed class MedicineStatusSummaryRow
+    {
+        public string Status { get; set; } = "";
+        public int Orders { get; set; }
+        public int Patients { get; set; }
+        public int Pharmacies { get; set; }
+        public decimal QuoteTotal { get; set; }
+        public DateTime? LastCreatedAt { get; set; }
+    }
+    private sealed class MedicineReportOrderRow
+    {
+        public int MedicineOrderId { get; set; }
+        public string Status { get; set; } = "";
+        public int PatientId { get; set; }
+        public string? PatientName { get; set; }
+        public int? PharmacyPartnerId { get; set; }
+        public string? PharmacyName { get; set; }
+        public decimal? QuoteAmount { get; set; }
+        public string? PayMode { get; set; }
+        public bool ConsentGranted { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public int ItemCount { get; set; }
+        public DateTime? LastEventAt { get; set; }
     }
     private sealed class MoneyRow
     {

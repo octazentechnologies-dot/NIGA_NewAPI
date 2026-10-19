@@ -65,6 +65,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             entity.EmailId = string.IsNullOrWhiteSpace(request.EmailId) ? null : request.EmailId.Trim();
             entity.EnteredDate = DateTime.Now;
             entity.DeleteStatus = false;
+            entity.IsActive = true;
 
             _repository.AddReceptionStaff(entity);
 
@@ -123,6 +124,12 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             entity.Country = request.Country;
             entity.State = request.State;
             entity.City = request.City;
+            if (!string.IsNullOrWhiteSpace(request.Password))
+            {
+                if (request.Password.Trim().Length < 6)
+                    return (false, "Password must be at least 6 characters.");
+                entity.Password = ReceptionStaffPasswordHelper.HashPassword(request.Password.Trim());
+            }
             entity.ChangedBy = request.ChangedBy;
             entity.ChangedDate = DateTime.Now;
 
@@ -142,14 +149,35 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
 
         public async Task<(bool Success, string Message)> DeleteReceptionStaffAsync(DeleteReceptionStaffRequest request)
         {
+            // "Delete" from the UI means disable — keep the row visible for re-enable.
+            return await SetReceptionStaffActiveAsync(new SetReceptionStaffActiveRequest
+            {
+                ReceptionStaffID = request.ReceptionStaffID,
+                IsActive = false,
+                ChangedBy = request.ChangedBy
+            });
+        }
+
+        public async Task<(bool Success, string Message)> SetReceptionStaffActiveAsync(
+            SetReceptionStaffActiveRequest request)
+        {
             var entity = await _repository.GetActiveReceptionStaffEntityByIdAsync(request.ReceptionStaffID);
             if (entity == null)
             {
                 return (false, "Reception staff not found or has been deleted.");
             }
 
-            entity.DeleteStatus = true;
-            entity.IsActive = false;
+            var effectivelyActive = entity.IsActive && !entity.DeleteStatus;
+            if (effectivelyActive == request.IsActive)
+            {
+                return (true, request.IsActive
+                    ? "Reception staff is already enabled."
+                    : "Reception staff is already disabled.");
+            }
+
+            entity.IsActive = request.IsActive;
+            // Clear soft-delete so disabled staff stay on the list and can log in again when enabled.
+            entity.DeleteStatus = false;
             entity.ChangedBy = request.ChangedBy;
             entity.ChangedDate = DateTime.Now;
 
@@ -157,14 +185,19 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
 
             if (!await _repository.SaveAllAsync())
             {
-                return (false, "Failed to delete reception staff.");
+                return (false, request.IsActive
+                    ? "Failed to enable reception staff."
+                    : "Failed to disable reception staff.");
             }
 
             _logger.LogInformation(
-                "Reception staff soft deleted. ReceptionStaffID={ReceptionStaffId}",
+                "Reception staff {Action}. ReceptionStaffID={ReceptionStaffId}",
+                request.IsActive ? "enabled" : "disabled",
                 entity.ReceptionStaffId);
 
-            return (true, "Reception staff deleted successfully.");
+            return (true, request.IsActive
+                ? "Reception staff enabled successfully."
+                : "Reception staff disabled successfully. They can no longer log in.");
         }
 
         public Task<ReceptionStaffResponseModel?> GetReceptionStaffByIdAsync(int receptionStaffId)

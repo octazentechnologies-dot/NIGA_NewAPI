@@ -323,7 +323,6 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddHostedService<AiIncrementalEmbeddingRefreshBackgroundService>();
             services.AddHostedService<AiEmbeddingSemanticCacheWarmupBackgroundService>();
 
-            // TODO S5: confirm WhatsApp Meta AccessToken / PhoneNumberId still valid (API appsettings WhatsAppMeta). S5 will use this client.
             services.Configure<WhatsAppMetaOptions>(config.GetSection(WhatsAppMetaOptions.SectionName));
             services.AddHttpClient<IWhatsAppMetaApiClient, WhatsAppMetaApiClient>();
             services.AddScoped<IWhatsAppRepository, WhatsAppRepository>();
@@ -331,9 +330,11 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSingleton<WhatsAppBulkSendQueue>();
             services.AddSingleton<IWhatsAppBulkSendQueue>(sp => sp.GetRequiredService<WhatsAppBulkSendQueue>());
             services.AddHostedService<WhatsAppBulkSendBackgroundService>();
+            services.AddSingleton<SmsStartupGate>();
             services.AddHostedService<SmsTemplateSeeder>();
             services.AddHostedService<SmsOutboxWorker>();
             services.AddHostedService<AppointmentReminderWorker>();
+            services.AddHostedService<FollowUpMissedNotificationWorker>();
             services.AddHostedService<DailyIssueMatrixEmailService>();
             services.AddHostedService<Logging.DiskSpaceMonitor>();
             services.AddMvc();

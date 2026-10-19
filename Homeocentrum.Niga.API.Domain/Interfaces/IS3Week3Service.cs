@@ -15,6 +15,9 @@ namespace Homeocentrum.Niga.API.Domain.Interfaces
         Task<S3ActionResult> SaveCasePaperAsync(CasePaperRequest request, int doctorId, long userId);
         Task<S3ActionResult> GetCasePapersAsync(int doctorId, int patientId);
         Task<S3ActionResult> OpenPatientRowAsync(int doctorId, int patientId);
+        Task<S3ActionResult> SaveVisitVitalsAsync(ReceptionVitalsRequest request, int doctorId, long userId);
+        Task<S3ActionResult> GetVisitVitalsAsync(int patientAppId, int doctorId);
+        Task<S3ActionResult> GetPatientCardAsync(int doctorId, int patientId);
 
         Task<S3ActionResult> SetTeleAvailabilityAsync(int doctorId, bool isOnline);
         Task<S3ActionResult> GetTeleAvailabilityAsync(int doctorId);

@@ -19,11 +19,16 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
     {
         private readonly NIGACentrumContext _context;
         private readonly IAppointmentRescheduleNotifier _rescheduleNotifier;
+        private readonly IPushNotificationSender _push;
 
-        public PatientAppointmentService(NIGACentrumContext context, IAppointmentRescheduleNotifier rescheduleNotifier)
+        public PatientAppointmentService(
+            NIGACentrumContext context,
+            IAppointmentRescheduleNotifier rescheduleNotifier,
+            IPushNotificationSender push)
         {
             _context = context;
             _rescheduleNotifier = rescheduleNotifier;
+            _push = push;
         }
 
         public PatientAppointmentModel GetPatientAppById(long PatientAppId, ref ErrorResponseModel errorResponseModel)
@@ -355,8 +360,15 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             }
 
             // Update status
+            var previousStatus = appointment.Status;
             appointment.Status = model.Status.ToUpper();
             _context.SaveChanges();
+
+            if (string.Equals(appointment.Status, "NOT ARRIVED", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(previousStatus, "NOT ARRIVED", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = NotifyMissedFollowUpAppointmentAsync(appointment);
+            }
 
             return new PatientAppointmentModel
             {
@@ -372,6 +384,93 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 WhatsAppOptInDate = appointment.Patient.WhatsAppOptInDate,
                 Message = "Appointment status updated successfully"
             };
+        }
+
+        /// <summary>
+        /// When reception marks NOT ARRIVED on a follow-up related visit, notify the doctor once.
+        /// </summary>
+        private async Task NotifyMissedFollowUpAppointmentAsync(PatientAppointment appointment)
+        {
+            try
+            {
+                var visitType = appointment.VisitType ?? "";
+                var isFollowUpVisit = visitType.Contains("FOLLOW", StringComparison.OrdinalIgnoreCase);
+                var visitDate = (appointment.AppointmentDate ?? DateTime.Today).Date;
+                if (!isFollowUpVisit)
+                {
+                    var hasOpenFollowUp = await _context.Database.SqlQuery<CountOne>($@"
+                        SELECT COUNT(1) AS Value
+                        FROM dbo.FollowUpPlan fp
+                        INNER JOIN dbo.FollowUpTask ft ON ft.FollowUpPlanId = fp.FollowUpPlanId
+                        WHERE fp.PatientId = {appointment.PatientId}
+                          AND fp.DoctorId = {appointment.DoctorId}
+                          AND ft.Status = N'OPEN'
+                          AND ft.DueDate <= {visitDate}").FirstOrDefaultAsync();
+                    if ((hasOpenFollowUp?.Value ?? 0) <= 0)
+                        return;
+                }
+
+                var already = await _context.Database.SqlQuery<CountOne>($@"
+                    SELECT COUNT(1) AS Value FROM dbo.NotificationOutbox
+                    WHERE EventType = {("APPT_MISS_" + appointment.PatientAppId)}
+                      AND Status IN (N'SENT', N'QUEUED', N'PENDING', N'LOGGED')").FirstOrDefaultAsync();
+                if ((already?.Value ?? 0) > 0)
+                    return;
+
+                var doctorUserId = await _context.Doctors.AsNoTracking()
+                    .Where(d => d.DoctorId == appointment.DoctorId)
+                    .Select(d => d.UserId)
+                    .FirstOrDefaultAsync();
+                if (!doctorUserId.HasValue || doctorUserId.Value <= 0)
+                    return;
+
+                var patientName = appointment.Patient?.PatientName;
+                if (string.IsNullOrWhiteSpace(patientName))
+                {
+                    patientName = await _context.Patients.AsNoTracking()
+                        .Where(p => p.PatientId == appointment.PatientId)
+                        .Select(p => p.PatientName)
+                        .FirstOrDefaultAsync();
+                }
+
+                var patientLabel = string.IsNullOrWhiteSpace(patientName) ? "A patient" : patientName.Trim();
+                var when = visitDate.ToString("dd MMM yyyy");
+                if (appointment.AppointmentTime.HasValue)
+                    when += " " + appointment.AppointmentTime.Value.ToString("HH:mm");
+                var title = "Follow-up appointment missed";
+                var body = $"{patientLabel} did not arrive for the follow-up visit on {when}.";
+                var deepLink = "/doctor/follow-ups";
+                var userId = (long)doctorUserId.Value;
+
+                var pushResult = await _push.SendToUserAsync(
+                    userId,
+                    title,
+                    body,
+                    new Dictionary<string, string>
+                    {
+                        ["type"] = "APPT_MISSED",
+                        ["patientAppId"] = appointment.PatientAppId.ToString(),
+                        ["deepLink"] = deepLink,
+                    },
+                    "APPT_MISSED");
+
+                var pushStatus = string.IsNullOrWhiteSpace(pushResult.Status) ? "LOGGED" : pushResult.Status.ToUpperInvariant();
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.AppNotification (UserId, Title, Body, PushStatus, Type, DeepLink)
+                    VALUES ({userId}, {title}, {body}, {pushStatus}, N'APPT_MISSED', {deepLink})");
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.NotificationOutbox (Channel, EventType, Destination, Body, Status, LastError, CreatedAt)
+                    VALUES (N'PUSH', {("APPT_MISS_" + appointment.PatientAppId)}, {userId.ToString()}, {body}, N'SENT', NULL, {DateTime.Now})");
+            }
+            catch
+            {
+                /* notification must not block status update */
+            }
+        }
+
+        private sealed class CountOne
+        {
+            public int Value { get; set; }
         }
 
         public PatientAppointmentModel UpdateAppointmentTime(

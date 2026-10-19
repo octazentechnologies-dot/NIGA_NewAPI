@@ -42,5 +42,12 @@ public partial class WhatsAppMessageLog
 
     public bool DeleteStatus { get; set; }
 
+    /// <summary>Meta delivery status: sent, delivered, read, failed, etc.</summary>
+    public string? DeliveryStatus { get; set; }
+
+    public DateTime? ReceiptAt { get; set; }
+
+    public string? ReceiptPayload { get; set; }
+
     public virtual LanguageMaster? Language { get; set; }
 }

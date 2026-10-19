@@ -35,8 +35,9 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
 
         public Task<DoctorReceptionStaff?> GetActiveReceptionStaffEntityByIdAsync(int receptionStaffId)
         {
+            // Include rows that were soft-deleted by the old Disable flow so they can be re-enabled.
             return _context.DoctorReceptionStaffs
-                .FirstOrDefaultAsync(x => x.ReceptionStaffId == receptionStaffId && !x.DeleteStatus);
+                .FirstOrDefaultAsync(x => x.ReceptionStaffId == receptionStaffId);
         }
 
         public async Task<ReceptionStaffResponseModel?> GetReceptionStaffByIdAsync(int receptionStaffId)
@@ -44,7 +45,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             return await (
                 from rs in _context.DoctorReceptionStaffs.AsNoTracking()
                 join d in _context.Doctors.AsNoTracking() on rs.DoctorId equals d.DoctorId
-                where rs.ReceptionStaffId == receptionStaffId && !rs.DeleteStatus
+                where rs.ReceptionStaffId == receptionStaffId
                 select new ReceptionStaffResponseModel
                 {
                     ReceptionStaffID = rs.ReceptionStaffId,
@@ -58,6 +59,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     Country = rs.Country,
                     State = rs.State,
                     City = rs.City,
+                    IsActive = rs.IsActive && !rs.DeleteStatus,
                     EnteredBy = rs.EnteredBy,
                     EnteredDate = rs.EnteredDate,
                     ChangedBy = rs.ChangedBy,
@@ -69,10 +71,12 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             int doctorId,
             PaginationRequestModel request)
         {
+            // Include disabled / previously soft-deleted staff so the doctor can re-enable them.
             var query = _context.DoctorReceptionStaffs
                 .AsNoTracking()
-                .Where(x => x.DoctorId == doctorId && !x.DeleteStatus)
-                .OrderByDescending(x => x.EnteredDate)
+                .Where(x => x.DoctorId == doctorId)
+                .OrderByDescending(x => x.IsActive && !x.DeleteStatus)
+                .ThenByDescending(x => x.EnteredDate)
                 .Select(x => new ReceptionStaffListItemModel
                 {
                     ReceptionStaffID = x.ReceptionStaffId,
@@ -82,6 +86,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     ContactNumber = x.ContactNumber,
                     EmailId = x.EmailId,
                     City = x.City,
+                    IsActive = x.IsActive && !x.DeleteStatus,
                     EnteredDate = x.EnteredDate
                 });
 
@@ -91,9 +96,9 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         public Task<bool> IsUserIdExistsAsync(string userId, int? excludeReceptionStaffId = null)
         {
             var normalizedUserId = userId.Trim().ToLower();
+            // Include disabled/soft-deleted rows — they remain on the list and can be re-enabled.
             return _context.DoctorReceptionStaffs.AnyAsync(x =>
-                !x.DeleteStatus
-                && x.UserId.ToLower() == normalizedUserId
+                x.UserId.ToLower() == normalizedUserId
                 && (excludeReceptionStaffId == null || x.ReceptionStaffId != excludeReceptionStaffId));
         }
 
@@ -106,8 +111,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
 
             var normalizedEmail = emailId.Trim().ToLower();
             return _context.DoctorReceptionStaffs.AnyAsync(x =>
-                !x.DeleteStatus
-                && x.EmailId != null
+                x.EmailId != null
                 && x.EmailId.ToLower() == normalizedEmail
                 && (excludeReceptionStaffId == null || x.ReceptionStaffId != excludeReceptionStaffId));
         }
@@ -116,8 +120,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         {
             var normalizedContact = contactNumber.Trim();
             return _context.DoctorReceptionStaffs.AnyAsync(x =>
-                !x.DeleteStatus
-                && x.ContactNumber == normalizedContact
+                x.ContactNumber == normalizedContact
                 && (excludeReceptionStaffId == null || x.ReceptionStaffId != excludeReceptionStaffId));
         }
 

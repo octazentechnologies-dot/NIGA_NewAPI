@@ -14,6 +14,12 @@ public class SmsOptions
 
     public string DefaultCountryDialCode { get; set; } = "91";
 
+    /// <summary>
+    /// Minutes after API/IIS process start before background SMS workers send.
+    /// Prevents outbox/reminder blasts on deploy or app-pool recycle. OTP/API sends are unaffected.
+    /// </summary>
+    public int StartupGraceMinutes { get; set; } = 5;
+
     public Msg91SmsOptions Msg91 { get; set; } = new();
 
     public TwilioSmsOptions Twilio { get; set; } = new();

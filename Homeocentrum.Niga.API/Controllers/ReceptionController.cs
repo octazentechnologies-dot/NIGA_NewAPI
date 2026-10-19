@@ -77,6 +77,38 @@ public class ReceptionController : ControllerBase
         return Done(_s3.OpenPatientRowAsync(doctorId.Value, patientId));
     }
 
+    /// <summary>Patient demographics card for reception View modal.</summary>
+    [HttpGet("/api/Reception/PatientCard")]
+    public Task<IActionResult> PatientCard([FromQuery] int patientId)
+    {
+        var doctorId = DoctorOwnership.GetDoctorId(User);
+        if (!doctorId.HasValue)
+            return Task.FromResult<IActionResult>(ForbidRole("Doctor context is required."));
+        return Done(_s3.GetPatientCardAsync(doctorId.Value, patientId));
+    }
+
+    /// <summary>Save vitals for a visit (keyed by PatientAppId).</summary>
+    [HttpPost("/api/Reception/Vitals")]
+    public Task<IActionResult> SaveVitals([FromBody] ReceptionVitalsRequest request)
+    {
+        if (!IsReception())
+            return Task.FromResult<IActionResult>(ForbidRole("Only reception can save visit vitals."));
+        var doctorId = DoctorOwnership.GetDoctorId(User);
+        if (!doctorId.HasValue)
+            return Task.FromResult<IActionResult>(ForbidRole("Doctor context is required."));
+        return Done(_s3.SaveVisitVitalsAsync(request, doctorId.Value, User.GetUserId()));
+    }
+
+    /// <summary>Read vitals for a visit.</summary>
+    [HttpGet("/api/Reception/Vitals")]
+    public Task<IActionResult> GetVitals([FromQuery] int patientAppId)
+    {
+        var doctorId = DoctorOwnership.GetDoctorId(User);
+        if (!doctorId.HasValue)
+            return Task.FromResult<IActionResult>(ForbidRole("Doctor context is required."));
+        return Done(_s3.GetVisitVitalsAsync(patientAppId, doctorId.Value));
+    }
+
     private Task<IActionResult> Done(Task<S3ActionResult> work) => this.Respond(work);
     private bool IsReception() => ServiceResultSupport.IsReception(this);
     private IActionResult ForbidRole(string message) => ServiceResultSupport.ForbidRole(this, message);

@@ -114,6 +114,22 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string? ChiefComplaint { get; set; }
     }
 
+    /// <summary>REC desk vitals collected before consult.</summary>
+    public class ReceptionVitalsRequest
+    {
+        public int PatientAppId { get; set; }
+        public string? BloodPressureSystolic { get; set; }
+        public string? BloodPressureDiastolic { get; set; }
+        public string? Pulse { get; set; }
+        public string? Temperature { get; set; }
+        public string? Weight { get; set; }
+        public string? Height { get; set; }
+        public string? Spo2 { get; set; }
+        public string? RespiratoryRate { get; set; }
+        public string? BloodSugar { get; set; }
+        public string? Notes { get; set; }
+    }
+
     public class TeleAvailabilityUpdate
     {
         public bool IsOnline { get; set; }
