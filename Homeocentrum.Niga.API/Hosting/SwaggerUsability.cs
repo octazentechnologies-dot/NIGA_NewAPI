@@ -69,9 +69,13 @@ public sealed class ApiTagDescriptionsDocumentFilter : IDocumentFilter
 
     private const string GettingStarted =
         "\n\n**Getting started**\n\n" +
+        "Deployed base: `https://devapi.homeocentrum.com`. Call every path on that host, for example `https://devapi.homeocentrum.com/api/Account/Login`. " +
+        "The **OpenAPI spec** button downloads the document selected in the top bar. Import that JSON in Postman or Insomnia. " +
+        "AppConfig examples come from live appsettings (`ConfigurationModel:SiteUrl`, `Support:*`). Razorpay keys are not in AppConfig. " +
+        "Other Try-it samples follow the live schema from the controllers; a null field means that fact is not stored.\n\n" +
         "1. Sign in with `POST /api/Account/Login` (staff and doctors) or `POST /api/PatientAuth/VerifyOtp` (patients). " +
         "Swagger keeps the returned token and sends it on later calls, also after a page reload.\n" +
-        "2. Or click **Authorize** and paste a token without the `Bearer ` prefix.\n" +
+        "2. Or click **Authorize** and paste `data.token` without the `Bearer ` prefix.\n" +
         "3. A padlock marks the endpoints that need the token. The others are public.\n" +
         "4. The filter box searches tag names, paths, and summaries, for example `Tele`, `/api/Patient`, or `refund`.\n" +
         "5. Validation and server errors return `success: false`, a `message`, and a `traceId` to quote when reporting a problem.";

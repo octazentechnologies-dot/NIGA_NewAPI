@@ -1,8 +1,11 @@
 using System.Net;
 using System.Text;
+using System.Threading;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
+using Homeocentrum.Niga.API.Domain.Configuration;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Interfaces;
@@ -12,17 +15,31 @@ namespace Homeocentrum.Niga.API.Domain.Repositories;
 
 /// <summary>
 /// S5 Week 5 — SMS log, notifications, receipt email, and clinic reports.
-/// Provider calls run only when the matching key is present in appsettings.json.
+/// SMS goes through <see cref="ISmsSender"/> (Twilio / Msg91 from Sms:* appsettings).
 /// </summary>
 public partial class S5Week5Service : IS5Week5Service
 {
     private readonly NIGACentrumContext _context;
     private readonly IConfiguration _config;
+    private readonly ISmsSender _sms;
+    private readonly ISmsTemplateRenderer _templates;
+    private readonly IPushNotificationSender _push;
+    private readonly SmsOptions _smsOptions;
 
-    public S5Week5Service(NIGACentrumContext context, IConfiguration config)
+    public S5Week5Service(
+        NIGACentrumContext context,
+        IConfiguration config,
+        ISmsSender sms,
+        ISmsTemplateRenderer templates,
+        IPushNotificationSender push,
+        IOptions<SmsOptions> smsOptions)
     {
         _context = context;
         _config = config;
+        _sms = sms;
+        _templates = templates;
+        _push = push;
+        _smsOptions = smsOptions.Value ?? new SmsOptions();
     }
 
     public Task<S4ActionResult> ListSmsTemplatesAsync(S4Caller caller) => Guard(async () =>
@@ -57,6 +74,19 @@ public partial class S5Week5Service : IS5Week5Service
         return await ListSmsTemplatesAsync(caller);
     });
 
+    public Task<S4ActionResult> DeleteSmsTemplateAsync(int smsTemplateId, S4Caller caller) => Guard(async () =>
+    {
+        var deny = Admin(caller);
+        if (deny != null) return deny;
+        if (smsTemplateId <= 0)
+            return S4ActionResult.Fail(400, "VALIDATION", "SmsTemplateId is required.");
+        var affected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            DELETE FROM dbo.SmsTemplate WHERE SmsTemplateId = {smsTemplateId}");
+        if (affected == 0)
+            return S4ActionResult.Fail(404, "NOT_FOUND", "SMS template was not found.");
+        return await ListSmsTemplatesAsync(caller);
+    });
+
     public Task<S4ActionResult> SendSmsAsync(SmsSendRequest request, S4Caller caller) => Guard(async () =>
     {
         if (!caller.IsAdmin && !caller.IsDoctor && !caller.IsReception)
@@ -74,12 +104,9 @@ public partial class S5Week5Service : IS5Week5Service
         var code = (request?.TemplateCode ?? "").Trim();
         var body = (request?.Body ?? "").Trim();
         if (body.Length == 0 && code.Length > 0)
-        {
-            var template = await _context.Database.SqlQuery<SmsTemplateRow>($@"
-                SELECT SmsTemplateId, Code, Body, IsActive, CreatedAt
-                FROM dbo.SmsTemplate WHERE Code = {code} AND IsActive = 1").FirstOrDefaultAsync();
-            body = template?.Body ?? "";
-        }
+            body = await _templates.RenderAsync(code, request?.Tokens);
+        else if (body.Length > 0 && request?.Tokens != null)
+            body = SmsTemplateRenderer.ApplyTokens(body, request.Tokens);
         if (body.Length == 0)
             return S4ActionResult.Fail(400, "VALIDATION", "Body or an active template code is required.");
         if (caller.DoctorId.HasValue && code.Length > 0)
@@ -92,20 +119,22 @@ public partial class S5Week5Service : IS5Week5Service
                 return S4ActionResult.Fail(409, "EVENT_OFF", "This doctor has turned off SMS for that event.");
         }
 
-        var status = "LOGGED";
-        var providerId = "";
-        var authKey = _config["Sms:AuthKey"];
-        var endpoint = _config["Sms:Endpoint"];
-        if (!string.IsNullOrWhiteSpace(authKey) && !string.IsNullOrWhiteSpace(endpoint))
-        {
-            status = await PostProviderAsync(endpoint, authKey, mobile, body) ? "SENT" : "FAILED";
-            providerId = status == "SENT" ? "provider" : "";
-        }
+        // Real send via ConfigurableSmsSender (Twilio when Sms:Provider=Twilio).
+        var sent = await _sms.SendAsync(mobile, body);
+        var status = sent ? "SENT" : (SmsOtpPolicy.RealSmsLive(_smsOptions) ? "FAILED" : "LOGGED");
+        var providerId = sent ? (_smsOptions.Provider ?? "Twilio") : "";
 
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.SmsMessageLog (TemplateCode, Mobile, Body, Status, ProviderMessageId)
             VALUES ({code}, {mobile}, {body}, {status}, {providerId})");
-        return S4ActionResult.Ok(new { success = true, status, mobile });
+        return S4ActionResult.Ok(new
+        {
+            success = true,
+            status,
+            delivered = sent,
+            mobile,
+            message = sent ? "SMS sent." : "SMS was not accepted by the provider. Check Twilio logs."
+        });
     });
 
     public Task<S4ActionResult> SmsHistoryAsync(S4Caller caller) => Guard(async () =>
@@ -168,9 +197,12 @@ public partial class S5Week5Service : IS5Week5Service
         if (token.Length < 8)
             return S4ActionResult.Fail(400, "VALIDATION", "A device token is required.");
         if (token.Length > 512) token = token.Substring(0, 512);
-        var platform = (request?.Platform ?? "web").Trim().ToLowerInvariant();
-        if (platform != "android" && platform != "ios" && platform != "web")
-            platform = "web";
+        var deviceType = DeviceTypeNormalizer.Normalize(
+            !string.IsNullOrWhiteSpace(request?.DeviceType) ? request!.DeviceType : request?.Platform);
+        var platform = deviceType.Equals("iOS", StringComparison.OrdinalIgnoreCase) ? "ios"
+            : deviceType.Equals("Android", StringComparison.OrdinalIgnoreCase) ? "android"
+            : "web";
+        var now = DateTime.UtcNow;
         var existing = await _context.Database.SqlQuery<CountRow>($@"
             SELECT COUNT(1) AS Value FROM dbo.DeviceToken
             WHERE UserId = {caller.UserId} AND Token = {token}").FirstAsync();
@@ -186,22 +218,65 @@ public partial class S5Week5Service : IS5Week5Service
                 INSERT INTO dbo.DeviceToken (UserId, Token, Platform)
                 VALUES ({caller.UserId}, {token}, {platform})");
         }
-        return S4ActionResult.Ok(new { success = true, platform });
+
+        // Canonical store for FCM send + logout clear.
+        var pushRow = await _context.DevicePushTokens
+            .FirstOrDefaultAsync(d => d.UserId == caller.UserId && d.Token == token && !d.DeleteStatus);
+        if (pushRow == null)
+        {
+            _context.DevicePushTokens.Add(new Master.DevicePushToken
+            {
+                UserId = caller.UserId,
+                Platform = "FCM",
+                DeviceType = deviceType,
+                Token = token,
+                DeviceId = string.IsNullOrWhiteSpace(request?.DeviceId) ? null : request!.DeviceId!.Trim(),
+                CreatedAt = now,
+                UpdatedAt = now,
+                DeleteStatus = false
+            });
+        }
+        else
+        {
+            pushRow.DeviceType = deviceType;
+            pushRow.Platform = "FCM";
+            pushRow.UpdatedAt = now;
+            if (!string.IsNullOrWhiteSpace(request?.DeviceId))
+                pushRow.DeviceId = request!.DeviceId!.Trim();
+        }
+        await _context.SaveChangesAsync();
+        return S4ActionResult.Ok(new { success = true, platform, deviceType });
     });
 
-    public Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request) => Guard(async () =>
+    public Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request) =>
+        WhatsAppReceiptBatchAsync(request == null ? Array.Empty<WhatsAppReceiptRequest>() : new[] { request });
+
+    public Task<S4ActionResult> WhatsAppReceiptBatchAsync(IReadOnlyList<WhatsAppReceiptRequest> receipts) => Guard(async () =>
     {
-        var id = (request?.MetaMessageId ?? "").Trim();
-        if (id.Length == 0)
+        if (receipts == null || receipts.Count == 0)
+            return S4ActionResult.Fail(400, "VALIDATION", "At least one delivery status is required.");
+
+        var now = DateTime.Now;
+        var totalUpdated = 0;
+        foreach (var request in receipts)
+        {
+            var id = (request?.MetaMessageId ?? "").Trim();
+            if (id.Length == 0)
+                continue;
+            var status = (request?.Status ?? "delivered").Trim();
+            if (status.Length > 30) status = status.Substring(0, 30);
+            var payload = (request?.Payload ?? "").Trim();
+            if (payload.Length > 4000) payload = payload.Substring(0, 4000);
+            totalUpdated += await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.WhatsAppMessageLog
+                SET DeliveryStatus = {status}, ReceiptAt = {now}, ReceiptPayload = {payload}
+                WHERE MetaMessageId = {id}");
+        }
+
+        if (totalUpdated == 0 && receipts.All(r => string.IsNullOrWhiteSpace(r?.MetaMessageId)))
             return S4ActionResult.Fail(400, "VALIDATION", "MetaMessageId is required.");
-        var status = (request?.Status ?? "delivered").Trim();
-        var payload = (request?.Payload ?? "").Trim();
-        if (payload.Length > 4000) payload = payload.Substring(0, 4000);
-        var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            UPDATE dbo.WhatsAppMessageLog
-            SET DeliveryStatus = {status}, ReceiptAt = {DateTime.Now}, ReceiptPayload = {payload}
-            WHERE MetaMessageId = {id}");
-        return S4ActionResult.Ok(new { success = true, updated });
+
+        return S4ActionResult.Ok(new { success = true, updated = totalUpdated, received = receipts.Count });
     });
 
     public Task<S4ActionResult> WhatsAppBulkAsync(S4Caller caller) => Guard(async () =>
@@ -249,12 +324,27 @@ public partial class S5Week5Service : IS5Week5Service
 
     public Task<S4ActionResult> ListNotificationsAsync(S4Caller caller) => Guard(async () =>
     {
+        await EnsureNotificationNavColumnsAsync();
         var rows = await _context.Database.SqlQuery<NoteRow>($@"
-            SELECT TOP 100 AppNotificationId, Title, Body, IsRead, PushStatus, CreatedAt
+            SELECT TOP 100 AppNotificationId, Title, Body, IsRead, PushStatus, CreatedAt, Type, DeepLink
             FROM dbo.AppNotification
             WHERE UserId = {caller.UserId}
             ORDER BY AppNotificationId DESC").ToListAsync();
-        return S4ActionResult.Ok(new { success = true, data = rows });
+        return S4ActionResult.Ok(new
+        {
+            success = true,
+            data = rows.Select(r => new
+            {
+                r.AppNotificationId,
+                r.Title,
+                r.Body,
+                r.IsRead,
+                r.PushStatus,
+                r.CreatedAt,
+                type = NormalizeNotificationType(r.Type) ?? InferNotificationType(r.Title, r.Body),
+                deepLink = string.IsNullOrWhiteSpace(r.DeepLink) ? null : r.DeepLink
+            })
+        });
     });
 
     public Task<S4ActionResult> PatchNotificationAsync(long id, bool isRead, S4Caller caller) => Guard(async () =>
@@ -492,9 +582,62 @@ public partial class S5Week5Service : IS5Week5Service
     {
         if (!caller.IsAdmin && !caller.IsAccount && !caller.IsPharmacy)
             return S4ActionResult.Fail(403, "FORBIDDEN", "Account or pharmacy can read the medicine report.");
-        var rows = await _context.Database.SqlQuery<GroupRow>($@"
-            SELECT Status AS Name, COUNT(1) AS Cnt FROM dbo.MedicineOrder GROUP BY Status").ToListAsync();
-        return S4ActionResult.Ok(new { success = true, data = rows });
+        var byStatus = await _context.Database.SqlQuery<MedicineStatusSummaryRow>($@"
+            SELECT
+                o.Status AS Status,
+                COUNT(1) AS Orders,
+                COUNT(DISTINCT o.PatientId) AS Patients,
+                COUNT(DISTINCT o.PharmacyPartnerId) AS Pharmacies,
+                ISNULL(SUM(o.QuoteAmount), 0) AS QuoteTotal,
+                MAX(o.CreatedAt) AS LastCreatedAt
+            FROM dbo.MedicineOrder o
+            GROUP BY o.Status
+            ORDER BY Orders DESC").ToListAsync();
+        var recent = await _context.Database.SqlQuery<MedicineReportOrderRow>($@"
+            SELECT TOP 50
+                o.MedicineOrderId,
+                o.Status,
+                o.PatientId,
+                p.PatientName,
+                o.PharmacyPartnerId,
+                ph.Name AS PharmacyName,
+                o.QuoteAmount,
+                o.PayMode,
+                o.ConsentGranted,
+                o.CreatedAt,
+                (SELECT COUNT(1) FROM dbo.MedicineOrderItem i WHERE i.MedicineOrderId = o.MedicineOrderId) AS ItemCount,
+                (SELECT MAX(e.At) FROM dbo.MedicineOrderEvent e WHERE e.MedicineOrderId = o.MedicineOrderId) AS LastEventAt
+            FROM dbo.MedicineOrder o
+            LEFT JOIN dbo.Patient p ON p.PatientId = o.PatientId
+            LEFT JOIN dbo.PharmacyPartner ph ON ph.PharmacyPartnerId = o.PharmacyPartnerId
+            ORDER BY o.MedicineOrderId DESC").ToListAsync();
+        // Distinct patients/pharmacies across all statuses (do not sum per-status counts).
+        var totalRow = (await _context.Database.SqlQuery<MedicineReportTotalsRow>($@"
+            SELECT
+                COUNT(1) AS Orders,
+                COUNT(DISTINCT PatientId) AS Patients,
+                COUNT(DISTINCT PharmacyPartnerId) AS Pharmacies,
+                ISNULL(SUM(QuoteAmount), 0) AS QuoteTotal
+            FROM dbo.MedicineOrder").ToListAsync()).FirstOrDefault();
+        var totals = new
+        {
+            orders = totalRow?.Orders ?? byStatus.Sum(r => r.Orders),
+            patients = totalRow?.Patients ?? 0,
+            pharmacies = totalRow?.Pharmacies ?? 0,
+            quoteTotal = totalRow?.QuoteTotal ?? byStatus.Sum(r => r.QuoteTotal),
+        };
+        return S4ActionResult.Ok(new
+        {
+            success = true,
+            data = new
+            {
+                byStatus,
+                recent,
+                totals,
+                // Keep flat status rows for older clients that expect GroupRow-shaped lists.
+                rows = byStatus.Select(r => new { name = r.Status, cnt = r.Orders }).ToList(),
+            },
+        });
     });
 
     public Task<S4ActionResult> EarningsBucketsAsync(DateTime? from, DateTime? to, S4Caller caller) => Guard(async () =>
@@ -580,22 +723,6 @@ public partial class S5Week5Service : IS5Week5Service
         });
     });
 
-    public Task<S4ActionResult> SecurityPostureAsync(S4Caller caller)
-    {
-        var deny = Admin(caller);
-        if (deny != null) return Task.FromResult(deny);
-        return Task.FromResult(S4ActionResult.Ok(new
-        {
-            success = true,
-            directoryBrowsingEnabled = false,
-            secretsStoredIn = "appsettings.json",
-            keyVaultConfigured = !string.IsNullOrWhiteSpace(_config["KeyVault:VaultUri"]),
-            smsConfigured = !string.IsNullOrWhiteSpace(_config["Sms:AuthKey"]),
-            fcmConfigured = !string.IsNullOrWhiteSpace(_config["Fcm:ServerKey"]),
-            message = "Live keys are not rotated by this API. Change them in appsettings.json."
-        }));
-    }
-
     private async Task<S4ActionResult> Guard(Func<Task<S4ActionResult>> work)
     {
         try
@@ -638,47 +765,11 @@ public partial class S5Week5Service : IS5Week5Service
         return (row?.Value ?? "").Trim();
     }
 
-    /// <summary>COM-03.04 — FCM for android/web tokens when a server key is set. iOS stays logged until an APNs key exists.</summary>
+    /// <summary>COM-03.04 — FCM via the shared Firebase sender (Website / Android / iOS).</summary>
     private async Task<string> DeliverPushAsync(long userId, string title, string body)
     {
-        var serverKey = _config["Fcm:ServerKey"];
-        var tokens = await _context.Database.SqlQuery<DeviceRow>($@"
-            SELECT Token, Platform FROM dbo.DeviceToken WHERE UserId = {userId}").ToListAsync();
-        if (tokens.Count == 0 || string.IsNullOrWhiteSpace(serverKey))
-            return "LOGGED";
-        var attempted = 0;
-        var sent = 0;
-        foreach (var token in tokens)
-        {
-            var platform = (token.Platform ?? "").ToLowerInvariant();
-            if (platform == "ios")
-                continue;
-            attempted++;
-            if (await PostFcmAsync(serverKey, token.Token, title, body))
-                sent++;
-        }
-        if (attempted == 0)
-            return "LOGGED";
-        return sent > 0 ? "SENT" : "FAILED";
-    }
-
-    private static async Task<bool> PostFcmAsync(string serverKey, string token, string title, string body)
-    {
-        try
-        {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "key=" + serverKey);
-            var payload = "{\"to\":\"" + token.Replace("\"", "") + "\",\"notification\":{\"title\":\""
-                + title.Replace("\"", "") + "\",\"body\":\"" + body.Replace("\"", "") + "\"}}";
-            var response = await client.PostAsync(
-                "https://fcm.googleapis.com/fcm/send",
-                new StringContent(payload, Encoding.UTF8, "application/json"));
-            return response.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
+        var push = await _push.SendToUserAsync(userId, title, body);
+        return push.Status.ToUpperInvariant();
     }
 
     private static async Task<bool> PostProviderAsync(string endpoint, string authKey, string mobile, string body)
@@ -821,6 +912,11 @@ public partial class S5Week5Service : IS5Week5Service
         public string Status { get; set; } = "";
         public DateTime At { get; set; }
     }
+    private sealed class IdCountRow
+    {
+        public int Id { get; set; }
+    }
+
     private sealed class NoteRow
     {
         public long AppNotificationId { get; set; }
@@ -829,6 +925,93 @@ public partial class S5Week5Service : IS5Week5Service
         public bool IsRead { get; set; }
         public string PushStatus { get; set; } = "";
         public DateTime CreatedAt { get; set; }
+        public string? Type { get; set; }
+        public string? DeepLink { get; set; }
+    }
+
+    private static int _notificationNavReady;
+
+    private async Task EnsureNotificationNavColumnsAsync()
+    {
+        if (Volatile.Read(ref _notificationNavReady) == 1) return;
+        await _context.Database.ExecuteSqlRawAsync("""
+            IF COL_LENGTH(N'dbo.AppNotification', N'Type') IS NULL
+                ALTER TABLE dbo.AppNotification ADD Type nvarchar(40) NULL;
+            IF COL_LENGTH(N'dbo.AppNotification', N'DeepLink') IS NULL
+                ALTER TABLE dbo.AppNotification ADD DeepLink nvarchar(300) NULL;
+            """);
+        Volatile.Write(ref _notificationNavReady, 1);
+    }
+
+    /// <summary>Patient Bind enum (uppercase). Stored Type is returned as-is when set.</summary>
+    private static string InferNotificationType(string? title, string? body)
+    {
+        var text = ((title ?? "") + " " + (body ?? "")).ToLowerInvariant();
+        if (text.Contains("prescription") || text.Contains("erx") || text.Contains("e-rx")) return "PRESCRIPTION";
+        if (text.Contains("pharmacy") || text.Contains("medicine") || text.Contains("refill") || text.Contains("order")) return "MEDICINE";
+        if (text.Contains("payout") || text.Contains("payment") || text.Contains("refund") || text.Contains("receipt")) return "PAYMENT";
+        if (text.Contains("appointment") || text.Contains("visit") || text.Contains("consult") || text.Contains("carelink")) return "APPOINTMENT";
+        if (text.Contains("promo") || text.Contains("offer") || text.Contains("marketing")) return "MARKETING";
+        return "SYSTEM";
+    }
+
+    public Task<S4ActionResult> UnreadNotificationCountAsync(S4Caller caller) => Guard(async () =>
+    {
+        var count = await _context.Database.SqlQuery<IdCountRow>($@"
+            SELECT COUNT(1) AS Id FROM dbo.AppNotification
+            WHERE UserId = {caller.UserId} AND IsRead = 0").FirstAsync();
+        return S4ActionResult.Ok(new { success = true, data = new { unread = count.Id } });
+    });
+
+    public Task<S4ActionResult> ListNotificationsPagedAsync(S4Caller caller, int pageNumber, int pageSize) => Guard(async () =>
+    {
+        await EnsureNotificationNavColumnsAsync();
+        var page = pageNumber < 1 ? 1 : pageNumber;
+        var size = pageSize is < 1 or > 100 ? 20 : pageSize;
+        var total = await _context.Database.SqlQuery<IdCountRow>($@"
+            SELECT COUNT(1) AS Id FROM dbo.AppNotification WHERE UserId = {caller.UserId}").FirstAsync();
+        var skip = (page - 1) * size;
+        var rows = await _context.Database.SqlQuery<NoteRow>($@"
+            SELECT AppNotificationId, Title, Body, IsRead, PushStatus, CreatedAt, Type, DeepLink
+            FROM dbo.AppNotification
+            WHERE UserId = {caller.UserId}
+            ORDER BY AppNotificationId DESC
+            OFFSET {skip} ROWS FETCH NEXT {size} ROWS ONLY").ToListAsync();
+        return S4ActionResult.Ok(new
+        {
+            success = true,
+            data = new
+            {
+                totalRecords = total.Id,
+                pageNumber = page,
+                pageSize = size,
+                data = rows.Select(r => new
+                {
+                    r.AppNotificationId,
+                    r.Title,
+                    r.Body,
+                    r.IsRead,
+                    r.PushStatus,
+                    r.CreatedAt,
+                    type = NormalizeNotificationType(r.Type) ?? InferNotificationType(r.Title, r.Body),
+                    deepLink = string.IsNullOrWhiteSpace(r.DeepLink) ? null : r.DeepLink
+                })
+            }
+        });
+    });
+
+    private static string? NormalizeNotificationType(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return null;
+        var t = type.Trim().ToUpperInvariant();
+        return t switch
+        {
+            "APPOINTMENT" or "PRESCRIPTION" or "MEDICINE" or "PAYMENT" or "SYSTEM" or "MARKETING" => t,
+            "CARELINK" => "APPOINTMENT",
+            "PHARMACY" or "REFILL" => "MEDICINE",
+            "MONEY" => "PAYMENT",
+            _ => t
+        };
     }
     private sealed class EmailLogRow
     {
@@ -859,6 +1042,37 @@ public partial class S5Week5Service : IS5Week5Service
     {
         public string Name { get; set; } = "";
         public int Cnt { get; set; }
+    }
+    private sealed class MedicineStatusSummaryRow
+    {
+        public string Status { get; set; } = "";
+        public int Orders { get; set; }
+        public int Patients { get; set; }
+        public int Pharmacies { get; set; }
+        public decimal QuoteTotal { get; set; }
+        public DateTime? LastCreatedAt { get; set; }
+    }
+    private sealed class MedicineReportTotalsRow
+    {
+        public int Orders { get; set; }
+        public int Patients { get; set; }
+        public int Pharmacies { get; set; }
+        public decimal QuoteTotal { get; set; }
+    }
+    private sealed class MedicineReportOrderRow
+    {
+        public int MedicineOrderId { get; set; }
+        public string Status { get; set; } = "";
+        public int PatientId { get; set; }
+        public string? PatientName { get; set; }
+        public int? PharmacyPartnerId { get; set; }
+        public string? PharmacyName { get; set; }
+        public decimal? QuoteAmount { get; set; }
+        public string? PayMode { get; set; }
+        public bool ConsentGranted { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public int ItemCount { get; set; }
+        public DateTime? LastEventAt { get; set; }
     }
     private sealed class MoneyRow
     {

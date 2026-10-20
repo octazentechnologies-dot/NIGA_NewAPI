@@ -12,6 +12,7 @@ using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Master;
 using Homeocentrum.Niga.API.Domain.Security;
+using Homeocentrum.Niga.API.Domain.Services;
 using Homeocentrum.Niga.API.Domain.Authorization;
 using Homeocentrum.Niga.API.Domain.Compatibility;
 
@@ -28,6 +29,7 @@ namespace Homeocentrum.Niga.API.Controllers
         private readonly IOptions<SmtpSettingsModel> _mailSettings;
         private readonly NIGACentrumContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly IStoredFileStore _files;
         private readonly ITokenService _tokenService;
         private readonly ILogger<UsersController> _logger;
 
@@ -36,6 +38,7 @@ namespace Homeocentrum.Niga.API.Controllers
             IOptions<SmtpSettingsModel> mailSettings,
             NIGACentrumContext context,
             IWebHostEnvironment env,
+            IStoredFileStore files,
             ITokenService tokenService,
             ILogger<UsersController> logger)
         {
@@ -43,6 +46,7 @@ namespace Homeocentrum.Niga.API.Controllers
             _mailSettings = mailSettings;
             _context = context;
             _env = env;
+            _files = files;
             _tokenService = tokenService;
             _logger = logger;
         }
@@ -531,12 +535,18 @@ namespace Homeocentrum.Niga.API.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            var folder = UploadedMedia.Folder(_env.ContentRootPath, UploadedMedia.DoctorCredentials);
-            Directory.CreateDirectory(folder);
-            var name = $"doc_{doctor.DoctorId}_{Guid.NewGuid():N}{ext}";
-            var path = Path.Combine(folder, name);
-            await using (var stream = System.IO.File.Create(path))
-                await file.CopyToAsync(stream);
+            string stored;
+            try
+            {
+                await using var upload = file.OpenReadStream();
+                using var memory = new MemoryStream();
+                await upload.CopyToAsync(memory);
+                stored = await _files.SaveAsync($"doctors/{doctor.DoctorId}/credentials", ext, memory.ToArray());
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
 
             var row = new DoctorCredentialDocument
             {
@@ -544,7 +554,7 @@ namespace Homeocentrum.Niga.API.Controllers
                 DoctorVerificationId = verification.DoctorVerificationId,
                 DocumentType = documentType,
                 FileName = Path.GetFileName(file.FileName),
-                FilePath = UploadedMedia.MediaRelative(UploadedMedia.DoctorCredentials, name),
+                FilePath = stored,
                 ContentType = file.ContentType,
                 EnteredDate = DateTime.UtcNow,
                 DeleteStatus = false

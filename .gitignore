@@ -11,6 +11,10 @@
 *.sln.docstates
 *.env
 
+# Firebase Admin SDK private key - never commit
+**/firebase-service-account.json
+**/*firebase-adminsdk*.json
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
@@ -442,3 +446,8 @@ Homeocentrum.Niga.API/Data/DoctorCredentials/*
 !Homeocentrum.Niga.API/Data/DoctorCredentials/.gitkeep
 
 /Homeocentrum.Niga.API/App_Data/payouts/payout-2-20260930002354.csv
+
+# Local publish output — never commit
+_publish_otp/
+**/_publish*/
+Homeocentrum.Niga.API/appsettings.Development.json

@@ -76,12 +76,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetDrugSystem([FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetDrugSystem(string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetDrugSystem(nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetDrugSystem(queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -105,12 +105,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetDrugGroup([FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetDrugGroup(string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetDrugGroup(nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetDrugGroup(queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -162,12 +162,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetLanguage( [FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetLanguage(string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetLanguage(nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetLanguage(queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -218,12 +218,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetQuestionGroupExistance(string queryString, [FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetQuestionGroupExistance(string queryString, [FromQuery] NigaParameters nigaParameters, int? questionGroupId = null, int? questionSectionId = null)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetQuestionGroupExistance(queryString, nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetQuestionGroupExistance(queryString, nigaParameters, ref errorResponseModel, questionGroupId, questionSectionId);
 
                 if (clinicalquestionModel != null)
                 {
@@ -246,12 +246,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetQuestionSubGroup(string queryString, [FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetQuestionSubGroup(string queryString, [FromQuery] NigaParameters nigaParameters, int? questionSubgroupId = null, int? questionGroupId = null, int? questionSectionId = null)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetQuestionSubGroup(queryString, nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetQuestionSubGroup(queryString, nigaParameters, ref errorResponseModel, questionSubgroupId, questionGroupId, questionSectionId);
 
                 if (clinicalquestionModel != null)
                 {
@@ -331,12 +331,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetMateriaMedica(int authorId,int remedyId,[FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetMateriaMedica(int authorId,int remedyId, string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetMateriaMedica(authorId, remedyId, nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetMateriaMedica(authorId, remedyId, queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -359,12 +359,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetMateriaMedicaHead([FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetMateriaMedicaHead(string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetMateriaMedicaHead(nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetMateriaMedicaHead(queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -387,12 +387,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetIntensities([FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetIntensities(string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetIntensities(nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetIntensities(queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -415,12 +415,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetSections([FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetSections(string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetSections(nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetSections(queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -443,12 +443,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetDiagnosisSystem([FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetDiagnosisSystem(string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetDiagnosisSystem(nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetDiagnosisSystem(queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -471,12 +471,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetBodyParts(int sectionId,[FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetBodyParts(int sectionId, string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetBodyParts(sectionId,nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetBodyParts(sectionId, queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -527,12 +527,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetDiagnosisTherapeuticsDetails(int diagonosisId,[FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetDiagnosisTherapeuticsDetails(int diagonosisId, string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetDiagnosisTherapeuticsDetails(diagonosisId,nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetDiagnosisTherapeuticsDetails(diagonosisId, queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -583,12 +583,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetPatientLabTests([FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetPatientLabTests(string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetPatientLabTests(nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetPatientLabTests(queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -639,12 +639,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetAllNewsDetails([FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetAllNewsDetails(string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetAllNewsDetails(nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetAllNewsDetails(queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {
@@ -667,12 +667,12 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetAllBlogDetail([FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetAllBlogDetail(string queryString, [FromQuery] NigaParameters nigaParameters)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var clinicalquestionModel = _paginationService.GetAllBlogDetail(nigaParameters, ref errorResponseModel);
+                var clinicalquestionModel = _paginationService.GetAllBlogDetail(queryString, nigaParameters, ref errorResponseModel);
 
                 if (clinicalquestionModel != null)
                 {

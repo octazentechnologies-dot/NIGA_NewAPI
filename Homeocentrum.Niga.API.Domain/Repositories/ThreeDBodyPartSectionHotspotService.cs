@@ -102,7 +102,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 .AsNoTracking()
                 .ApplyHotspotFilters(request, sectionId);
 
-            return from h in filteredHotspots
+            var rows = from h in filteredHotspots
                    join sec in _context.SectionMasters
                        on h.SectionId equals sec.SectionId into sections
                    from sec in sections.DefaultIfEmpty()
@@ -114,6 +114,16 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                        HotspotName = h.HotspotName,
                        SubSectionId = h.SubSectionId
                    };
+
+            if (!string.IsNullOrWhiteSpace(request.SearchText))
+            {
+                var search = request.SearchText.Trim();
+                rows = rows.Where(x =>
+                    x.HotspotName.Contains(search)
+                    || (x.SectionName != null && x.SectionName.Contains(search)));
+            }
+
+            return rows;
         }
     }
 }

@@ -52,7 +52,7 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
     {
         public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration config)
         {
-
+            services.AddHttpContextAccessor();
             services.AddScoped<ITokenService, TokenService>();
             services.AddSingleton<IJwtDenylistService, JwtDenylistService>();
             services.AddScoped<IAuditEventWriter, AuditEventWriter>();
@@ -61,21 +61,28 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSingleton<Security.Uploads.IAntivirusScanner, Security.Uploads.DefenderAntivirusScanner>();
             services.AddScoped<Security.Uploads.UploadSecurityFilter>();
             services.AddScoped<Security.IPatientAccessGuard, Security.PatientAccessGuard>();
+            services.Configure<BunnyOptions>(config.GetSection(BunnyOptions.SectionName));
+            services.AddHttpClient(BunnyFileStore.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(2));
+            services.AddSingleton<IStoredFileStore, BunnyFileStore>();
             services.AddHttpClient(RazorpayPaymentVerifier.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
             services.AddSingleton<IRazorpayPaymentVerifier, RazorpayPaymentVerifier>();
             services.AddSingleton<ISignedFileUrlService, SignedFileUrlService>();
             // PRE-03 — Sms:Provider = Stub | Msg91 | Twilio (keys empty → stub log). OTP + appointment notices use ISmsSender.
             services.Configure<SmsOptions>(config.GetSection(SmsOptions.SectionName));
+            services.Configure<FirebaseOptions>(config.GetSection(FirebaseOptions.SectionName));
             services.Configure<TeleVideoOptions>(config.GetSection(TeleVideoOptions.SectionName));
             services.AddHttpClient("SmsVendor", client => client.Timeout = TimeSpan.FromSeconds(3));
             services.AddSingleton<INotificationOutbox, NotificationOutbox>();
             services.AddSingleton<ISmsSender, ConfigurableSmsSender>();
+            services.AddSingleton<ISmsTemplateRenderer, SmsTemplateRenderer>();
+            services.AddSingleton<ISmsOtpVerifyService, SmsOtpVerifyService>();
+            services.AddScoped<IPushNotificationSender, FirebasePushNotificationSender>();
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.StubTeleVideoVendor>();
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.AgoraTeleVideoVendor>();
             services.AddHttpClient(Homeocentrum.Niga.API.Domain.Services.Tele.HundredMsTeleVideoVendor.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.HundredMsTeleVideoVendor>();
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.ITeleVideoVendor, Homeocentrum.Niga.API.Domain.Services.Tele.ConfigurableTeleVideoVendor>();
-            // Scoped: WhatsApp Meta typed client + SMS for reschedule/cancel/waitlist/tele notices.
+            // Scoped: WhatsApp Meta typed client + SMS/push for reschedule/cancel/waitlist/tele notices.
             services.AddScoped<IAppointmentRescheduleNotifier, AppointmentRescheduleNotifier>();
             services.Configure<Homeocentrum.Niga.API.Domain.DTOs.SmtpSettingsModel>(config.GetSection("smtp"));
             services.AddScoped<IUserService, UserService>();
@@ -98,10 +105,12 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSingleton<IRubricRemedyImportQueue>(sp => sp.GetRequiredService<RubricRemedyImportQueue>());
             services.AddHostedService<RubricRemedyImportBackgroundService>();
             services.AddScoped<IDoctorDashBoardService, DoctorDashBoardService>();
+            services.AddScoped<MobileClinicQueryService>();
             services.AddScoped<IPatientLabOrderServices, PatientLabOrderServices>();
             services.AddScoped<IPatientLabEntryServices, PatientLabEntryServices>();
             services.AddScoped<ILabTestMasterServices, LabTestMasterServices>();
             services.AddScoped<IPatientService, PatientService>();
+            services.AddScoped<IPatientAccountService, PatientAccountService>();
             services.AddScoped<IBlogDetailService, BlogService>();
             services.AddScoped<INewsDetailService, NewsDetailService>();
             services.AddScoped<IPatientAppointmentService, PatientAppointmentService>();
@@ -317,15 +326,31 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddHostedService<AiIncrementalEmbeddingRefreshBackgroundService>();
             services.AddHostedService<AiEmbeddingSemanticCacheWarmupBackgroundService>();
 
-            // TODO S5: confirm WhatsApp Meta AccessToken / PhoneNumberId still valid (API appsettings WhatsAppMeta). S5 will use this client.
             services.Configure<WhatsAppMetaOptions>(config.GetSection(WhatsAppMetaOptions.SectionName));
-            services.AddHttpClient<IWhatsAppMetaApiClient, WhatsAppMetaApiClient>();
+            services.AddHttpClient<WhatsAppMetaApiClient>();
+            services.AddHttpClient<TwilioWhatsAppApiClient>();
+            services.AddScoped<IWhatsAppMetaApiClient>(sp =>
+            {
+                var wa = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WhatsAppMetaOptions>>().Value
+                    ?? new WhatsAppMetaOptions();
+                var sms = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmsOptions>>().Value
+                    ?? new SmsOptions();
+                if (wa.IsMetaProvider() && wa.IsConfigured())
+                    return sp.GetRequiredService<WhatsAppMetaApiClient>();
+                if (sms.Twilio.IsConfigured())
+                    return sp.GetRequiredService<TwilioWhatsAppApiClient>();
+                return sp.GetRequiredService<WhatsAppMetaApiClient>();
+            });
             services.AddScoped<IWhatsAppRepository, WhatsAppRepository>();
             services.AddScoped<IWhatsAppService, WhatsAppService>();
             services.AddSingleton<WhatsAppBulkSendQueue>();
             services.AddSingleton<IWhatsAppBulkSendQueue>(sp => sp.GetRequiredService<WhatsAppBulkSendQueue>());
             services.AddHostedService<WhatsAppBulkSendBackgroundService>();
+            services.AddSingleton<SmsStartupGate>();
+            services.AddHostedService<SmsTemplateSeeder>();
             services.AddHostedService<SmsOutboxWorker>();
+            services.AddHostedService<AppointmentReminderWorker>();
+            services.AddHostedService<FollowUpMissedNotificationWorker>();
             services.AddHostedService<DailyIssueMatrixEmailService>();
             services.AddHostedService<Logging.DiskSpaceMonitor>();
             services.AddMvc();

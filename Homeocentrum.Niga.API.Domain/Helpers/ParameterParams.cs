@@ -5,6 +5,7 @@ namespace Homeocentrum.Niga.API.Domain.Helpers
     public class ParameterParams : PaginationParams
     {
         public string? search { get; set; }
+        public string? queryString { get; set; }
         public string? SortBy { get; set; }
         public string? SortByName { get; set; }
         public int? UserId { get; set; }

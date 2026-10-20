@@ -71,8 +71,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         into parentJoin
     from parent in parentJoin.DefaultIfEmpty() // LEFT JOIN
     where subSection.SectionId == sectionId
-          && (string.IsNullOrEmpty(queryString)
-              || subSection.SubSectionName.ToLower().Contains(queryString.ToLower()))
+
           && subSection.DeleteStatus == false
     orderby subSection.SubSectionName
     select new SubSectionViewModel
@@ -114,6 +113,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Sub section Not Found";
             }
+            subsectionModelList = AdminListFieldSearch.Filter(subsectionModelList, queryString, ignorePunctuation: true);
             totalRecords = subsectionModelList.Count;
             totalPages = Math.Ceiling((double)totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -133,7 +133,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetDrugSystem(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetDrugSystem(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             var drugSystemModelList = new List<DrugSystemModel>();
             errorResponseModel = new ErrorResponseModel();
@@ -159,6 +159,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Drug data Not Found";
             }
+            drugSystemModelList = AdminListFieldSearch.Filter(drugSystemModelList, queryString);
             totalRecords = drugSystemModelList.Count;
             totalPages = Math.Ceiling((double)totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -177,7 +178,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetDrugGroup(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetDrugGroup(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             var drugGroupModelList = new List<DrugGroupModel>();
             errorResponseModel = new ErrorResponseModel();
@@ -206,6 +207,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Drug data Not Found";
             }
+            drugGroupModelList = AdminListFieldSearch.Filter(drugGroupModelList, queryString);
             totalRecords = drugGroupModelList.Count;
             totalPages = Math.Ceiling((double)totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -239,7 +241,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
 
             allopathicDrugList = (from allopathicDrug in context.AllopathicDrugMasters
                                   join drugGroup in context.DrugGroupMasters on allopathicDrug.DrugGroupId equals drugGroup.DrugGroupId
-                                  where allopathicDrug.DeleteStatus == false && (String.IsNullOrEmpty(queryString) || allopathicDrug.AllopathicDrugName.ToLower().Contains(queryString.ToLower()))
+                                  where allopathicDrug.DeleteStatus == false
                                   select new AllopathicDrugViewModel
                                   {
                                       AllopathicDrugId = allopathicDrug.AllopathicDrugId,
@@ -254,6 +256,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Allopathic Drug data Not Found";
             }
+            allopathicDrugList = AdminListFieldSearch.Filter(allopathicDrugList, queryString);
             totalRecords = allopathicDrugList.Count;
             totalPages = Math.Ceiling((double)totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -273,7 +276,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetLanguage(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetLanguage(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -299,6 +302,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Drug data Not Found";
             }
+            languageList = AdminListFieldSearch.Filter(languageList, queryString);
             totalRecords = languageList.Count;
             totalPages = Math.Ceiling((double)totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -337,14 +341,6 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                                             Description = questionSecton.Desciption,
                                         }).ToList();
 
-            if (!string.IsNullOrWhiteSpace(queryString))
-            {
-                var search = queryString.Trim().ToLower();
-                questionSectionList = questionSectionList.Where(x =>
-                    (x.QuestionSectionName != null && x.QuestionSectionName.ToLower().Contains(search))
-                    || (x.Description != null && x.Description.ToLower().Contains(search))
-                ).ToList();
-            }
 
 
             if (questionSectionList.Count == 0)
@@ -352,6 +348,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Drug data Not Found";
             }
+            questionSectionList = AdminListFieldSearch.Filter(questionSectionList, queryString);
             totalRecords = questionSectionList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -370,7 +367,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetQuestionGroupExistance(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetQuestionGroupExistance(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel, int? questionGroupId = null, int? questionSectionId = null)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -393,21 +390,22 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                                           SectionId = questionGroup.SectionId
                                       }).ToList();
 
-            if (!string.IsNullOrWhiteSpace(queryString))
+            if (questionGroupId.GetValueOrDefault() > 0)
             {
-                var search = queryString.Trim().ToLower();
-                questionGroupList = questionGroupList.Where(x =>
-                    (x.QuestionGroupName != null && x.QuestionGroupName.ToLower().Contains(search))
-                    || (x.QuestionSectionName != null && x.QuestionSectionName.ToLower().Contains(search))
-                    || (x.Description != null && x.Description.ToLower().Contains(search))
-                ).ToList();
+                questionGroupList = questionGroupList.Where(x => x.QuestionGroupId == questionGroupId).ToList();
             }
+            if (questionSectionId.GetValueOrDefault() > 0)
+            {
+                questionGroupList = questionGroupList.Where(x => x.QuestionSectionId == questionSectionId).ToList();
+            }
+
 
             if (questionGroupList.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Drug data Not Found";
             }
+            questionGroupList = AdminListFieldSearch.Filter(questionGroupList, queryString);
             totalRecords = questionGroupList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -428,7 +426,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
 
-        public PaginationResult GetQuestionSubGroup(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetQuestionSubGroup(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel, int? questionSubgroupId = null, int? questionGroupId = null, int? questionSectionId = null)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -453,23 +451,28 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                               ).ToList();
 
             AttachQuestionSubGroupSections(questionSubGroupList);
+            AttachQuestionSubGroupExistance(questionSubGroupList);
 
-            if (!string.IsNullOrWhiteSpace(queryString))
+            if (questionSubgroupId.GetValueOrDefault() > 0)
             {
-                var search = queryString.Trim().ToLower();
-                questionSubGroupList = questionSubGroupList.Where(x =>
-                    (x.QuestionSubGroupName != null && x.QuestionSubGroupName.ToLower().Contains(search))
-                    || (x.QuestionGroupName != null && x.QuestionGroupName.ToLower().Contains(search))
-                    || (x.Description != null && x.Description.ToLower().Contains(search))
-                    || (x.Sections != null && x.Sections.Any(s => s.SectionName != null && s.SectionName.ToLower().Contains(search)))
-                ).ToList();
+                questionSubGroupList = questionSubGroupList.Where(x => x.QuestionSubgroupId == questionSubgroupId).ToList();
             }
+            if (questionGroupId.GetValueOrDefault() > 0)
+            {
+                questionSubGroupList = questionSubGroupList.Where(x => x.QuestionGroupId == questionGroupId).ToList();
+            }
+            if (questionSectionId.GetValueOrDefault() > 0)
+            {
+                questionSubGroupList = questionSubGroupList.Where(x => x.QuestionSectionId == questionSectionId).ToList();
+            }
+
 
             if (questionSubGroupList.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Drug data Not Found";
             }
+            questionSubGroupList = AdminListFieldSearch.Filter(questionSubGroupList, queryString);
             totalRecords = questionSubGroupList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -500,7 +503,6 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
 
             var authorList = (from author in context.AuthorMasters
                                         where author.IsDeleted==false
-                                        && (String.IsNullOrEmpty(queryString) || author.AuthorName.ToLower().Contains(queryString.ToLower()))
                               select new AuthorMasterModel
                                         {
                                             AuthorId = author.AuthorId,
@@ -516,6 +518,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Drug data Not Found";
             }
+            authorList = AdminListFieldSearch.Filter(authorList, queryString);
             totalRecords = authorList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -544,7 +547,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
             var skip = 0;
 
            var remedyList = (from remedy in context.RemedyMasters
-                                  where !remedy.DeleteStatus && (String.IsNullOrEmpty(queryString) || remedy.RemedyName.ToLower().Contains(queryString.ToLower()))
+                                  where !remedy.DeleteStatus
                                   select new RemedyViewModel
                                   {
                                       RemedyId = remedy.RemedyId,
@@ -559,6 +562,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Allopathic Drug data Not Found";
             }
+            remedyList = AdminListFieldSearch.Filter(remedyList, queryString);
             totalRecords = remedyList.Count;
             totalPages = Math.Ceiling((double)totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -578,7 +582,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetMateriaMedica(int authorId, int remedyId, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetMateriaMedica(int authorId, int remedyId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -611,6 +615,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "MateriaMedica Not Found";
             }
 
+            materiaMedicaList = AdminListFieldSearch.Filter(materiaMedicaList, queryString);
             totalRecords = materiaMedicaList.Count;
             totalPages = Math.Ceiling((double)totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -629,7 +634,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
 
-        public PaginationResult GetMateriaMedicaHead(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetMateriaMedicaHead(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -660,6 +665,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "MateriaMedicaHead Not Found";
             }
 
+            materiaMedicaheadList = AdminListFieldSearch.Filter(materiaMedicaheadList, queryString);
             totalRecords = materiaMedicaheadList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -679,7 +685,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetIntensities(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetIntensities(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -702,6 +708,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "Intensity Not Found";
             }
 
+            intensityList = AdminListFieldSearch.Filter(intensityList, queryString);
             totalRecords = intensityList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -720,7 +727,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetSections(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetSections(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
             var pageNumber = (nigaParameters.PageNumber <= 0) ? 1 : nigaParameters.PageNumber;
@@ -742,6 +749,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
             }
 
            
+            sectionList = AdminListFieldSearch.Filter(sectionList, queryString);
             totalRecords = sectionList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -760,7 +768,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetDiagnosisSystem(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetDiagnosisSystem(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -783,6 +791,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "DrugSystem Not Found";
             }
 
+            diagnosisSystemList = AdminListFieldSearch.Filter(diagnosisSystemList, queryString);
             totalRecords = diagnosisSystemList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -800,7 +809,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// </summary>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetBodyParts(int sectionId, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetBodyParts(int sectionId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -830,6 +839,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "Body Part Not Found";
             }
 
+            bodyPartList = AdminListFieldSearch.Filter(bodyPartList, queryString);
             totalRecords = bodyPartList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -877,15 +887,6 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                                             QuestionSubgroupName = questionSubgroup.QuestionSubgroup1,
                                         }).ToList();
 
-            if (!string.IsNullOrWhiteSpace(queryString))
-            {
-                var search = queryString.Trim().ToLower();
-                clinicalQuestionViewList = clinicalQuestionViewList.Where(x =>
-                    (x.QuestionSectionName != null && x.QuestionSectionName.ToLower().Contains(search))
-                    || (x.QuestionGroupName != null && x.QuestionGroupName.ToLower().Contains(search))
-                    || (x.QuestionSubgroupName != null && x.QuestionSubgroupName.ToLower().Contains(search))
-                ).ToList();
-            }
 
             if (clinicalQuestionViewList.Count == 0)
             {
@@ -893,6 +894,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "Clinical Questions Not Found";
             }
 
+            clinicalQuestionViewList = AdminListFieldSearch.Filter(clinicalQuestionViewList, queryString);
             totalRecords = clinicalQuestionViewList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -911,7 +913,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns>PaginationResult</returns>
-        public PaginationResult GetDiagnosisTherapeuticsDetails(int diagonosisId, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetDiagnosisTherapeuticsDetails(int diagonosisId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -941,6 +943,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "DrugSystem Not Found";
             }
 
+            diagnosisTherapeuticsDetailList = AdminListFieldSearch.Filter(diagnosisTherapeuticsDetailList, queryString);
             totalRecords = diagnosisTherapeuticsDetailList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -969,7 +972,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
             var totalPages = 0.0;
             var skip = 0;
          
-           var diagnosisList = context.DiagnosisMasters.Where(x => !x.DeleteStatus && (string.IsNullOrEmpty(queryString) || x.DiagnosisName.Contains(queryString)))
+           var diagnosisList = context.DiagnosisMasters.Where(x => !x.DeleteStatus)
                                                         .Select(item=> new DignosisViewModel
                                                         {
                                                             DiagnosisId = item.DiagnosisId,
@@ -982,6 +985,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "Diagnosis Not Found";
             }
 
+            diagnosisList = AdminListFieldSearch.Filter(diagnosisList, queryString);
             totalRecords = diagnosisList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -1000,7 +1004,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns>PaginationResult</returns>
-        public PaginationResult GetPatientLabTests(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetPatientLabTests(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -1026,6 +1030,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "records Not Found";
             }
 
+            labTestMasterEntities = AdminListFieldSearch.Filter(labTestMasterEntities, queryString);
             totalRecords = labTestMasterEntities.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -1055,7 +1060,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
 
             var userList = (from user in context.UserMasters
                                   join role in context.RoleMasters on user.RoleId equals role.RoleId
-                                  where !user.DeleteStatus  && (string.IsNullOrEmpty(queryString) || user.UserName.Contains(queryString) || user.EmailId.Contains(queryString) || user.FirstName.Contains(queryString) || user.LastName.Contains(queryString))
+                                  where !user.DeleteStatus
                                   select new UserViewModel
                                   {
                                       UserId = user.UserId,
@@ -1076,6 +1081,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "User Not Found";
             }
 
+            userList = AdminListFieldSearch.Filter(userList, queryString);
             totalRecords = userList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -1093,7 +1099,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetAllNewsDetails(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetAllNewsDetails(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -1112,6 +1118,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                                     NewsDate = news.NewsDate.HasValue ? news.NewsDate.Value.ToString("dd/MM/yyyy") : string.Empty,
                                     NewsHeading = news.NewsHeading,
                                     NewsSubHeading = news.NewsSubHeading,
+                                    NewsCategory = category.NewsCategory1,
                                   }).ToList();
 
             if (newsList.Count == 0)
@@ -1120,6 +1127,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "News Details Not Found";
             }
 
+            newsList = AdminListFieldSearch.Filter(newsList, queryString);
             totalRecords = newsList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -1138,7 +1146,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         /// <param name="nigaParameters"></param>
         /// <param name="errorResponseModel"></param>
         /// <returns></returns>
-        public PaginationResult GetAllBlogDetail(NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetAllBlogDetail(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
         {
             errorResponseModel = new ErrorResponseModel();
 
@@ -1163,6 +1171,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "Blog Details Not Found";
             }
 
+            blogList = AdminListFieldSearch.Filter(blogList, queryString);
             totalRecords = blogList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -1190,9 +1199,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
             var skip = 0;
 
             var subSectionList = (from subSection in context.SubSectionMasters
-                                     where !subSection.DeleteStatus && subSection.SectionId == SectionId && 
-                                     (string.IsNullOrEmpty(queryString) || subSection.SubSectionName.Contains(queryString))
-                                     && subSection.DeleteStatus == false
+                                     where !subSection.DeleteStatus && subSection.SectionId == SectionId
                                   orderby subSection.SubSectionName
                                   select new SubSectionForPageModel
                                      {
@@ -1207,6 +1214,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 errorResponseModel.Message = "SubSection Not Found";
             }
 
+            subSectionList = AdminListFieldSearch.Filter(subSectionList, queryString);
             totalRecords = subSectionList.Count;
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
@@ -1266,6 +1274,43 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
             result.TotalCount = totalRecords;
             result.ResultObject = repertorizarionRemedyList.Skip(skip).Take(pageSize);
             return result;
+        }
+
+        private void AttachQuestionSubGroupExistance(List<QuestionSubGroupModel> questionSubGroups)
+        {
+            if (questionSubGroups == null || questionSubGroups.Count == 0)
+            {
+                return;
+            }
+
+            var groupIds = questionSubGroups
+                .Where(x => x.QuestionGroupId.HasValue)
+                .Select(x => x.QuestionGroupId.Value)
+                .Distinct()
+                .ToList();
+
+            var sections = (from questionGroup in context.QuestionGroupMasters
+                            join section in context.QuestionSectionMasters
+                                on questionGroup.QuestionSectionId equals section.QuestionSectionId into sectionJoin
+                            from section in sectionJoin.DefaultIfEmpty()
+                            where groupIds.Contains(questionGroup.QuestionGroupId)
+                            select new
+                            {
+                                questionGroup.QuestionGroupId,
+                                questionGroup.QuestionSectionId,
+                                QuestionSectionName = section != null ? section.QuestionSectionName : null
+                            }).ToList();
+
+            var byGroup = sections.ToDictionary(x => x.QuestionGroupId);
+            foreach (var row in questionSubGroups)
+            {
+                if (!row.QuestionGroupId.HasValue || !byGroup.TryGetValue(row.QuestionGroupId.Value, out var section))
+                {
+                    continue;
+                }
+                row.QuestionSectionId = section.QuestionSectionId;
+                row.QuestionSectionName = section.QuestionSectionName;
+            }
         }
 
         private void AttachQuestionSubGroupSections(List<QuestionSubGroupModel> questionSubGroups)

@@ -79,7 +79,10 @@ public class RubricIntelligenceAdminService : IRubricIntelligenceAdminService
                 query = query.Where(x =>
                     x.PatientExpression.Contains(term)
                     || x.ClinicalMeaning.Contains(term)
-                    || x.RubricMeaning.Contains(term));
+                    || x.RubricMeaning.Contains(term)
+                    || x.NormalizedExpression.Contains(term)
+                    || x.Language.Contains(term)
+                    || x.ApprovalStatus.Contains(term));
             }
 
             if (!string.IsNullOrWhiteSpace(language))
@@ -242,7 +245,11 @@ public class RubricIntelligenceAdminService : IRubricIntelligenceAdminService
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var term = search.Trim();
-                query = query.Where(x => x.alias.AliasText.Contains(term) || x.SubSectionName.Contains(term));
+                query = query.Where(x =>
+                    x.alias.AliasText.Contains(term)
+                    || x.alias.NormalizedAlias.Contains(term)
+                    || x.alias.Language.Contains(term)
+                    || x.SubSectionName.Contains(term));
             }
 
             if (!string.IsNullOrWhiteSpace(language))

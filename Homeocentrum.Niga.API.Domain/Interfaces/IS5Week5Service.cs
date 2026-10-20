@@ -6,16 +6,20 @@ public interface IS5Week5Service
 {
     Task<S4ActionResult> ListSmsTemplatesAsync(S4Caller caller);
     Task<S4ActionResult> SaveSmsTemplateAsync(SmsTemplateWrite request, S4Caller caller);
+    Task<S4ActionResult> DeleteSmsTemplateAsync(int smsTemplateId, S4Caller caller);
     Task<S4ActionResult> SendSmsAsync(SmsSendRequest request, S4Caller caller);
     Task<S4ActionResult> SmsHistoryAsync(S4Caller caller);
     Task<S4ActionResult> ListSmsEventsAsync(S4Caller caller);
     Task<S4ActionResult> SaveSmsPreferenceAsync(DoctorSmsPreferenceWrite request, S4Caller caller);
     Task<S4ActionResult> RegisterDeviceAsync(DeviceRegisterRequest request, S4Caller caller);
     Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request);
+    Task<S4ActionResult> WhatsAppReceiptBatchAsync(IReadOnlyList<WhatsAppReceiptRequest> receipts);
     Task<S4ActionResult> WhatsAppBulkAsync(S4Caller caller);
     Task<S4ActionResult> WhatsAppAudienceAsync(S4Caller caller);
     Task<S4ActionResult> SendNotificationAsync(NotificationSendRequest request, S4Caller caller);
     Task<S4ActionResult> ListNotificationsAsync(S4Caller caller);
+    Task<S4ActionResult> ListNotificationsPagedAsync(S4Caller caller, int pageNumber, int pageSize);
+    Task<S4ActionResult> UnreadNotificationCountAsync(S4Caller caller);
     Task<S4ActionResult> PatchNotificationAsync(long id, bool isRead, S4Caller caller);
     Task<S4ActionResult> SendReceiptEmailAsync(long paymentOrderId, S4Caller caller);
     Task<S4ActionResult> EmailHistoryAsync(S4Caller caller);
@@ -30,7 +34,6 @@ public interface IS5Week5Service
     Task<S4ActionResult> EarningsBucketsAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> ExportUsersAsync(S4Caller caller);
     Task<S4ActionResult> ImportUsersAsync(UserImportRequest request, S4Caller caller);
-    Task<S4ActionResult> SecurityPostureAsync(S4Caller caller);
     Task<S4ActionResult> ListRemindersAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> SaveReminderAsync(int? reminderId, DoctorReminderWrite request, S4Caller caller);
     Task<S4ActionResult> DeleteReminderAsync(int reminderId, S4Caller caller);
@@ -116,6 +119,8 @@ public class SmsSendRequest
     public string? TemplateCode { get; set; }
     public string? Mobile { get; set; }
     public string? Body { get; set; }
+    /// <summary>Optional placeholder values for template bodies, e.g. doctor, date, time, otp.</summary>
+    public Dictionary<string, string?>? Tokens { get; set; }
 }
 
 public class DoctorSmsPreferenceWrite

@@ -81,5 +81,57 @@ namespace Homeocentrum.Niga.API.Controllers
 
             return Ok(new { success = true, data = rows });
         }
+
+        [HttpPut("{enquiryId:int}")]
+        [Authorize]
+        public async Task<IActionResult> Update(int enquiryId, [FromBody] EnquiryUpdateRequest request)
+        {
+            if (!AdminAuthorizationPolicies.IsAdminPortalUser(User))
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Admin required." });
+
+            var row = await _context.EnquiryDetails.FirstOrDefaultAsync(e => e.EnquiryId == enquiryId);
+            if (row == null)
+                return NotFound(new { success = false, message = "Enquiry not found." });
+
+            if (!string.IsNullOrWhiteSpace(request?.TicketStatus))
+            {
+                var status = request.TicketStatus.Trim();
+                var allowed = new[] { "New", "Open", "In Progress", "Closed" };
+                if (!allowed.Any(a => string.Equals(a, status, StringComparison.OrdinalIgnoreCase)))
+                    return BadRequest(new { success = false, message = "Ticket status must be New, Open, In Progress, or Closed." });
+                row.TicketStatus = allowed.First(a => string.Equals(a, status, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (request?.ClearAssignee == true)
+                row.AssignedTo = null;
+            else if (request?.AssignedTo.HasValue == true)
+                row.AssignedTo = request.AssignedTo.Value;
+
+            await _context.SaveChangesAsync();
+
+            var slaDue = row.EnquiryDate?.ToUniversalTime().AddHours(24);
+            var breached = slaDue != null
+                && slaDue < DateTime.UtcNow
+                && !string.Equals(row.TicketStatus, "Closed", StringComparison.OrdinalIgnoreCase);
+
+            return Ok(new
+            {
+                success = true,
+                data = new EnquiryListItemDto
+                {
+                    EnquiryId = row.EnquiryId,
+                    EnquiryName = row.EnquiryName,
+                    EnquiryDate = row.EnquiryDate,
+                    EmailId = row.EmailId,
+                    MobileNo = row.MobileNo,
+                    EnquiryDetails = row.EnquiryDetails,
+                    EnquiryStatus = row.EnquiryStatus,
+                    TicketStatus = row.TicketStatus,
+                    AssignedTo = row.AssignedTo,
+                    SlaDueAt = slaDue,
+                    SlaBreached = breached
+                }
+            });
+        }
     }
 }

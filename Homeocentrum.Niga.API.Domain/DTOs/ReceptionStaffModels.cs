@@ -69,6 +69,10 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         [MaxLength(100)]
         public string? City { get; set; }
 
+        /// <summary>Optional password reset on edit. Leave empty to keep the current password.</summary>
+        [MaxLength(500)]
+        public string? Password { get; set; }
+
         public int? ChangedBy { get; set; }
     }
 
@@ -76,6 +80,17 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
     {
         [Required(ErrorMessage = "ReceptionStaffID is required")]
         public int ReceptionStaffID { get; set; }
+
+        public int? ChangedBy { get; set; }
+    }
+
+    /// <summary>Disable or re-enable without removing from the doctor's staff list.</summary>
+    public class SetReceptionStaffActiveRequest
+    {
+        [Required(ErrorMessage = "ReceptionStaffID is required")]
+        public int ReceptionStaffID { get; set; }
+
+        public bool IsActive { get; set; }
 
         public int? ChangedBy { get; set; }
     }
@@ -124,6 +139,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
 
         public string? City { get; set; }
 
+        public bool IsActive { get; set; }
+
         public int? EnteredBy { get; set; }
 
         public DateTime EnteredDate { get; set; }
@@ -148,6 +165,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string? EmailId { get; set; }
 
         public string? City { get; set; }
+
+        public bool IsActive { get; set; }
 
         public DateTime EnteredDate { get; set; }
     }

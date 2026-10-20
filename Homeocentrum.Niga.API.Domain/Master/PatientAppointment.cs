@@ -47,6 +47,9 @@ public partial class PatientAppointment
 
     public bool? PayAtClinicAllowed { get; set; }
 
+    /// <summary>Patient / family login that created the hold (not the doctor UserId).</summary>
+    public long? BookedByUserId { get; set; }
+
     public int? QueuePosition { get; set; }
 
     public string? BookingChannel { get; set; }

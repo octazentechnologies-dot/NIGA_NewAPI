@@ -1,0 +1,82 @@
+﻿[
+    {
+        "Test":  "Login.remoteUser",
+        "Pass":  true,
+        "Detail":  "userId=20013"
+    },
+    {
+        "Test":  "AppConfig",
+        "Pass":  true,
+        "Detail":  "support@Homeocentrum.com"
+    },
+    {
+        "Test":  "Directory",
+        "Pass":  true,
+        "Detail":  "total=19"
+    },
+    {
+        "Test":  "ApptsRange",
+        "Pass":  true,
+        "Detail":  "count=8"
+    },
+    {
+        "Test":  "ApptsByDate",
+        "Pass":  true,
+        "Detail":  "count=0"
+    },
+    {
+        "Test":  "Context",
+        "Pass":  true,
+        "Detail":  "appId=28155 teleSessionId="
+    },
+    {
+        "Test":  "FollowUps.List",
+        "Pass":  true,
+        "Detail":  "count=2"
+    },
+    {
+        "Test":  "FollowUps.Mutate",
+        "Pass":  true,
+        "Detail":  "ok"
+    },
+    {
+        "Test":  "CareLinks.List",
+        "Pass":  true,
+        "Detail":  "count=0 expiry="
+    },
+    {
+        "Test":  "CareLink.Package",
+        "Pass":  true,
+        "Detail":  "no links"
+    },
+    {
+        "Test":  "CareLink.InfoRequest",
+        "Pass":  true,
+        "Detail":  "no links"
+    },
+    {
+        "Test":  "Erx.Remedies",
+        "Pass":  true,
+        "Detail":  "count=3"
+    },
+    {
+        "Test":  "Erx.Potencies",
+        "Pass":  true,
+        "Detail":  "count=7"
+    },
+    {
+        "Test":  "Notifications",
+        "Pass":  true,
+        "Detail":  "type= count=0"
+    },
+    {
+        "Test":  "SupportTickets",
+        "Pass":  true,
+        "Detail":  "count=0"
+    },
+    {
+        "Test":  "Earnings.Payouts",
+        "Pass":  true,
+        "Detail":  "count=0"
+    }
+]

@@ -103,10 +103,24 @@ public static class ApiAudienceCatalog
         // Discovery and booking
         ("GET", "api/PatientPortal/CareCategories", W | P, "PAT-08.02 / PAT-09.02 care categories"),
         ("GET", "api/Public/Doctors", W | P, "PAT-09.02 to PAT-11.02 doctor search"),
+        ("GET", "api/Public/Doctors/FilterOptions", W | P, "BE-009 doctor filter cities/quals"),
         ("GET", "api/Public/Doctors/{id}", W | P, "PAT-12.02 / PAT-13.02 doctor profile"),
         ("GET", "api/Public/Doctors/{id}/Ranking", W | P, "PAT-14.02 ranking"),
         ("GET", "api/Public/Doctors/{id}/Slots", W | P, "PAT-16.02 slot picker"),
         ("POST", "api/Public/Doctors/{id}/Bookings", W | P, "PAT-17.02 booking"),
+        ("GET", "api/Patient/AppointmentRequests", P, "BE-005 patient appointment requests"),
+        ("POST", "api/Patient/AppointmentRequests", P, "BE-005 / BE-027 create ask-time"),
+        ("DELETE", "api/Patient/AppointmentRequests/{id}", P, "BE-005 cancel request"),
+        ("POST", "api/Patient/AppointmentRequests/{id}/Respond", P, "BE-005 accept/decline proposal"),
+        ("GET", "api/Patient/DeliveryAddresses", P, "B-023 delivery addresses"),
+        ("POST", "api/Patient/DeliveryAddresses", P, "B-023 delivery addresses"),
+        ("PUT", "api/Patient/DeliveryAddresses/{id}", P, "B-023 delivery addresses"),
+        ("DELETE", "api/Patient/DeliveryAddresses/{id}", P, "B-023 delivery addresses"),
+        ("GET", "api/Patient/Addresses", P, "B-023 address book alias"),
+        ("POST", "api/Patient/Addresses", P, "B-023 address book alias"),
+        ("PUT", "api/Patient/Addresses/{id}", P, "B-023 address book alias"),
+        ("DELETE", "api/Patient/Addresses/{id}", P, "B-023 address book alias"),
+        ("GET", "api/Notifications/UnreadCount", W | P | D, "BE-026 unread badge"),
         ("GET", "api/Public/Articles", W | P, "PAT-15.02 health articles"),
         ("GET", "api/Public/Articles/{id}", W | P, "PAT-15.02 health articles"),
         ("GET", "api/Profile/Photo/{doctorId}", W | P | D, "PAT-10.02 doctor photo"),
@@ -126,6 +140,9 @@ public static class ApiAudienceCatalog
         ("POST", "api/Tele/Instant", W | P, "PAT-24.02 instant consult"),
         ("GET", "api/Tele/Instant/{requestId}", W | P, "PAT-25.02 instant consult status"),
         ("POST", "api/Tele/Instant/{requestId}/Cancel", W | P, "PAT-25.02 instant consult cancel"),
+        ("POST", "api/Tele/Instant/{requestId}/Accept", D, "TEL-12.02 instant accept opens the visit"),
+        ("GET", "api/Patient/DataRequests", P, "Patient data-request history"),
+        ("POST", "api/Patient/DataRequests", P, "Patient data request"),
         ("GET", "api/Tele/DeviceCheck", W | P, "PAT-26.02 device check"),
         ("GET", "api/Tele/Sessions/{sessionId}", W | P | D, "PAT-27.02 waiting room"),
         ("POST", "api/Tele/Sessions/{sessionId}/Token", W | P | D, "PAT-28.02 / DMO-08.02 video token"),
@@ -184,11 +201,39 @@ public static class ApiAudienceCatalog
         ("POST", "api/Tele/Availability", W | D, "DMO-05.02 online toggle"),
         ("GET", "api/Availability/Me", W | D, "DMO-05.02 working hours"),
         ("PUT", "api/Availability/Me", W | D, "DMO-05.02 working hours"),
+        ("GET", "api/Doctor/DirectoryVisibility", W | D, "Doctor Find-a-Doctor discovery toggle"),
+        ("PUT", "api/Doctor/DirectoryVisibility", W | D, "Doctor Find-a-Doctor discovery toggle"),
+        ("POST", "api/Doctor/DirectoryVisibility", W | D, "Doctor Find-a-Doctor discovery toggle"),
         ("GET", "api/DoctorMobile/Context/{patientAppId}", W | D, "DMO-07.02 patient context card"),
         ("GET", "api/Erx/Refills", W | D, "DMO-09.02 refills"),
         ("POST", "api/Erx/Refills/{id}/Approve", W | D, "DMO-09.02 refills"),
         ("POST", "api/Erx/Refills/{id}/Reject", W | D, "DMO-09.02 refills"),
         ("GET", "api/Earnings/Summary", W | D, "DMO-10.02 earnings"),
+
+        // Shared by both mobile apps
+        ("GET", "api/Public/AppConfig", W | P | D, "App config: site URL and support contacts"),
+        ("GET", "api/App/Config", W | P | D, "App config alias"),
+        ("GET", "api/Notifications/Preferences", P | D, "Notification preferences"),
+        ("PUT", "api/Notifications/Preferences", P | D, "Save notification preferences"),
+        ("POST", "api/Notifications/MarkAllRead", P | D, "Mark every notification read"),
+        ("POST", "api/Tele/Sessions/{teleSessionId}/RunningLate", P | D, "Running-late notice"),
+        ("POST", "api/PatientAppointment/SwitchToTele", P | D, "Switch an in-clinic visit to tele"),
+
+        // Doctor routes the mobile app calls that live on existing controllers
+        ("PUT", "api/Erx/Draft", W | D, "Save an eRx draft"),
+        ("GET", "api/Erx/ByAppointment/{id}", W | D, "eRx for one appointment"),
+        ("POST", "api/Erx/Sign", W | D, "Sign an eRx"),
+        ("GET", "api/Erx/Potencies", W | D, "Potency list"),
+        ("GET", "api/Erx/History", W | D, "eRx history"),
+        ("PUT", "api/Erx/RemedyLines/{id}", W | D, "Update one remedy line"),
+        ("GET", "api/Doctor/Reminders", W | D, "Doctor reminders"),
+        ("POST", "api/Doctor/Reminders", W | D, "Create a doctor reminder"),
+        ("PUT", "api/Doctor/Reminders/{id}", W | D, "Update a doctor reminder"),
+        ("DELETE", "api/Doctor/Reminders/{id}", W | D, "Delete a doctor reminder"),
+        ("GET", "api/Doctor/Reviews", W | D, "Reviews of this doctor"),
+        ("PUT", "api/Doctor/Reviews/{reviewId}/Reply", W | D, "Reply to a review"),
+        ("GET", "api/Reviews/Mine", W | P | D, "Reviews written by the signed-in user"),
+        ("GET", "api/Patient/Payments", W | P, "Patient payment history"),
     };
 
     private static readonly Dictionary<string, (ApiClients Clients, string Use)> Index =
@@ -216,7 +261,9 @@ public static class ApiAudienceCatalog
         {
             ApiAudience.MobilePatient => ApiClients.PatientApp,
             ApiAudience.MobileDoctor => ApiClients.DoctorApp,
-            ApiAudience.Common => Index[Key(api.HttpMethod, api.RelativePath)].Clients,
+            ApiAudience.Common => Index.TryGetValue(Key(api.HttpMethod, api.RelativePath), out var row)
+                ? row.Clients
+                : ApiClients.PatientApp | ApiClients.DoctorApp,
             _ => ApiClients.Web
         };
     }

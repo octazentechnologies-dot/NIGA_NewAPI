@@ -10,6 +10,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string QuestionSubGroupName { get; set; }
         public int? QuestionGroupId { get; set; }
         public string QuestionGroupName { get; set; }
+        public int? QuestionSectionId { get; set; }
+        public string QuestionSectionName { get; set; }
         public string Description { get; set; }
         public bool? DeleteStatus { get; set; }
         public List<int>? SectionIds { get; set; }

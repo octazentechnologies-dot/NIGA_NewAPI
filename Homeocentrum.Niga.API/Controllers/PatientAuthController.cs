@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Homeocentrum.Niga.API.Domain.Configuration;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Interfaces;
@@ -20,11 +22,28 @@ namespace Homeocentrum.Niga.API.Controllers
         private const int OtpTtlMinutes = 10;
         private readonly NIGACentrumContext _context;
         private readonly ITokenService _tokenService;
+        private readonly ISmsSender _smsSender;
+        private readonly ISmsTemplateRenderer _templates;
+        private readonly ISmsOtpVerifyService _smsOtp;
+        private readonly SmsOptions _smsOptions;
+        private readonly IPatientAccountService _patientAccounts;
 
-        public PatientAuthController(NIGACentrumContext context, ITokenService tokenService)
+        public PatientAuthController(
+            NIGACentrumContext context,
+            ITokenService tokenService,
+            ISmsSender smsSender,
+            ISmsTemplateRenderer templates,
+            ISmsOtpVerifyService smsOtp,
+            IOptions<SmsOptions> smsOptions,
+            IPatientAccountService patientAccounts)
         {
             _context = context;
             _tokenService = tokenService;
+            _smsSender = smsSender;
+            _templates = templates;
+            _smsOtp = smsOtp;
+            _smsOptions = smsOptions.Value ?? new SmsOptions();
+            _patientAccounts = patientAccounts;
         }
 
         [SecurityAudit(SecurityAuditEvents.OtpRequested)]
@@ -38,30 +57,30 @@ namespace Homeocentrum.Niga.API.Controllers
             if (digits.Length < 8)
                 return BadRequest(new { success = false, message = "Destination must be a valid mobile number." });
 
-            // SMS vendor is not live yet. devCode is always returned with the challenge.
-
             var since = DateTime.UtcNow.AddMinutes(-1);
             var recent = await _context.OtpChallenges.CountAsync(c =>
                 c.Action == "PatientAuth" && c.EntityId == digits && c.CreatedAt >= since);
             if (recent >= 3)
                 return StatusCode(StatusCodes.Status429TooManyRequests, new { success = false, message = "Too many OTP requests." });
 
-            // Option A: registered = active Patient UserMaster for this mobile (Ignore IsUserActivated).
-            var patientRoleId = await _context.RoleMasters.AsNoTracking()
-                .Where(r => r.RoleName == "Patient")
-                .Select(r => (int?)r.RoleId)
-                .FirstOrDefaultAsync();
-            var isUserRegistered = false;
-            if (patientRoleId.HasValue)
-            {
-                var candidateMobiles = await _context.UserMasters.AsNoTracking()
-                    .Where(u => !u.DeleteStatus && u.RoleId == patientRoleId && u.MobileNo != null)
-                    .Select(u => u.MobileNo!)
-                    .ToListAsync();
-                isUserRegistered = candidateMobiles.Any(m => PhoneNormalizer.EqualsNormalized(m, digits));
-            }
+            // Registered = Patient-role UserMaster exists, OR a clinic chart exists that OTP can claim.
+            var isUserRegistered = await _patientAccounts.IsRegisteredOrClaimableAsync(digits);
 
             var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
+            var otpText = await _templates.RenderAsync("OTP", new Dictionary<string, string?>
+            {
+                ["otp"] = code,
+                ["minutes"] = OtpTtlMinutes.ToString()
+            });
+            // Real SMS only when Sms:RealSms is true. Dummy mode keeps the generated code as devCode.
+            var live = SmsOtpPolicy.RealSmsLive(_smsOptions);
+            var send = live
+                ? await _smsSender.SendAsync(digits, otpText)
+                : SmsSendResult.Fail();
+            if (!string.IsNullOrWhiteSpace(send.EmbeddedOtp))
+                code = send.EmbeddedOtp!;
+            var delivered = send.Accepted;
+
             var challenge = new OtpChallenge
             {
                 Action = "PatientAuth",
@@ -76,15 +95,36 @@ namespace Homeocentrum.Niga.API.Controllers
             _context.OtpChallenges.Add(challenge);
             await _context.SaveChangesAsync();
 
+            var stored = await _smsOtp.StoreAsync(
+                "PatientAuth",
+                digits,
+                code,
+                send.ProviderLabel,
+                send.MessageSid,
+                OtpTtlMinutes,
+                challenge.OtpChallengeId);
+
             var payload = new Dictionary<string, object?>
             {
                 ["success"] = true,
                 ["otpChallengeId"] = challenge.OtpChallengeId,
-                ["expiresAt"] = challenge.ExpiresAt,
-                ["destinationMasked"] = challenge.DestinationMasked,
-                ["devCode"] = code,
-                ["isUserRegistered"] = isUserRegistered
+                ["smsOtpVerifyId"] = stored.SmsOtpVerifyId,
+                ["expiresAt"] = stored.ExpiresAt,
+                ["destinationMasked"] = stored.DestinationMasked,
+                ["isUserRegistered"] = isUserRegistered,
+                ["delivered"] = delivered,
+                ["channel"] = "sms",
+                ["trialTemplate"] = send.UsedTrialTemplate,
+                ["message"] = delivered
+                    ? "OTP sent by SMS. Enter the code from your phone."
+                    : live
+                        ? "OTP created but SMS delivery did not confirm. Check Twilio settings or try again."
+                        : "OTP created. SMS is not live; use the development code."
             };
+            // Never return plaintext OTP when Twilio/Msg91 is live.
+            var devCode = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
+            if (devCode != null)
+                payload["devCode"] = devCode;
 
             return Ok(payload);
         }
@@ -97,100 +137,75 @@ namespace Homeocentrum.Niga.API.Controllers
                 return BadRequest(new { success = false, message = "Mobile and Code are required." });
 
             var digits = PhoneNormalizer.Digits(request.Mobile);
-            var row = await _context.OtpChallenges
-                .Where(c => c.Action == "PatientAuth" && c.EntityId == digits && c.VerifiedAt == null)
-                .OrderByDescending(c => c.OtpChallengeId)
-                .FirstOrDefaultAsync();
-            if (row == null)
-                return BadRequest(new { success = false, message = "No pending PatientAuth OTP." });
-            if (row.ExpiresAt < DateTime.UtcNow)
-                return BadRequest(new { success = false, message = "OTP expired." });
-            if (row.LockedUntil.HasValue && row.LockedUntil > DateTime.UtcNow)
-                return StatusCode(StatusCodes.Status429TooManyRequests, new { success = false, message = "OTP locked. Try later." });
-
-            row.AttemptCount += 1;
-            if (!string.Equals(row.OtpHash, SecurityTokenHash.Sha256Hex(request.Code.Trim()), StringComparison.OrdinalIgnoreCase))
+            var check = await _smsOtp.VerifyAsync("PatientAuth", digits, request.Code.Trim());
+            if (!check.Success)
             {
-                if (row.AttemptCount >= 5)
-                    row.LockedUntil = DateTime.UtcNow.AddMinutes(15);
-                await _context.SaveChangesAsync();
-                return BadRequest(new { success = false, message = "Invalid OTP." });
+                var status = string.Equals(check.Error, "OTP locked. Try later.", StringComparison.Ordinal)
+                    ? StatusCodes.Status429TooManyRequests
+                    : StatusCodes.Status400BadRequest;
+                return StatusCode(status, new { success = false, message = check.Error ?? "Invalid OTP." });
             }
 
-            row.VerifiedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            var bookingSessionId = check.OtpChallengeId
+                ?? await _context.OtpChallenges.AsNoTracking()
+                    .Where(c => c.Action == "PatientAuth" && c.EntityId == digits)
+                    .OrderByDescending(c => c.OtpChallengeId)
+                    .Select(c => (long?)c.OtpChallengeId)
+                    .FirstOrDefaultAsync()
+                ?? check.SmsOtpVerifyId
+                ?? 0;
 
             var payload = new Dictionary<string, object?>
             {
                 ["success"] = true,
-                ["bookingSessionId"] = row.OtpChallengeId,
+                ["bookingSessionId"] = bookingSessionId,
+                ["smsOtpVerifyId"] = check.SmsOtpVerifyId,
                 ["mobile"] = digits
             };
             var user = await ExistingPatientUserAsync(digits);
             payload["isUserAlreadyRegistered"] = user != null;
+            payload["isUserRegistered"] = user != null;
             if (user != null)
             {
+                // Top-level fields for mobile binding + nested user object.
                 payload["token"] = user.Token;
+                payload["userId"] = user.UserId;
+                payload["userName"] = user.UserName;
+                payload["firstName"] = user.FirstName;
+                payload["lastName"] = user.LastName;
+                payload["email"] = user.Email;
+                payload["mobileNo"] = user.MobileNo;
+                payload["role"] = user.Role;
+                payload["roleId"] = user.RoleId;
+                payload["patientId"] = user.PatientId;
+                payload["patientName"] = user.PatientName;
                 payload["user"] = new
                 {
-                    user.UserId,
-                    user.UserName,
-                    user.FirstName,
-                    user.LastName,
-                    user.Email,
-                    user.MobileNo,
-                    user.Role,
-                    user.RoleId,
-                    user.PatientId,
-                    user.PatientName
+                    userId = user.UserId,
+                    userName = user.UserName,
+                    firstName = user.FirstName,
+                    lastName = user.LastName,
+                    email = user.Email,
+                    mobileNo = user.MobileNo,
+                    role = user.Role,
+                    roleId = user.RoleId,
+                    patientId = user.PatientId,
+                    patientName = user.PatientName
                 };
             }
             return Ok(payload);
         }
 
         /// <summary>
-        /// User details and token only when this mobile is already on a Patient row and that login exists.
+        /// Resolve Patient-role login for this mobile (create + map when a clinic chart exists without login).
         /// </summary>
         private async Task<PatientAuthUserDetails?> ExistingPatientUserAsync(string digits)
         {
-            var patients = await _context.Patients.AsNoTracking()
-                .Where(p => p.DeleteStatus != true && p.MobileNo != null)
-                .Select(p => new { p.PatientId, p.PatientName, p.MobileNo, p.Email })
-                .ToListAsync();
-            var patient = patients.FirstOrDefault(p => PhoneNormalizer.EqualsNormalized(p.MobileNo, digits));
-            if (patient == null)
+            var resolved = await _patientAccounts.ResolveOrClaimAfterOtpAsync(digits);
+            if (resolved == null)
                 return null;
 
-            var mappedUserId = await _context.PatientUserMaps.AsNoTracking()
-                .Where(m => m.PatientId == patient.PatientId && !m.DeleteStatus)
-                .OrderByDescending(m => m.IsPrimary)
-                .Select(m => (long?)m.UserId)
-                .FirstOrDefaultAsync();
-            var user = mappedUserId.HasValue
-                ? await _context.UserMasters.FirstOrDefaultAsync(u => u.UserId == mappedUserId.Value && !u.DeleteStatus && u.IsUserActivated == true)
-                : null;
-            if (user == null)
-            {
-                var users = await _context.UserMasters.AsNoTracking()
-                    .Where(u => !u.DeleteStatus && u.MobileNo != null && u.IsUserActivated == true)
-                    .Select(u => new { u.UserId, u.MobileNo, u.RoleId })
-                    .ToListAsync();
-                var patientRoleId = await _context.RoleMasters.AsNoTracking()
-                    .Where(r => r.RoleName == "Patient" && !r.DeleteStatus)
-                    .Select(r => (int?)r.RoleId)
-                    .FirstOrDefaultAsync();
-                var chosen = users
-                    .Where(u => PhoneNormalizer.EqualsNormalized(u.MobileNo, digits))
-                    .OrderByDescending(u => patientRoleId.HasValue && u.RoleId == patientRoleId.Value)
-                    .FirstOrDefault();
-                if (chosen == null)
-                    return null;
-                user = await _context.UserMasters
-                    .FirstOrDefaultAsync(u => u.UserId == chosen.UserId && !u.DeleteStatus);
-            }
-            if (user == null)
-                return null;
-
+            var user = resolved.Value.User;
             var roleName = await _context.RoleMasters.AsNoTracking()
                 .Where(r => r.RoleId == user.RoleId && !r.DeleteStatus)
                 .Select(r => r.RoleName)
@@ -210,12 +225,12 @@ namespace Homeocentrum.Niga.API.Controllers
                 UserName = user.UserName,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
-                Email = user.EmailId ?? patient.Email,
+                Email = user.EmailId ?? resolved.Value.Email,
                 MobileNo = digits,
                 Role = roleName,
                 RoleId = user.RoleId,
-                PatientId = patient.PatientId,
-                PatientName = patient.PatientName,
+                PatientId = resolved.Value.PatientId,
+                PatientName = resolved.Value.PatientName,
                 Token = token
             };
         }

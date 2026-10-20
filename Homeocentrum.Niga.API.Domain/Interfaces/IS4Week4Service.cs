@@ -13,6 +13,8 @@ public interface IS4Week4Service
 
     Task<S4ActionResult> CreateConsultOrderAsync(CreateConsultOrderRequest request, S4Caller caller);
     Task<S4ActionResult> VerifyPaymentAsync(VerifyPaymentRequest request, S4Caller caller);
+    /// <summary>Upsert Razorpay ids on a booking, fetch payment method from Razorpay, mark PAID when captured.</summary>
+    Task<S4ActionResult> UpdateBookingPaymentAsync(UpdateBookingPaymentRequest request, S4Caller caller);
     Task<S4ActionResult> AppointmentPaymentAsync(int patientAppId, S4Caller caller);
     Task<S4ActionResult> HandleWebhookAsync(string rawBody, string? signature, string? eventId);
     Task<S4ActionResult> CollectAtReceptionAsync(CollectAtReceptionRequest request, S4Caller caller);
@@ -32,6 +34,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> ListSettlementsAsync(S4Caller caller);
     Task<S4ActionResult> SettlementDetailAsync(long id, S4Caller caller);
     Task<S4ActionResult> ListPayoutsAsync(S4Caller caller);
+    Task<S4ActionResult> DoctorPayoutHistoryAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> RequestPayoutOtpAsync(long payoutId, S4Caller caller);
     Task<S4ActionResult> ApprovePayoutAsync(long payoutId, PayoutDecisionRequest request, S4Caller caller);
     Task<S4ActionResult> RejectPayoutAsync(long payoutId, PayoutDecisionRequest request, S4Caller caller);
@@ -62,11 +65,13 @@ public interface IS4Week4Service
     Task<S4ActionResult> RankingExplainAsync(int doctorId);
 
     Task<S4ActionResult> ListPotenciesAsync();
+    Task<S4ActionResult> SearchRemediesAsync(string? search, int take = 40);
     Task<S4ActionResult> UpdateRemedyLineAsync(int prescriptionRemedyId, RemedyLineUpdateRequest request, S4Caller caller);
     Task<S4ActionResult> GetErxByAppointmentAsync(int patientAppId, S4Caller caller, bool patientView);
     Task<S4ActionResult> SignErxAsync(SignErxRequest request, S4Caller caller);
+    Task<S4ActionResult> SaveErxDraftAsync(ErxDraftRequest request, S4Caller caller);
     Task<S4ActionResult> ErxHistoryAsync(int? patientId, int? patientAppId, S4Caller caller);
-    Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller);
+    Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller, bool asMeta = false);
     Task<S4ActionResult> RequestRefillAsync(RefillCreateRequest request, S4Caller caller);
     Task<S4ActionResult> ListRefillsAsync(S4Caller caller, string? status = null);
     Task<S4ActionResult> RefillDetailAsync(int refillId, S4Caller caller);
@@ -74,6 +79,7 @@ public interface IS4Week4Service
 
     Task<S4ActionResult> OnboardPharmacyAsync(PharmacyOnboardRequest request, S4Caller caller);
     Task<S4ActionResult> ActivatePharmacyAsync(int pharmacyId, S4Caller caller);
+    Task<S4ActionResult> SuspendPharmacyAsync(int pharmacyId, S4Caller caller);
     Task<S4ActionResult> SweepLicencesAsync(S4Caller caller);
     Task<S4ActionResult> ListSellersAsync(string? area);
     Task<S4ActionResult> ListPharmacyPartnersAsync(S4Caller caller);
@@ -112,9 +118,10 @@ public interface IS4Week4Service
     Task<S4ActionResult> ListConsentsAsync(S4Caller caller);
     Task<S4ActionResult> GrantConsentAsync(int consentTypeId, S4Caller caller);
     Task<S4ActionResult> PatientVisitDetailAsync(int patientAppId, S4Caller caller);
-    Task<S4ActionResult> PatientVisitsAsync(int? patientId, S4Caller caller);
+    Task<S4ActionResult> PatientVisitsAsync(int? patientId, S4Caller caller, string? status = null, DateTime? fromDate = null, DateTime? toDate = null, int pageNumber = 1, int pageSize = 20);
     Task<S4ActionResult> WithdrawConsentAsync(long consentId, S4Caller caller);
     Task<S4ActionResult> CreateDataRequestAsync(DataRequestCreate request, S4Caller caller);
+    Task<S4ActionResult> ListDataRequestsAsync(S4Caller caller);
     Task<S4ActionResult> GetHealthProfileAsync(S4Caller caller);
     Task<S4ActionResult> UpdateHealthProfileAsync(HealthProfileUpdate request, S4Caller caller);
 }

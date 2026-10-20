@@ -68,7 +68,17 @@ namespace Homeocentrum.Niga.API.Controllers
                     gender = patient?.Gender,
                     age = patient?.Age,
                     preferredLanguageId = pref?.PreferredLanguageId,
-                    welcomeVersionSeen = pref?.WelcomeVersionSeen
+                    welcomeVersionSeen = pref?.WelcomeVersionSeen,
+                    countryId = patient?.CountryId,
+                    stateId = patient?.StateId,
+                    districtId = patient?.DistrictId,
+                    cityId = patient?.CityId,
+                    pinCodeId = patient?.PinCodeId,
+                    countryName = await LocationName(patient?.CountryId, id => _context.CountryMasters.AsNoTracking().Where(c => c.CountryId == id).Select(c => c.CountryName).FirstOrDefaultAsync()),
+                    stateName = await LocationName(patient?.StateId, id => _context.StateMasters.AsNoTracking().Where(s => s.StateId == id).Select(s => s.StateName).FirstOrDefaultAsync()),
+                    districtName = await LocationName(patient?.DistrictId, id => _context.DistrictMasters.AsNoTracking().Where(d => d.DistrictId == id).Select(d => d.DistrictName).FirstOrDefaultAsync()),
+                    cityName = await LocationName(patient?.CityId, id => _context.CityMasters.AsNoTracking().Where(c => c.CityId == id).Select(c => c.CityName).FirstOrDefaultAsync()),
+                    pinCode = await LocationName(patient?.PinCodeId, id => _context.PinCodeMasters.AsNoTracking().Where(p => p.PinCodeId == id).Select(p => p.PinCode).FirstOrDefaultAsync())
                 }
             });
         }
@@ -190,6 +200,11 @@ namespace Homeocentrum.Niga.API.Controllers
                     patient.MobileNo = PhoneNormalizer.Digits(request.MobileNo);
                 if (!string.IsNullOrWhiteSpace(request.Email))
                     patient.Email = request.Email.Trim();
+                if (request.CountryId.HasValue) patient.CountryId = request.CountryId.Value > 0 ? request.CountryId : null;
+                if (request.StateId.HasValue) patient.StateId = request.StateId.Value > 0 ? request.StateId : null;
+                if (request.DistrictId.HasValue) patient.DistrictId = request.DistrictId.Value > 0 ? request.DistrictId : null;
+                if (request.CityId.HasValue) patient.CityId = request.CityId.Value > 0 ? request.CityId : null;
+                if (request.PinCodeId.HasValue) patient.PinCodeId = request.PinCodeId.Value > 0 ? request.PinCodeId : null;
             }
 
             try
@@ -215,6 +230,13 @@ namespace Homeocentrum.Niga.API.Controllers
 
             await _context.SaveChangesAsync();
             return await Me();
+        }
+
+        private static async Task<string?> LocationName(int? id, Func<int, Task<string?>> lookup)
+        {
+            if (id is not > 0) return null;
+            var name = await lookup(id.Value);
+            return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
         }
     }
 }

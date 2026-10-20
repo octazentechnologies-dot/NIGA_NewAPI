@@ -34,6 +34,9 @@ public class PharmacyController : ControllerBase
     [HttpPost("/api/Pharmacy/{id:int}/Activate")]
     public Task<IActionResult> Activate(int id) => Done(_s4.ActivatePharmacyAsync(id, Caller()));
 
+    [HttpPost("/api/Pharmacy/{id:int}/Suspend")]
+    public Task<IActionResult> Suspend(int id) => Done(_s4.SuspendPharmacyAsync(id, Caller()));
+
     [HttpPost("/api/Pharmacy/Licences/Sweep")]
     public Task<IActionResult> Sweep() => Done(_s4.SweepLicencesAsync(Caller()));
 

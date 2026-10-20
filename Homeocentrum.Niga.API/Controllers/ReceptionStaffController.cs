@@ -101,7 +101,7 @@ namespace Homeocentrum.Niga.API.Controllers
         }
 
         /// <summary>
-        /// Soft delete reception staff
+        /// Disable reception staff (keeps them on the list so they can be enabled again).
         /// </summary>
         [HttpPost("DeleteReceptionStaff")]
         [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
@@ -131,6 +131,41 @@ namespace Homeocentrum.Niga.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "DeleteReceptionStaff failed for ReceptionStaffID={ReceptionStaffId}", request.ReceptionStaffID);
+                return ThreeDBodyPartApiResponseHelper.Error(ex);
+            }
+        }
+
+        /// <summary>
+        /// Enable or disable reception staff without removing the row from the list.
+        /// </summary>
+        [HttpPost("SetReceptionStaffActive")]
+        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(PaginatedApiFailureResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(PaginatedApiFailureResponse), StatusCodes.Status500InternalServerError)]
+        public async Task<object> SetReceptionStaffActive([FromBody] SetReceptionStaffActiveRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return ThreeDBodyPartApiResponseHelper.Failure(GetValidationMessage());
+                }
+
+                var deny = await ForbidIfNotOwnStaffAsync(request.ReceptionStaffID);
+                if (deny != null)
+                    return deny;
+
+                var (success, message) = await _receptionStaffService.SetReceptionStaffActiveAsync(request);
+                if (!success)
+                {
+                    return ThreeDBodyPartApiResponseHelper.Failure(message);
+                }
+
+                return ThreeDBodyPartApiResponseHelper.Success<object>(null!, message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "SetReceptionStaffActive failed for ReceptionStaffID={ReceptionStaffId}", request.ReceptionStaffID);
                 return ThreeDBodyPartApiResponseHelper.Error(ex);
             }
         }

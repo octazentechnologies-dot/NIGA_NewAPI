@@ -138,12 +138,6 @@ namespace Homeocentrum.Niga.API.Domain.Helpers
                 query = query.Where(x => x.SectionId == sectionId.Value);
             }
 
-            if (!string.IsNullOrWhiteSpace(request.SearchText))
-            {
-                var search = request.SearchText.Trim();
-                query = query.Where(x => x.HotspotName.Contains(search));
-            }
-
             return ApplyHotspotSorting(query, request);
         }
 

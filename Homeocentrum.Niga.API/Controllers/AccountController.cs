@@ -30,6 +30,7 @@ namespace Homeocentrum.Niga.API.Controllers
         private readonly ISubscriptionStatusService _subscriptionStatusService;
         private readonly IAuditEventWriter _auditEventWriter;
         private readonly IJwtDenylistService _jwtDenylist;
+        private readonly IPushNotificationSender _push;
         private readonly IOptions<SmtpSettingsModel> _mailSettings;
         private readonly IConfiguration _configuration;
         private readonly IWebHostEnvironment _env;
@@ -42,6 +43,7 @@ namespace Homeocentrum.Niga.API.Controllers
             ISubscriptionStatusService subscriptionStatusService,
             IAuditEventWriter auditEventWriter,
             IJwtDenylistService jwtDenylist,
+            IPushNotificationSender push,
             IOptions<SmtpSettingsModel> mailSettings,
             IConfiguration configuration,
             IWebHostEnvironment env)
@@ -52,6 +54,7 @@ namespace Homeocentrum.Niga.API.Controllers
             _subscriptionStatusService = subscriptionStatusService;
             _auditEventWriter = auditEventWriter;
             _jwtDenylist = jwtDenylist;
+            _push = push;
             _mailSettings = mailSettings;
             _configuration = configuration;
             _env = env;
@@ -71,8 +74,16 @@ namespace Homeocentrum.Niga.API.Controllers
                 if (string.IsNullOrWhiteSpace(model.UserName) || string.IsNullOrWhiteSpace(model.Password))
                     return BadRequest(new { message = "Username and password are required" });
 
+                // Username and password are case-sensitive. SQL Server CI collation may still return a
+                // row for a different casing; Ordinal rejects that so only the exact UserName matches.
+                var enteredUserName = model.UserName;
                 var userEntity = await _context.UserMasters
-                    .FirstOrDefaultAsync(x => x.UserName == model.UserName);
+                    .FirstOrDefaultAsync(x => x.UserName == enteredUserName);
+                if (userEntity != null
+                    && !string.Equals(userEntity.UserName, enteredUserName, StringComparison.Ordinal))
+                {
+                    userEntity = null;
+                }
 
                 if (userEntity != null)
                 {
@@ -83,6 +94,7 @@ namespace Homeocentrum.Niga.API.Controllers
                         return Unauthorized(new { message = "Invalid username or password" });
                     }
 
+                    // Password verify is already case-sensitive (exact bytes / hash).
                     if (!UserPasswordHasher.Verify(model.Password, userEntity.UserPassword))
                         return Unauthorized(new { message = "Invalid username or password" });
 
@@ -124,14 +136,30 @@ namespace Homeocentrum.Niga.API.Controllers
                         roleEntity.RoleName,
                         doctorId);
 
+                    // Prefer Doctor name parts (includes MiddleName) when this login is a practitioner.
+                    var firstName = doctorEntity?.FirstName ?? userEntity.FirstName;
+                    var middleName = doctorEntity?.MiddleName;
+                    var lastName = doctorEntity?.LastName ?? userEntity.LastName;
+                    var displayFullName = string.Join(" ", new[] { firstName, middleName, lastName }
+                        .Where(p => !string.IsNullOrWhiteSpace(p))
+                        .Select(p => p!.Trim()));
+
                     var userData = new AuthModel
                     {
                         IsSuperUser = roleEntity.RoleId == 1,
                         UserId = userEntity.UserId,
-                        UserName = $"{userEntity.FirstName} {userEntity.LastName}".Trim(),
+                        UserName = displayFullName.Length > 0
+                            ? displayFullName
+                            : (userEntity.UserName ?? "").Trim(),
+                        FirstName = firstName ?? "",
+                        MiddleName = string.IsNullOrWhiteSpace(middleName) ? null : middleName.Trim(),
+                        LastName = lastName ?? "",
                         Role = roleEntity.RoleName,
                         RoleId = userEntity.RoleId,
-                        FirmIds = userEntity.FirmIds,
+                        FirmIds = string.IsNullOrWhiteSpace(userEntity.FirmIds) ? null : userEntity.FirmIds.Trim(),
+                        LoginId = (userEntity.UserName ?? "").Trim(),
+                        Email = FirstText(doctorEntity?.EmailId, userEntity.EmailId),
+                        MobileNo = FirstText(doctorEntity?.MobileNo, userEntity.MobileNo),
                         Token = token,
                         IsPlanActive = false,
                         IslastFiveDays = false,
@@ -243,6 +271,16 @@ namespace Homeocentrum.Niga.API.Controllers
                     {
                         // Table may be missing or LoginId constraints — ignore.
                     }
+
+                    try
+                    {
+                        // Clear all FCM tokens for this login so the next sign-in registers a fresh one.
+                        await _push.ClearUserTokensAsync(userId);
+                    }
+                    catch
+                    {
+                        // Push clear is best-effort; logout must still succeed.
+                    }
                 }
 
                 await _auditEventWriter.WriteAsync(
@@ -341,17 +379,25 @@ namespace Homeocentrum.Niga.API.Controllers
                     .FirstOrDefaultAsync();
                 if (string.IsNullOrWhiteSpace(roleName))
                     return Unauthorized(new { success = false, code = "ACCOUNT_INACTIVE", message = "User role not found." });
-                var doctorId = await _context.Doctors.AsNoTracking()
+                var doctorRow = await _context.Doctors.AsNoTracking()
                     .Where(d => d.UserId == userEntity.UserId && !d.DeleteStatus)
-                    .Select(d => (int?)d.DoctorId)
+                    .Select(d => new { d.DoctorId, d.FirstName, d.MiddleName, d.LastName })
                     .FirstOrDefaultAsync();
+                var doctorId = doctorRow?.DoctorId;
                 token = await _tokenService.CreateToken(userEntity, 7 * 24 * 60, roleName, doctorId);
+                var refreshFirst = doctorRow?.FirstName ?? userEntity.FirstName;
+                var refreshMiddle = doctorRow?.MiddleName;
+                var refreshLast = doctorRow?.LastName ?? userEntity.LastName;
+                var refreshFull = string.Join(" ", new[] { refreshFirst, refreshMiddle, refreshLast }
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Select(p => p!.Trim()));
                 user = new
                 {
                     userId = userEntity.UserId,
-                    userName = userEntity.UserName,
-                    firstName = userEntity.FirstName,
-                    lastName = userEntity.LastName,
+                    userName = refreshFull.Length > 0 ? refreshFull : userEntity.UserName,
+                    firstName = refreshFirst,
+                    middleName = string.IsNullOrWhiteSpace(refreshMiddle) ? null : refreshMiddle.Trim(),
+                    lastName = refreshLast,
                     role = roleName,
                     roleId = userEntity.RoleId,
                     doctorId
@@ -957,6 +1003,16 @@ namespace Homeocentrum.Niga.API.Controllers
             }
 
             return token.Split('&', '#')[0].Trim();
+        }
+
+        private static string? FirstText(params string?[] values)
+        {
+            foreach (var value in values)
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value.Trim();
+            }
+            return null;
         }
     }
 

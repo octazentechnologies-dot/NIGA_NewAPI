@@ -37,6 +37,7 @@ namespace Homeocentrum.Niga.API.Controllers
                 .OrderBy(s => s.ScheduleDate)
                 .ToListAsync();
             var todayRow = week.FirstOrDefault(s => s.ScheduleDate == today);
+            var rule = await ReadBookingRuleAsync(doctor.DoctorId);
 
             DoctorDailyScheduleModel MapRow(DoctorDailySchedule s) => new()
             {
@@ -45,7 +46,9 @@ namespace Homeocentrum.Niga.API.Controllers
                 ScheduleDate = s.ScheduleDate,
                 SlotIntervalMinutes = s.SlotIntervalMinutes,
                 WorkStartTime = s.WorkStartTime,
-                WorkEndTime = s.WorkEndTime
+                WorkEndTime = s.WorkEndTime,
+                BreakStartTime = s.BreakStartTime,
+                BreakEndTime = s.BreakEndTime
             };
 
             return Ok(new
@@ -57,7 +60,9 @@ namespace Homeocentrum.Niga.API.Controllers
                     IsOnline = doctor.IsOnline,
                     WorkingHoursNote = doctor.WorkingHoursNote,
                     TodaySchedule = todayRow == null ? null : MapRow(todayRow),
-                    WeekSchedules = week.Select(MapRow).ToList()
+                    WeekSchedules = week.Select(MapRow).ToList(),
+                    GapMinutes = rule.GapMinutes,
+                    BookingHorizonDays = rule.HorizonDays
                 }
             });
         }
@@ -86,7 +91,11 @@ namespace Homeocentrum.Niga.API.Controllers
             if (daysError != null)
                 return daysError;
 
+            await ClearScheduleDatesAsync(doctor.DoctorId, request?.ClearScheduleDates);
+
             await _context.SaveChangesAsync();
+            if (request?.GapMinutes != null || request?.BookingHorizonDays != null)
+                await SaveBookingRuleAsync(doctor.DoctorId, request.GapMinutes, request.BookingHorizonDays);
             return await Me();
         }
 
@@ -188,6 +197,9 @@ namespace Homeocentrum.Niga.API.Controllers
                 {
                     return BadRequest(new { success = false, message = $"Work end time must be after start on {scheduleDate:yyyy-MM-dd}." });
                 }
+                var breakError = BreakError(day, scheduleDate);
+                if (breakError != null)
+                    return breakError;
 
                 var existing = await _context.DoctorDailySchedules
                     .FirstOrDefaultAsync(s => s.DoctorId == doctor.DoctorId && s.ScheduleDate == scheduleDate);
@@ -200,6 +212,8 @@ namespace Homeocentrum.Niga.API.Controllers
                         SlotIntervalMinutes = interval,
                         WorkStartTime = day.WorkStartTime,
                         WorkEndTime = day.WorkEndTime,
+                        BreakStartTime = day.IncludeBreak == true ? day.BreakStartTime : null,
+                        BreakEndTime = day.IncludeBreak == true ? day.BreakEndTime : null,
                         CreatedByUserId = createdBy,
                         CreatedAt = DateTime.UtcNow
                     });
@@ -209,9 +223,53 @@ namespace Homeocentrum.Niga.API.Controllers
                     existing.SlotIntervalMinutes = interval;
                     existing.WorkStartTime = day.WorkStartTime;
                     existing.WorkEndTime = day.WorkEndTime;
+                    if (day.IncludeBreak == true)
+                    {
+                        existing.BreakStartTime = day.BreakStartTime;
+                        existing.BreakEndTime = day.BreakEndTime;
+                    }
+                    else if (day.IncludeBreak == false)
+                    {
+                        existing.BreakStartTime = null;
+                        existing.BreakEndTime = null;
+                    }
                 }
             }
 
+            return null;
+        }
+
+        private async Task ClearScheduleDatesAsync(int doctorId, List<DateTime>? dates)
+        {
+            if (dates == null || dates.Count == 0)
+                return;
+            var clear = dates.Select(d => d.Date).Distinct().ToList();
+            var from = clear.Min();
+            var to = clear.Max();
+            var candidates = await _context.DoctorDailySchedules
+                .Where(s => s.DoctorId == doctorId && s.ScheduleDate >= from && s.ScheduleDate <= to)
+                .ToListAsync();
+            var rows = candidates.Where(s => clear.Contains(s.ScheduleDate.Date)).ToList();
+            if (rows.Count > 0)
+                _context.DoctorDailySchedules.RemoveRange(rows);
+        }
+
+        private IActionResult? BreakError(AvailabilityDayHours day, DateTime scheduleDate)
+        {
+            if (day.IncludeBreak != true)
+                return null;
+            var hasStart = day.BreakStartTime.HasValue;
+            var hasEnd = day.BreakEndTime.HasValue;
+            if (!hasStart && !hasEnd)
+                return null;
+            if (!hasStart || !hasEnd || day.BreakEndTime <= day.BreakStartTime)
+            {
+                return BadRequest(new { success = false, message = $"Break end must be after break start on {scheduleDate:yyyy-MM-dd}." });
+            }
+            if (day.BreakStartTime < day.WorkStartTime || day.BreakEndTime > day.WorkEndTime)
+            {
+                return BadRequest(new { success = false, message = $"Break must fall inside working hours on {scheduleDate:yyyy-MM-dd}." });
+            }
             return null;
         }
 
@@ -222,6 +280,65 @@ namespace Homeocentrum.Niga.API.Controllers
                 return await _context.Doctors.FirstOrDefaultAsync(d => d.DoctorId == jwtDoctor.Value && !d.DeleteStatus);
             var userId = User.GetUserId();
             return await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == userId && !d.DeleteStatus);
+        }
+
+        private async Task<(int? GapMinutes, int? HorizonDays)> ReadBookingRuleAsync(int doctorId)
+        {
+            await EnsureBookingRuleTableAsync();
+            var row = await _context.Database.SqlQuery<BookingRuleRow>($@"
+                SELECT GapMinutes, BookingHorizonDays
+                FROM dbo.DoctorBookingRule
+                WHERE DoctorId = {doctorId}").FirstOrDefaultAsync();
+            return (row?.GapMinutes, row?.BookingHorizonDays);
+        }
+
+        private async Task SaveBookingRuleAsync(int doctorId, int? gapMinutes, int? horizonDays)
+        {
+            if (gapMinutes is < 0 or > 240)
+                gapMinutes = null;
+            if (horizonDays is < 1 or > 90)
+                horizonDays = null;
+            if (gapMinutes == null && horizonDays == null)
+                return;
+
+            await EnsureBookingRuleTableAsync();
+            var existing = await _context.Database.SqlQuery<BookingRuleRow>($@"
+                SELECT GapMinutes, BookingHorizonDays
+                FROM dbo.DoctorBookingRule
+                WHERE DoctorId = {doctorId}").FirstOrDefaultAsync();
+            var nextGap = gapMinutes ?? existing?.GapMinutes;
+            var nextHorizon = horizonDays ?? existing?.BookingHorizonDays;
+            if (existing == null)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.DoctorBookingRule (DoctorId, GapMinutes, BookingHorizonDays)
+                    VALUES ({doctorId}, {nextGap}, {nextHorizon})");
+            }
+            else
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE dbo.DoctorBookingRule
+                    SET GapMinutes = {nextGap}, BookingHorizonDays = {nextHorizon}
+                    WHERE DoctorId = {doctorId}");
+            }
+        }
+
+        private async Task EnsureBookingRuleTableAsync()
+        {
+            await _context.Database.ExecuteSqlRawAsync("""
+                IF OBJECT_ID(N'dbo.DoctorBookingRule', N'U') IS NULL
+                CREATE TABLE dbo.DoctorBookingRule (
+                    DoctorId int NOT NULL PRIMARY KEY,
+                    GapMinutes int NULL,
+                    BookingHorizonDays int NULL
+                );
+                """);
+        }
+
+        private sealed class BookingRuleRow
+        {
+            public int? GapMinutes { get; set; }
+            public int? BookingHorizonDays { get; set; }
         }
     }
 }

@@ -4,9 +4,11 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Homeocentrum.Niga.API.Domain.Configuration;
 using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Master;
+using Homeocentrum.Niga.API.Domain.Security;
 using Homeocentrum.Niga.API.Domain.Services;
 
 namespace Homeocentrum.Niga.API.Domain.Repositories;
@@ -189,6 +191,40 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = rows });
     }
 
+    /// <summary>Doctor mobile — own payout history (BE-014).</summary>
+    public async Task<S4ActionResult> DoctorPayoutHistoryAsync(DateTime? from, DateTime? to, S4Caller caller)
+    {
+        if (!caller.IsDoctor && !caller.IsAdmin)
+            return Fail(403, "FORBIDDEN", "Only the doctor can read their payout history.");
+        if (!caller.DoctorId.HasValue || caller.DoctorId.Value <= 0)
+            return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        var range = DateRange(from, to, out var start, out var end);
+        if (range != null) return range;
+        var doctorId = caller.DoctorId.Value;
+        var currency = await _context.Doctors.AsNoTracking()
+            .Where(d => d.DoctorId == doctorId)
+            .Select(d => d.FeeCurrency)
+            .FirstOrDefaultAsync();
+        var rows = await _context.Database.SqlQuery<DoctorPayoutHistRow>($@"
+            SELECT TOP 200 p.PayoutId AS Id, p.CreatedAt AS At, p.Amount, p.Status
+            FROM dbo.Payout p
+            WHERE p.PayeeType = N'Doctor' AND p.PayeeId = {doctorId}
+              AND p.CreatedAt >= {start} AND p.CreatedAt < {end}
+            ORDER BY p.CreatedAt DESC").ToListAsync();
+        return Ok(new
+        {
+            success = true,
+            data = rows.Select(r => new
+            {
+                id = r.Id,
+                at = r.At,
+                amount = r.Amount,
+                status = r.Status,
+                currency = string.IsNullOrWhiteSpace(currency) ? null : currency
+            })
+        });
+    }
+
     private const int PayoutOtpResendSeconds = 30;
     private const int PayoutOtpTtlMinutes = 10;
 
@@ -221,7 +257,12 @@ public partial class S4Week4Service
             .FirstOrDefaultAsync();
         var code = await IssueOtpAsync("PayoutApprove", "Payout", entityId, caller.UserId);
         var amountText = payout.Amount.ToString("0.00", CultureInfo.InvariantCulture);
-        var text = $"Homeocentrum payout #{payoutId} approval code: {code}. Amount INR {amountText}. Valid {PayoutOtpTtlMinutes} minutes. Do not share.";
+        var text = await _templates.RenderAsync("PAYOUT_OTP", new Dictionary<string, string?>
+        {
+            ["otp"] = code,
+            ["amount"] = "INR " + amountText,
+            ["minutes"] = PayoutOtpTtlMinutes.ToString()
+        });
 
         var channels = new List<string>();
         var delivered = false;
@@ -231,23 +272,40 @@ public partial class S4Week4Service
             delivered = status == "SENT";
             channels.Add("email " + MaskOtpDestination(user.EmailId));
         }
-        if (!string.IsNullOrWhiteSpace(user?.MobileNo))
+        if (SmsOtpPolicy.RealSmsLive(_smsOptions) && !string.IsNullOrWhiteSpace(user?.MobileNo))
         {
-            await _outbox.EnqueueAsync("SMS", "PayoutApproveOtp", user.MobileNo.Trim(), text, "QUEUED");
+            // Send immediately via Twilio (ISmsSender). Also queue so outbox history stays complete.
+            var sms = await _sms.SendAsync(user.MobileNo.Trim(), text);
+            delivered = delivered || sms.Accepted;
+            if (!string.IsNullOrWhiteSpace(sms.EmbeddedOtp))
+                await SyncOtpHashAsync("PayoutApprove", "Payout", entityId, sms.EmbeddedOtp!);
             channels.Add("SMS " + MaskOtpDestination(user.MobileNo));
+            await _outbox.EnqueueAsync(
+                "SMS",
+                "PayoutApproveOtp",
+                user.MobileNo.Trim(),
+                text,
+                sms.Accepted ? "SENT" : "QUEUED",
+                sms.Accepted ? null : "Immediate Twilio send did not confirm; worker will retry.");
         }
 
         var sentTo = channels.Count == 0 ? "no email or mobile on your user" : string.Join(" and ", channels);
-        return Ok(new
+        var payload = new Dictionary<string, object?>
         {
-            success = true,
-            message = delivered ? $"OTP sent to {sentTo}." : $"OTP created. Delivery to {sentTo} did not confirm; use the code shown.",
-            delivered,
-            sentTo,
-            expiresInMinutes = PayoutOtpTtlMinutes,
-            resendAfterSeconds = PayoutOtpResendSeconds,
-            devCode = code
-        });
+            ["success"] = true,
+            ["message"] = delivered
+                ? $"OTP sent to {sentTo}."
+                : SmsOtpPolicy.RealSmsLive(_smsOptions)
+                    ? $"OTP created. Delivery to {sentTo} did not confirm."
+                    : "OTP created. SMS is not live; use the development code.",
+            ["delivered"] = delivered,
+            ["sentTo"] = sentTo,
+            ["expiresInMinutes"] = PayoutOtpTtlMinutes,
+            ["resendAfterSeconds"] = PayoutOtpResendSeconds
+        };
+        var dev = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
+        if (dev != null) payload["devCode"] = dev;
+        return Ok(payload);
     }
 
     private static string MaskOtpDestination(string value)
@@ -305,13 +363,18 @@ public partial class S4Week4Service
         var deny = AccountOnly(caller);
         if (deny != null) return deny;
         var filter = string.IsNullOrWhiteSpace(status) ? "OPEN" : status.Trim().ToUpperInvariant();
-        if (filter is not ("OPEN" or "RESOLVED" or "RETRIED"))
-            return Fail(400, "VALIDATION", "Status must be OPEN, RESOLVED, or RETRIED.");
-        var rows = await _context.Database.SqlQuery<ExceptionRow>($@"
-            SELECT PaymentExceptionId, PaymentOrderId, Kind, Detail, Status, CreatedAt
-            FROM dbo.PaymentException
-            WHERE Status = {filter}
-            ORDER BY CreatedAt DESC").ToListAsync();
+        if (filter is not ("OPEN" or "RESOLVED" or "RETRIED" or "ALL"))
+            return Fail(400, "VALIDATION", "Status must be OPEN, RESOLVED, RETRIED, or ALL.");
+        var rows = filter == "ALL"
+            ? await _context.Database.SqlQuery<ExceptionRow>($@"
+                SELECT PaymentExceptionId, PaymentOrderId, Kind, Detail, Status, CreatedAt
+                FROM dbo.PaymentException
+                ORDER BY CreatedAt DESC").ToListAsync()
+            : await _context.Database.SqlQuery<ExceptionRow>($@"
+                SELECT PaymentExceptionId, PaymentOrderId, Kind, Detail, Status, CreatedAt
+                FROM dbo.PaymentException
+                WHERE Status = {filter}
+                ORDER BY CreatedAt DESC").ToListAsync();
         return Ok(new { success = true, data = rows });
     }
 
@@ -437,7 +500,49 @@ public partial class S4Week4Service
             SELECT COUNT(1) AS Value FROM dbo.Payee WHERE PayeeId = {payeeId}").FirstAsync();
         if (exists.Value == 0) return Fail(404, "NOT_FOUND", "Payee not found.");
         var code = await IssueOtpAsync("PayeeBank", "Payee", payeeId.ToString(), caller.UserId);
-        return Ok(new { success = true, message = "OTP created for the bank change.", devCode = code });
+        var user = await _context.UserMasters.AsNoTracking()
+            .Where(u => u.UserId == caller.UserId)
+            .Select(u => new { u.MobileNo })
+            .FirstOrDefaultAsync();
+        var text = await _templates.RenderAsync("PAYEE_OTP", new Dictionary<string, string?>
+        {
+            ["otp"] = code,
+            ["payeeId"] = payeeId.ToString(),
+            ["minutes"] = "10"
+        });
+        var delivered = false;
+        if (SmsOtpPolicy.RealSmsLive(_smsOptions) && !string.IsNullOrWhiteSpace(user?.MobileNo))
+        {
+            var sms = await _sms.SendAsync(user.MobileNo.Trim(), text);
+            delivered = sms.Accepted;
+            if (!string.IsNullOrWhiteSpace(sms.EmbeddedOtp))
+                await SyncOtpHashAsync("PayeeBank", "Payee", payeeId.ToString(), sms.EmbeddedOtp!);
+        }
+        var payload = new Dictionary<string, object?>
+        {
+            ["success"] = true,
+            ["delivered"] = delivered,
+            ["message"] = delivered
+                ? "OTP sent by SMS. Enter the code from your phone."
+                : SmsOtpPolicy.RealSmsLive(_smsOptions)
+                    ? "OTP created but SMS delivery did not confirm."
+                    : "OTP created. SMS is not live; use the development code."
+        };
+        var dev = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
+        if (dev != null) payload["devCode"] = dev;
+        return Ok(payload);
+    }
+
+    private async Task SyncOtpHashAsync(string action, string entityType, string entityId, string plainCode)
+    {
+        var hash = SecurityTokenHash.Sha256Hex(plainCode);
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.OtpChallenge
+            SET OtpHash = {hash}
+            WHERE OtpChallengeId = (
+                SELECT TOP 1 OtpChallengeId FROM dbo.OtpChallenge
+                WHERE Action = {action} AND EntityType = {entityType} AND EntityId = {entityId} AND VerifiedAt IS NULL
+                ORDER BY OtpChallengeId DESC)");
     }
 
     public async Task<S4ActionResult> ClinicCollectionsAsync(DateTime? from, DateTime? to, int? doctorId, S4Caller caller)
@@ -530,6 +635,39 @@ public partial class S4Week4Service
                 .ToList();
         }
 
+        string? currency = rows.FirstOrDefault()?.Currency;
+        if (currency == null && doctorId > 0)
+        {
+            currency = await _context.Doctors.AsNoTracking()
+                .Where(d => d.DoctorId == doctorId)
+                .Select(d => d.FeeCurrency)
+                .FirstOrDefaultAsync();
+        }
+
+        decimal unpaidReceivableAmount = 0;
+        if (doctorId > 0)
+        {
+            var feeDoctor = await _context.Doctors.AsNoTracking()
+                .Where(d => d.DoctorId == doctorId)
+                .Select(d => new { d.ConsultFeeInClinic, d.ConsultFeeTele })
+                .FirstOrDefaultAsync();
+            var unpaidVisits = await _context.PatientAppointments.AsNoTracking()
+                .Where(a => a.DoctorId == doctorId
+                    && a.DeleteStatus != true
+                    && (a.Status == null || a.Status.ToUpper() != "CANCELLED")
+                    && (a.PaymentStatus == null
+                        || (a.PaymentStatus != "Paid"
+                            && a.PaymentStatus != "PAID"
+                            && a.PaymentStatus != "COLLECTED"
+                            && a.PaymentStatus != "Waived")))
+                .Select(a => a.IsTele)
+                .ToListAsync();
+            unpaidReceivableAmount = unpaidVisits.Sum(isTele =>
+                isTele == true
+                    ? feeDoctor?.ConsultFeeTele ?? feeDoctor?.ConsultFeeInClinic ?? 0
+                    : feeDoctor?.ConsultFeeInClinic ?? feeDoctor?.ConsultFeeTele ?? 0);
+        }
+
         return Ok(new
         {
             success = true,
@@ -543,7 +681,8 @@ public partial class S4Week4Service
                 onlineCaptured = online,
                 clinicCollected = clinic,
                 pendingPayoutAmount = pendingPayouts.Value,
-                currency = rows.FirstOrDefault()?.Currency ?? "INR",
+                unpaidReceivableAmount,
+                currency,
                 byDoctor,
                 recent = rows.Take(20)
             }

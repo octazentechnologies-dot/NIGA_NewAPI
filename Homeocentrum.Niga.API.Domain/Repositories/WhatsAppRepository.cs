@@ -410,36 +410,56 @@ public class WhatsAppRepository : IWhatsAppRepository
             campaignQuery = campaignQuery.Where(c => c.EnteredDate <= toDate);
         }
 
-        var logStats = _context.WhatsAppMessageLogs.AsNoTracking().Where(l => !l.DeleteStatus);
+        // Two-step load avoids EF left-join DefaultIfEmpty materializing NULL ints as non-nullable
+        // (InvalidOperationException: Nullable object must have a value).
+        var page = await campaignQuery
+            .OrderByDescending(c => c.EnteredDate)
+            .Select(c => new WhatsAppCampaignHistoryItemModel
+            {
+                CampaignID = c.CampaignId,
+                CampaignName = c.CampaignName ?? string.Empty,
+                CampaignCategory = c.CampaignCategory ?? string.Empty,
+                DoctorID = c.DoctorId,
+                IsBulk = c.IsBulk,
+                EnteredDate = c.EnteredDate,
+                TotalMessages = 0,
+                TotalDelivered = 0,
+                TotalFailed = 0
+            })
+            .ToPaginatedResultAsync(pagination);
 
-        var projected = from campaign in campaignQuery
-                        join stat in
-                            from log in logStats
-                            group log by log.CampaignId into g
-                            select new
-                            {
-                                CampaignId = g.Key,
-                                TotalMessages = g.Count(),
-                                TotalDelivered = g.Count(x => x.SendStatus),
-                                TotalFailed = g.Count(x => !x.SendStatus)
-                            }
-                            on campaign.CampaignId equals stat.CampaignId into stats
-                        from stat in stats.DefaultIfEmpty()
-                        orderby campaign.EnteredDate descending
-                        select new WhatsAppCampaignHistoryItemModel
-                        {
-                            CampaignID = campaign.CampaignId,
-                            CampaignName = campaign.CampaignName,
-                            CampaignCategory = campaign.CampaignCategory,
-                            DoctorID = campaign.DoctorId,
-                            IsBulk = campaign.IsBulk,
-                            EnteredDate = campaign.EnteredDate,
-                            TotalMessages = stat != null ? stat.TotalMessages : 0,
-                            TotalDelivered = stat != null ? stat.TotalDelivered : 0,
-                            TotalFailed = stat != null ? stat.TotalFailed : 0
-                        };
+        if (page.Items.Count == 0)
+        {
+            return page;
+        }
 
-        return await projected.ToPaginatedResultAsync(pagination);
+        var campaignIds = page.Items.Select(i => i.CampaignID).ToList();
+        var stats = await _context.WhatsAppMessageLogs.AsNoTracking()
+            .Where(l => !l.DeleteStatus && l.CampaignId != null && campaignIds.Contains(l.CampaignId.Value))
+            .GroupBy(l => l.CampaignId!.Value)
+            .Select(g => new
+            {
+                CampaignId = g.Key,
+                TotalMessages = g.Count(),
+                TotalDelivered = g.Count(x => x.SendStatus),
+                TotalFailed = g.Count(x => !x.SendStatus)
+            })
+            .ToListAsync();
+
+        var byCampaignId = stats.ToDictionary(s => s.CampaignId);
+        foreach (var item in page.Items)
+        {
+            if (!byCampaignId.TryGetValue(item.CampaignID, out var s))
+            {
+                continue;
+            }
+
+            item.TotalMessages = s.TotalMessages;
+            item.TotalDelivered = s.TotalDelivered;
+            item.TotalFailed = s.TotalFailed;
+        }
+
+        return page;
     }
 
     public async Task<WhatsAppCampaignDetailModel?> GetCampaignDetailsAsync(int campaignId)

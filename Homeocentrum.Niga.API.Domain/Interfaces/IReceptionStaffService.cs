@@ -12,6 +12,8 @@ namespace Homeocentrum.Niga.API.Domain.Interfaces
 
         Task<(bool Success, string Message)> DeleteReceptionStaffAsync(DeleteReceptionStaffRequest request);
 
+        Task<(bool Success, string Message)> SetReceptionStaffActiveAsync(SetReceptionStaffActiveRequest request);
+
         Task<ReceptionStaffResponseModel?> GetReceptionStaffByIdAsync(int receptionStaffId);
 
         Task<(bool Success, string Message, PaginatedResult<ReceptionStaffListItemModel>? Result)> GetReceptionStaffListAsync(

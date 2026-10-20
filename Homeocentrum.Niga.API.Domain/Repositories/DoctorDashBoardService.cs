@@ -33,20 +33,25 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
         /// <returns></returns>
         public async Task<PagedList<PatientAppointmentModel>> GetPatientAppUserDate(ParameterParams parameter)
         {
-            var patientAppModelList = new List<PatientAppointmentModel>();
             var errorResponseModel = new ErrorResponseModel();
             var day = (parameter.Date ?? DateTime.Today).Date;
+            // Prefer DoctorId so dashboard list matches slots / Tele / queue (same clinic day).
+            var doctorId = await context.Doctors.AsNoTracking()
+                .Where(d => d.UserId == parameter.UserId && !d.DeleteStatus)
+                .Select(d => (int?)d.DoctorId)
+                .FirstOrDefaultAsync();
+
             var patientAppEntityList = (
                 from p in context.PatientAppointments
                 join pa in context.Patients on p.PatientId equals pa.PatientId
-                join c in context.CaseEntryDetails on p.PatientId equals c.PatientId
-                join u in context.UserMasters on p.UserId equals u.UserId
                 join d in context.Doctors on p.DoctorId equals d.DoctorId into doctorGroup
                 from d in doctorGroup.DefaultIfEmpty()
-                where p.UserId == parameter.UserId
-                    && p.AppointmentDate != null
+                where p.AppointmentDate != null
                     && p.AppointmentDate.Value.Date == day
-                && p.DeleteStatus == false
+                    && p.DeleteStatus == false
+                    && (doctorId.HasValue
+                        ? p.DoctorId == doctorId.Value
+                        : p.UserId == parameter.UserId)
                 select new PatientAppointmentModel
                 {
                     PatientAppId = p.PatientAppId,
@@ -62,7 +67,14 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                         : null,
                     Status = p.Status,
                     DeleteStatus = p.DeleteStatus,
-                    CaseId = c.CaseId,
+                    // Latest case for this doctor+patient only (left-side; visits without a case still list → 0).
+                    CaseId = context.CaseEntryDetails
+                        .Where(c => c.PatientId == p.PatientId
+                            && c.DoctorId == p.DoctorId
+                            && c.DeleteStatus == false)
+                        .OrderByDescending(c => c.CaseId)
+                        .Select(c => c.CaseId)
+                        .FirstOrDefault(),
                     Address = pa.AddressLine1 ?? pa.Address,
                     Age = pa.Age,
                     Gender = pa.Gender,
@@ -176,56 +188,29 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
             
             DoctorDashBoardModel appointmentCount = new DoctorDashBoardModel();
             var day = (appointmentDate ?? DateTime.Today).Date;
-            appointmentCount.patientApp = context
-                .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == day  && x.UserId == userId
-                )
-                .Count();
-            appointmentCount.patientAppComplated = context
-                .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == day 
-                    && x.UserId == userId
-                    && x.Status == PatientsStatus.Completed.GetDisplayName()
-                )
-                .Count();
-            appointmentCount.patientAppWaiting = context
-                .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == day 
-                    && x.UserId == userId
-                    && x.Status == PatientsStatus.Waiting.GetDisplayName()
-                )
-                .Count();
-            appointmentCount.patientAppNotArrived = context
-                .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == day 
-                    && x.UserId == userId
-                    && x.Status == PatientsStatus.NotArrived.GetDisplayName()
-                )
-                .Count();
-            appointmentCount.patientAppRemaining = context
-                .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == day 
-                    && x.UserId == userId
-                    && x.Status == PatientsStatus.Remaining.GetDisplayName()
-                )
-                .Count();
-                appointmentCount.patientAppEConsult = context
-                .PatientAppointments.Where(x =>
-                    x.AppointmentDate.Value.Date  == day 
-                    && x.UserId == userId
-                    && x.Status == PatientsStatus.E_Consult.GetDisplayName()
-                )
-                .Count();
-            appointmentCount.patientAppWalkIn = context
-               .PatientAppointments.Where(x =>
-                   x.AppointmentDate.Value.Date == day
-                   && x.UserId == userId
-                   && x.Status == PatientsStatus.Walk_In.GetDisplayName()
-               )
-               .Count();
-
             var doctor = context.Doctors.AsNoTracking()
-                .FirstOrDefault(x => x.UserId == userId);
+                .FirstOrDefault(x => x.UserId == userId && !x.DeleteStatus);
+            // Same day scope as list / slots / Tele: DoctorId when known, else UserId.
+            var dayApptsBase = context.PatientAppointments.AsNoTracking()
+                .Where(x => x.AppointmentDate != null
+                    && x.AppointmentDate.Value.Date == day
+                    && x.DeleteStatus != true
+                    && (doctor != null ? x.DoctorId == doctor.DoctorId : x.UserId == userId));
+
+            appointmentCount.patientApp = dayApptsBase.Count();
+            appointmentCount.patientAppComplated = dayApptsBase.Count(x =>
+                x.Status == PatientsStatus.Completed.GetDisplayName());
+            appointmentCount.patientAppWaiting = dayApptsBase.Count(x =>
+                x.Status == PatientsStatus.Waiting.GetDisplayName());
+            appointmentCount.patientAppNotArrived = dayApptsBase.Count(x =>
+                x.Status == PatientsStatus.NotArrived.GetDisplayName());
+            appointmentCount.patientAppRemaining = dayApptsBase.Count(x =>
+                x.Status == PatientsStatus.Remaining.GetDisplayName());
+            appointmentCount.patientAppEConsult = dayApptsBase.Count(x =>
+                x.Status == PatientsStatus.E_Consult.GetDisplayName());
+            appointmentCount.patientAppWalkIn = dayApptsBase.Count(x =>
+                x.Status == PatientsStatus.Walk_In.GetDisplayName());
+
             if (doctor != null)
             {
                 appointmentCount.totalPatients = context.CaseEntryDetails.AsNoTracking()
@@ -237,15 +222,39 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                 appointmentCount.DoctorId = doctor.DoctorId;
             }
 
-            var dayAppts = context.PatientAppointments.AsNoTracking()
-                .Where(x => x.AppointmentDate.Value.Date == day && x.UserId == userId && x.DeleteStatus != true);
+            var dayAppts = dayApptsBase;
+            // Align with Tele/Day + dashboard tele modal: IsTele, Tele consult mode, or E-CONSULT status.
             appointmentCount.teleQueueCount = dayAppts.Count(x =>
                 x.IsTele == true
-                || x.Status == PatientsStatus.E_Consult.GetDisplayName());
+                || x.Status == PatientsStatus.E_Consult.GetDisplayName()
+                || (x.ConsultMode != null && x.ConsultMode.ToUpper().Contains("TELE"))
+                || (x.VisitType != null && x.VisitType.ToUpper().Contains("TELE")));
             appointmentCount.unpaidCount = dayAppts.Count(x =>
                 x.PaymentStatus != null
                 && x.PaymentStatus != "Paid"
+                && x.PaymentStatus != "PAID"
+                && x.PaymentStatus != "COLLECTED"
                 && x.PaymentStatus != "Waived");
+            appointmentCount.cancelledCount = dayAppts.Count(x =>
+                x.Status != null && x.Status.ToUpper() == "CANCELLED");
+            appointmentCount.patientAppCancelled = appointmentCount.cancelledCount;
+            appointmentCount.unpaidAppointmentCount = appointmentCount.unpaidCount;
+            appointmentCount.currency = doctor?.FeeCurrency;
+
+            if (doctor != null)
+            {
+                var unpaidRows = dayAppts.Where(x =>
+                    x.Status == null || x.Status.ToUpper() != "CANCELLED").Where(x =>
+                    x.PaymentStatus != null
+                    && x.PaymentStatus != "Paid"
+                    && x.PaymentStatus != "PAID"
+                    && x.PaymentStatus != "COLLECTED"
+                    && x.PaymentStatus != "Waived").ToList();
+                appointmentCount.unpaidAmount = unpaidRows.Sum(x =>
+                    x.IsTele == true
+                        ? doctor.ConsultFeeTele ?? doctor.ConsultFeeInClinic ?? 0
+                        : doctor.ConsultFeeInClinic ?? doctor.ConsultFeeTele ?? 0);
+            }
 
             return appointmentCount;
         }

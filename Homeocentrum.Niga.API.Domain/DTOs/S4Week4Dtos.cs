@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Homeocentrum.Niga.API.Domain.DTOs;
 
@@ -6,6 +7,8 @@ public class ConsultFeeQuote
 {
     public decimal InClinicFee { get; set; }
     public decimal TeleFee { get; set; }
+    /// <summary>ConsultFeeConfig.Currency, else Doctor.FeeCurrency. Null when neither is stored.</summary>
+    public string? Currency { get; set; }
 }
 
 public class FeeUpsertRequest
@@ -56,6 +59,41 @@ public class VerifyPaymentRequest
 
     [StringLength(80)]
     public string? GatewayPaymentId { get; set; }
+
+    [JsonPropertyName("razorpay_order_id")]
+    [StringLength(80)]
+    public string? RazorpayOrderId { get; set; }
+
+    [JsonPropertyName("razorpay_payment_id")]
+    [StringLength(80)]
+    public string? RazorpayPaymentId { get; set; }
+
+    [JsonPropertyName("razorpay_signature")]
+    [StringLength(200)]
+    public string? RazorpaySignature { get; set; }
+}
+
+/// <summary>PAT — pay anytime / pay later after hold or pay-at-clinic. Mobile sends Razorpay Checkout ids.</summary>
+public class UpdateBookingPaymentRequest
+{
+    [Range(1, long.MaxValue)]
+    public long UserId { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int PatientAppId { get; set; }
+
+    [Required]
+    [JsonPropertyName("razorpay_order_id")]
+    [StringLength(80, MinimumLength = 3)]
+    public string RazorpayOrderId { get; set; } = "";
+
+    [Required]
+    [JsonPropertyName("razorpay_payment_id")]
+    [StringLength(80, MinimumLength = 3)]
+    public string RazorpayPaymentId { get; set; } = "";
+
+    [Range(1, long.MaxValue)]
+    public long? PaymentOrderId { get; set; }
 }
 
 public class CollectAtReceptionRequest
@@ -192,6 +230,42 @@ public class SignErxRequest
     public int PatientAppId { get; set; }
 }
 
+/// <summary>Draft prescription. Sign still requires a potency on every line. An empty items list is rejected.</summary>
+public class ErxDraftRequest
+{
+    [Range(1, int.MaxValue)]
+    public int PatientAppId { get; set; }
+
+    /// <summary>Free-text note stored on the draft. Null when omitted.</summary>
+    [StringLength(1000)]
+    public string? Notes { get; set; }
+
+    public List<ErxDraftItem> Items { get; set; } = new();
+}
+
+public class ErxDraftItem
+{
+    /// <summary>RemedyMaster.RemedyId. The id must exist.</summary>
+    [Range(1, int.MaxValue)]
+    public int RemedyId { get; set; }
+
+    /// <summary>Optional on a draft. Sign rejects a line that has no potency.</summary>
+    [StringLength(40)]
+    public string? PotencyCode { get; set; }
+
+    [StringLength(80)]
+    public string? Dose { get; set; }
+
+    [StringLength(80)]
+    public string? Frequency { get; set; }
+
+    [StringLength(80)]
+    public string? Duration { get; set; }
+
+    [StringLength(500)]
+    public string? Instructions { get; set; }
+}
+
 public class PharmacyAcceptRequest
 {
     /// <summary>Taken from the route; a body value is ignored.</summary>
@@ -241,6 +315,9 @@ public class MedicineOrderCreateRequest
     public int ErxSnapshotId { get; set; }
 
     public int? PharmacyPartnerId { get; set; }
+
+    /// <summary>Optional delivery address from GET /api/Patient/Addresses (B-023).</summary>
+    public int? AddressId { get; set; }
 }
 
 public class MedicineRejectRequest

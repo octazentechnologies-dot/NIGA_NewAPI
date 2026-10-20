@@ -429,6 +429,8 @@ namespace Homeocentrum.Niga.API.Domain.Data
 
     public virtual DbSet<OtpChallenge> OtpChallenges { get; set; }
 
+    public virtual DbSet<SmsOtpVerify> SmsOtpVerifies { get; set; }
+
     public virtual DbSet<OtpAuditLog> OtpAuditLogs { get; set; }
 
     public virtual DbSet<AuditEvent> AuditEvents { get; set; }
@@ -448,6 +450,8 @@ namespace Homeocentrum.Niga.API.Domain.Data
     public virtual DbSet<WelcomeSlide> WelcomeSlides { get; set; }
 
     public virtual DbSet<DevicePushToken> DevicePushTokens { get; set; }
+
+    public virtual DbSet<FirebaseNotificationLog> FirebaseNotificationLogs { get; set; }
 
     public virtual DbSet<WhatsAppMessageLog> WhatsAppMessageLogs { get; set; }
 
@@ -3239,6 +3243,9 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.Property(e => e.IsBulk).HasDefaultValue(false);
             entity.Property(e => e.SendStatus).HasDefaultValue(false);
             entity.Property(e => e.DeleteStatus).HasDefaultValue(false);
+            entity.Property(e => e.DeliveryStatus).HasMaxLength(30);
+            entity.Property(e => e.ReceiptAt).HasColumnType("datetime");
+            entity.Property(e => e.ReceiptPayload);
 
             entity.HasOne(d => d.Language).WithMany()
                 .HasForeignKey(d => d.LanguageId)
@@ -3404,6 +3411,23 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.HasIndex(e => new { e.EntityType, e.EntityId, e.Action });
         });
 
+        modelBuilder.Entity<SmsOtpVerify>(entity =>
+        {
+            entity.HasKey(e => e.SmsOtpVerifyId);
+            entity.ToTable("SmsOtpVerify");
+            entity.Property(e => e.Purpose).HasMaxLength(50);
+            entity.Property(e => e.MobileDigits).HasMaxLength(20);
+            entity.Property(e => e.DestinationMasked).HasMaxLength(100);
+            entity.Property(e => e.OtpHash).HasMaxLength(128);
+            entity.Property(e => e.Provider).HasMaxLength(30);
+            entity.Property(e => e.TwilioMessageSid).HasMaxLength(64);
+            entity.Property(e => e.ExpiresAt).HasColumnType("datetime");
+            entity.Property(e => e.LockedUntil).HasColumnType("datetime");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.VerifiedAt).HasColumnType("datetime");
+            entity.HasIndex(e => new { e.MobileDigits, e.Purpose, e.VerifiedAt });
+        });
+
         modelBuilder.Entity<OtpAuditLog>(entity =>
         {
             entity.HasKey(e => e.OtpAuditLogId);
@@ -3511,11 +3535,26 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.HasKey(e => e.DevicePushTokenId);
             entity.ToTable("DevicePushToken");
             entity.Property(e => e.Platform).HasMaxLength(20);
+            entity.Property(e => e.DeviceType).HasMaxLength(20);
             entity.Property(e => e.Token).HasMaxLength(512);
             entity.Property(e => e.DeviceId).HasMaxLength(100);
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
             entity.HasIndex(e => new { e.UserId, e.Token });
+            entity.HasIndex(e => new { e.UserId, e.DeviceType, e.DeviceId });
+        });
+
+        modelBuilder.Entity<FirebaseNotificationLog>(entity =>
+        {
+            entity.HasKey(e => e.FirebaseNotificationLogId);
+            entity.ToTable("FirebaseNotificationLog");
+            entity.Property(e => e.Action).HasMaxLength(80);
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.Body).HasMaxLength(2000);
+            entity.Property(e => e.Status).HasMaxLength(20);
+            entity.Property(e => e.Detail).HasMaxLength(1000);
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt });
         });
 
         modelBuilder.Entity<YearMaster>(entity =>

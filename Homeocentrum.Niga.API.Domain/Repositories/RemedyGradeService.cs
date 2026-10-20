@@ -68,9 +68,15 @@ namespace Homeocentrum.Niga.API.Domain.Services
                                            DeleteStatus = x.DeleteStatus
                                        }).AsQueryable();
 
-            if (!string.IsNullOrEmpty(parameter.search))
+            var gradeSearch = !string.IsNullOrWhiteSpace(parameter.search) ? parameter.search.Trim() : parameter.queryString?.Trim();
+            if (!string.IsNullOrEmpty(gradeSearch))
             {
-                remedyGradeModelQuery = remedyGradeModelQuery.Where(x => x.GradeNo.ToString().Contains(parameter.search));
+                remedyGradeModelQuery = remedyGradeModelQuery.Where(x =>
+                    x.GradeNo.ToString().Contains(gradeSearch)
+                    || (x.Description != null && x.Description.Contains(gradeSearch))
+                    || (x.FontName != null && x.FontName.Contains(gradeSearch))
+                    || (x.FontStyle != null && x.FontStyle.Contains(gradeSearch))
+                    || (x.FontColor != null && x.FontColor.Contains(gradeSearch)));
             }
 
             return await PagedList<RemedyGradeModel>.CreateAsync(remedyGradeModelQuery.AsNoTracking(), parameter.PageNumber, parameter.PageSize);

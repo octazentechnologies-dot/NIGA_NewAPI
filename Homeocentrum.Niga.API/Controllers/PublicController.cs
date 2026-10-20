@@ -4,10 +4,12 @@ using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.DTOs;
+using Homeocentrum.Niga.API.Domain.Extensions;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Enums;
 using Homeocentrum.Niga.API.Domain.Master;
 using Homeocentrum.Niga.API.Domain.Security;
+using Homeocentrum.Niga.API.Domain.Services;
 
 namespace Homeocentrum.Niga.API.Controllers
 {
@@ -44,6 +46,27 @@ namespace Homeocentrum.Niga.API.Controllers
             var page = request.PageNumber < 1 ? 1 : request.PageNumber;
             var size = request.PageSize is < 1 or > 50 ? 20 : request.PageSize;
 
+            HashSet<int>? careDoctorIds = null;
+            if (request.CareCategoryId.HasValue)
+            {
+                // B-029 — unknown / non-positive id → empty list (not 400/500).
+                if (request.CareCategoryId.Value <= 0)
+                    return Ok(new { success = true, pageNumber = page, pageSize = size, totalRecords = 0, data = Array.Empty<object>() });
+                var exists = await _context.HumanSystemMasters.AsNoTracking()
+                    .AnyAsync(h => h.HumanSystemId == request.CareCategoryId.Value);
+                if (!exists)
+                    return Ok(new { success = true, pageNumber = page, pageSize = size, totalRecords = 0, data = Array.Empty<object>() });
+                await EnsureDoctorCareCategoryAsync();
+                var mapped = await _context.Database.SqlQuery<IdCount>($@"
+                    SELECT DoctorId AS Id FROM dbo.DoctorCareCategory
+                    WHERE CareCategoryId = {request.CareCategoryId.Value}").ToListAsync();
+                var anyMap = await _context.Database.SqlQuery<IdCount>($@"
+                    SELECT TOP 1 DoctorId AS Id FROM dbo.DoctorCareCategory").FirstOrDefaultAsync();
+                // When no mappings exist yet, ignore the filter (safe default). When mappings exist, restrict.
+                if (anyMap != null)
+                    careDoctorIds = mapped.Select(m => m.Id).ToHashSet();
+            }
+
             var q = from d in _context.Doctors.AsNoTracking()
                     join qual in _context.QualificationMasters.AsNoTracking()
                         on d.QualificationId equals qual.QualificationId into qj
@@ -52,6 +75,9 @@ namespace Homeocentrum.Niga.API.Controllers
                           && d.DirectoryVisible
                           && d.VerificationStatus == "Verified"
                     select new { d, Qualification = qual != null ? qual.QualificationName : null };
+
+            if (careDoctorIds != null)
+                q = q.Where(x => careDoctorIds.Contains(x.d.DoctorId));
 
             if (!string.IsNullOrWhiteSpace(request.City))
             {
@@ -63,9 +89,18 @@ namespace Homeocentrum.Niga.API.Controllers
             {
                 var term = request.Q.Trim();
                 q = q.Where(x =>
-                    (x.d.FirstName + " " + x.d.LastName).Contains(term)
+                    (x.d.FirstName + " " + (x.d.MiddleName ?? "") + " " + x.d.LastName).Contains(term)
+                    || (x.d.FirstName != null && x.d.FirstName.Contains(term))
+                    || (x.d.MiddleName != null && x.d.MiddleName.Contains(term))
+                    || (x.d.LastName != null && x.d.LastName.Contains(term))
                     || (x.d.ClinicName != null && x.d.ClinicName.Contains(term))
                     || (x.Qualification != null && x.Qualification.Contains(term)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Qualification))
+            {
+                var qualification = request.Qualification.Trim();
+                q = q.Where(x => x.Qualification != null && x.Qualification.Contains(qualification));
             }
 
             if (request.IsOnline == true)
@@ -78,16 +113,62 @@ namespace Homeocentrum.Niga.API.Controllers
                 q = q.Where(x => (x.d.ConsultFeeInClinic ?? x.d.ConsultFeeTele ?? 0) <= request.MaxFee.Value);
 
             var total = await q.CountAsync();
-            var rows = await q
-                .OrderByDescending(x => x.d.IsOnline)
-                .ThenBy(x => x.d.LastName)
+            var sort = (request.SortBy ?? "online").Trim().ToLowerInvariant();
+            var ordered = sort switch
+            {
+                "fee" => q.OrderBy(x => x.d.ConsultFeeInClinic ?? x.d.ConsultFeeTele).ThenBy(x => x.d.LastName),
+                "name" => q.OrderBy(x => x.d.LastName).ThenBy(x => x.d.FirstName),
+                _ => q.OrderByDescending(x => x.d.IsOnline).ThenBy(x => x.d.LastName)
+            };
+            var rows = await ordered
                 .Skip((page - 1) * size)
                 .Take(size)
                 .ToListAsync();
 
             var stats = await LoadReviewStatsAsync(rows.Select(x => x.d.DoctorId).ToList());
-            var data = rows.Select(x => MapCard(x.d, x.Qualification, stats.GetValueOrDefault(x.d.DoctorId))).ToList();
+            var nextMap = await LoadNextAvailableAsync(rows.Select(x => x.d.DoctorId).ToList());
+            var data = rows.Select(x =>
+            {
+                var card = MapCard(x.d, x.Qualification, stats.GetValueOrDefault(x.d.DoctorId));
+                card.NextAvailableAt = nextMap.GetValueOrDefault(x.d.DoctorId);
+                card.ClinicAddressLine = string.IsNullOrWhiteSpace(x.d.PermanantAddress) ? null : x.d.PermanantAddress;
+                return card;
+            }).ToList();
             return Ok(new { success = true, pageNumber = page, pageSize = size, totalRecords = total, data });
+        }
+
+        /// <summary>B-009 — cities and qualifications for patient search filters.</summary>
+        [HttpGet("Doctors/FilterOptions")]
+        public async Task<IActionResult> DoctorFilterOptions()
+        {
+            var cityRows = await _context.Doctors.AsNoTracking()
+                .Where(d => !d.DeleteStatus && d.DirectoryVisible && d.VerificationStatus == "Verified"
+                            && d.City != null && d.City != "")
+                .GroupBy(d => d.City!)
+                .Select(g => new { city = g.Key, doctorCount = g.Count() })
+                .OrderByDescending(x => x.doctorCount)
+                .ThenBy(x => x.city)
+                .ToListAsync();
+            var qualificationRows = await (
+                from d in _context.Doctors.AsNoTracking()
+                join q in _context.QualificationMasters.AsNoTracking() on d.QualificationId equals q.QualificationId
+                where !d.DeleteStatus && d.DirectoryVisible && d.VerificationStatus == "Verified"
+                      && q.QualificationName != null && q.QualificationName != ""
+                group d by q.QualificationName into g
+                select new { name = g.Key, doctorCount = g.Count() }
+            ).OrderByDescending(x => x.doctorCount).ThenBy(x => x.name).ToListAsync();
+            // CR3 wants string arrays; cityDetails / qualificationDetails keep counts for richer UIs.
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    cities = cityRows.Select(c => c.city).ToList(),
+                    qualifications = qualificationRows.Select(q => q.name).ToList(),
+                    cityDetails = cityRows,
+                    qualificationDetails = qualificationRows
+                }
+            });
         }
 
         [HttpGet("Doctors/{id:int}")]
@@ -106,19 +187,33 @@ namespace Homeocentrum.Niga.API.Controllers
                 return NotFound(new { success = false, message = "Doctor not found or not verified for directory." });
 
             var stats = await LoadReviewStatsAsync(new List<int> { row.d.DoctorId });
+            var nextMap = await LoadNextAvailableAsync(new List<int> { row.d.DoctorId });
             var card = MapCard(row.d, row.Qualification, stats.GetValueOrDefault(row.d.DoctorId));
+            card.NextAvailableAt = nextMap.GetValueOrDefault(row.d.DoctorId);
+            card.ClinicAddressLine = string.IsNullOrWhiteSpace(row.d.PermanantAddress) ? null : row.d.PermanantAddress;
             var profile = new PublicDoctorProfileDto
             {
                 DoctorId = card.DoctorId,
+                FirstName = card.FirstName,
+                MiddleName = card.MiddleName,
+                LastName = card.LastName,
                 DisplayName = card.DisplayName,
                 Qualification = card.Qualification,
                 City = card.City,
                 ClinicName = card.ClinicName,
                 ConsultFeeInClinic = card.ConsultFeeInClinic,
                 ConsultFeeTele = card.ConsultFeeTele,
+                FeeCurrency = card.FeeCurrency,
                 IsOnline = card.IsOnline,
                 Verified = card.Verified,
                 PhotoPath = card.PhotoPath,
+                PhotoUrl = card.PhotoUrl,
+                RegistrationNumber = card.RegistrationNumber,
+                PassingUniversity = card.PassingUniversity,
+                // yearsExperience / languages / education not stored — omit (null) per BE-015.
+                YearsExperience = null,
+                NextAvailableAt = card.NextAvailableAt,
+                ClinicAddressLine = card.ClinicAddressLine,
                 RankingSummary = card.RankingSummary,
                 AverageRating = card.AverageRating,
                 ReviewCount = card.ReviewCount,
@@ -164,6 +259,7 @@ namespace Homeocentrum.Niga.API.Controllers
         [HttpGet("Doctors/{id:int}/Slots")]
         public async Task<IActionResult> GetDoctorSlots(int id, [FromQuery] DateTime date)
         {
+            await EnsureBookedByUserIdColumnAsync();
             if (date == default)
                 date = DateTime.Today;
 
@@ -219,7 +315,70 @@ namespace Homeocentrum.Niga.API.Controllers
             if (!TimeOnly.TryParse(request.AppointmentTime, out var time))
                 return BadRequest(new { success = false, message = "AppointmentTime must be HH:mm." });
 
+            long? bookedByUserId = request.UserId is > 0 ? request.UserId : null;
+            if (User?.Identity?.IsAuthenticated == true)
+            {
+                var jwtUserId = (long)User.GetUserId();
+                if (jwtUserId > 0)
+                {
+                    if (bookedByUserId.HasValue && bookedByUserId.Value != jwtUserId)
+                        return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "userId does not match the signed-in user." });
+                    bookedByUserId ??= jwtUserId;
+                }
+            }
+
             var day = request.AppointmentDate.Date;
+            await EnsureBookedByUserIdColumnAsync();
+
+            // B-027 — optional Idempotency-Key (same key + same body → original; same key + different body → 409).
+            Request.Headers.TryGetValue("Idempotency-Key", out var idemHeader);
+            var idemKey = string.IsNullOrWhiteSpace(idemHeader) ? null : idemHeader.ToString().Trim();
+            if (idemKey != null && idemKey.Length > 80) idemKey = idemKey[..80];
+            string? bodyFingerprint = null;
+            if (!string.IsNullOrEmpty(idemKey))
+            {
+                await EnsurePublicBookingIdempotencyAsync();
+                bodyFingerprint =
+                    $"{id}|{mobile}|{day:yyyy-MM-dd}|{time:HH:mm}|{(request.ConsultMode ?? request.VisitType ?? "").Trim()}|{(request.PayAtClinic == true ? "1" : "0")}";
+                var prior = await _context.Database.SqlQuery<BookingIdempotencyRow>($@"
+                    SELECT TOP 1 PatientAppId, BookingToken, BodyFingerprint
+                    FROM dbo.PublicBookingIdempotency
+                    WHERE IdempotencyKey = {idemKey} AND DoctorId = {id} AND PatientMobile = {mobile}
+                      AND CreatedAt >= DATEADD(hour, -24, SYSUTCDATETIME())
+                    ORDER BY PublicBookingIdempotencyId DESC").FirstOrDefaultAsync();
+                if (prior != null)
+                {
+                    if (!string.Equals(prior.BodyFingerprint, bodyFingerprint, StringComparison.Ordinal))
+                        return Conflict(new { success = false, code = "IDEMPOTENCY_CONFLICT", message = "Idempotency-Key was reused with a different body." });
+                    var priorAppt = await _context.PatientAppointments.AsNoTracking()
+                        .FirstOrDefaultAsync(a => a.PatientAppId == prior.PatientAppId && a.DeleteStatus != true);
+                    if (priorAppt != null)
+                    {
+                        var priorTele = priorAppt.IsTele == true
+                            || S3AppointmentRules.NormalizeMode(priorAppt.ConsultMode) == S3AppointmentRules.Tele;
+                        var priorFees = await _fees.ResolveConsultFeesAsync(id);
+                        var priorPayClinic = await _fees.PayAtClinicEnabledAsync(id);
+                        return Ok(new
+                        {
+                            success = true,
+                            data = new
+                            {
+                                patientAppId = priorAppt.PatientAppId,
+                                bookingToken = priorAppt.BookingToken,
+                                paymentStatus = priorAppt.PaymentStatus,
+                                holdExpiresAt = priorAppt.HoldExpiresAt,
+                                consentPolicyVersion = priorAppt.ConsentPolicyVersion,
+                                consultMode = priorAppt.ConsultMode,
+                                consultFee = priorTele ? priorFees.TeleFee : priorFees.InClinicFee,
+                                currency = priorFees.Currency,
+                                payAtClinicAllowed = priorAppt.PayAtClinicAllowed,
+                                payAtClinicEnabled = priorPayClinic,
+                                idempotent = true
+                            }
+                        });
+                    }
+                }
+            }
             // Same slot engine as the staff calendar. A cancelled visit does not keep the slot.
             var engine = await _appointments.GetAppointmentSlotsAsync(new GetAppointmentSlotsRequest
             {
@@ -261,8 +420,14 @@ namespace Homeocentrum.Niga.API.Controllers
                 .FirstOrDefaultAsync();
 
             var payAtClinicEnabled = await _fees.PayAtClinicEnabledAsync(id);
-            if (request.PayAtClinic == true && !payAtClinicEnabled)
+            var payAtClinic = request.PayAtClinic == true;
+            if (payAtClinic && !payAtClinicEnabled)
                 return BadRequest(new { success = false, code = "PAY_AT_CLINIC_DISABLED", message = "This doctor does not accept pay at clinic." });
+
+            // Hold only — do not treat as paid / do not send "appointment booked" push here.
+            // Razorpay ids on hold are usually null; when both arrive (late retry) and payAtClinic is false, store later via UpdatePayment.
+            var razorpayOrderId = payAtClinic ? null : NullIfWhite(request.RazorpayOrderId);
+            var razorpayPaymentId = payAtClinic ? null : NullIfWhite(request.RazorpayPaymentId);
 
             var token = Guid.NewGuid().ToString("N");
             var mode = S3AppointmentRules.NormalizeMode(request.ConsultMode ?? request.VisitType);
@@ -273,6 +438,7 @@ namespace Homeocentrum.Niga.API.Controllers
                 PatientId = patient.PatientId,
                 DoctorId = id,
                 UserId = doctor.UserId ?? 0,
+                BookedByUserId = bookedByUserId,
                 AppointmentDate = day,
                 AppointmentTime = time,
                 Status = PatientsStatus.NotArrived.GetDisplayName(),
@@ -282,12 +448,22 @@ namespace Homeocentrum.Niga.API.Controllers
                 ConsultMode = mode,
                 IsTele = isTele,
                 PaymentStatus = "PENDING",
-                PayAtClinicAllowed = request.PayAtClinic ?? payAtClinicEnabled,
+                PaymentMethod = payAtClinic ? "PAY_AT_CLINIC" : null,
+                PayAtClinicAllowed = payAtClinic,
+                BookingChannel = "PatientApp",
                 HoldExpiresAt = DateTime.UtcNow.AddMinutes(15),
                 ConsentPolicyVersion = request.ConsentPolicyVersion ?? policy
             };
             _context.PatientAppointments.Add(appt);
             await _context.SaveChangesAsync();
+
+            if (!string.IsNullOrEmpty(idemKey) && bodyFingerprint != null)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.PublicBookingIdempotency
+                        (IdempotencyKey, DoctorId, PatientMobile, BodyFingerprint, PatientAppId, BookingToken, CreatedAt)
+                    VALUES ({idemKey}, {id}, {mobile}, {bodyFingerprint}, {appt.PatientAppId}, {appt.BookingToken}, SYSUTCDATETIME())");
+            }
 
             return Ok(new
             {
@@ -298,12 +474,18 @@ namespace Homeocentrum.Niga.API.Controllers
                     patientAppId = appt.PatientAppId,
                     bookingToken = appt.BookingToken,
                     paymentStatus = appt.PaymentStatus,
+                    paymentMethod = appt.PaymentMethod,
                     holdExpiresAt = appt.HoldExpiresAt,
                     consentPolicyVersion = appt.ConsentPolicyVersion,
                     consultMode = appt.ConsultMode,
                     consultFee = isTele ? fees.TeleFee : fees.InClinicFee,
+                    currency = fees.Currency,
                     payAtClinicAllowed = appt.PayAtClinicAllowed,
-                    payAtClinicEnabled
+                    payAtClinicEnabled,
+                    payAtClinic,
+                    userId = appt.BookedByUserId,
+                    razorpay_order_id = razorpayOrderId,
+                    razorpay_payment_id = razorpayPaymentId
                 }
             });
         }
@@ -343,6 +525,7 @@ namespace Homeocentrum.Niga.API.Controllers
                     appt.HoldExpiresAt,
                     appt.ConsentPolicyVersion,
                     consultFee = isTele ? fees.TeleFee : fees.InClinicFee,
+                    currency = fees.Currency,
                     payAtClinicEnabled
                 }
             });
@@ -462,7 +645,11 @@ namespace Homeocentrum.Niga.API.Controllers
 
             var latest = await _context.Database.SqlQuery<HighlightReview>($@"
                 SELECT TOP ({reviews}) r.ReviewId, r.Rating, r.Text, r.At, d.DoctorId,
-                       LTRIM(RTRIM(CONCAT(d.FirstName, N' ', d.LastName))) AS DoctorName, d.City
+                       LTRIM(RTRIM(CONCAT(
+                           ISNULL(d.FirstName, N''),
+                           CASE WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.MiddleName, N''))), N'') IS NULL THEN N'' ELSE N' ' + LTRIM(RTRIM(d.MiddleName)) END,
+                           CASE WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.LastName, N''))), N'') IS NULL THEN N'' ELSE N' ' + LTRIM(RTRIM(d.LastName)) END
+                       ))) AS DoctorName, d.City
                 FROM dbo.Review r
                 INNER JOIN dbo.Doctor d ON d.DoctorId = r.DoctorId
                 WHERE r.Status = N'APPROVED' AND r.Rating >= 4 AND LEN(LTRIM(RTRIM(ISNULL(r.Text, N'')))) >= 20
@@ -515,19 +702,32 @@ namespace Homeocentrum.Niga.API.Controllers
 
         private PublicDoctorCardDto MapCard(Doctor d, string? qualification, ReviewStat? stats = null)
         {
-            var name = string.Join(" ", new[] { d.FirstName, d.MiddleName, d.LastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            var first = string.IsNullOrWhiteSpace(d.FirstName) ? null : d.FirstName.Trim();
+            var middle = string.IsNullOrWhiteSpace(d.MiddleName) ? null : d.MiddleName.Trim();
+            var last = string.IsNullOrWhiteSpace(d.LastName) ? null : d.LastName.Trim();
+            var name = string.Join(" ", new[] { first, middle, last }.Where(s => !string.IsNullOrWhiteSpace(s)));
             return new PublicDoctorCardDto
             {
                 DoctorId = d.DoctorId,
+                FirstName = first,
+                MiddleName = middle,
+                LastName = last,
                 DisplayName = name,
                 Qualification = qualification,
                 City = d.City,
                 ClinicName = d.ClinicName,
                 ConsultFeeInClinic = d.ConsultFeeInClinic,
                 ConsultFeeTele = d.ConsultFeeTele,
+                FeeCurrency = string.IsNullOrWhiteSpace(d.FeeCurrency) ? null : d.FeeCurrency,
                 IsOnline = d.IsOnline,
                 Verified = string.Equals(d.VerificationStatus, "Verified", StringComparison.OrdinalIgnoreCase),
                 PhotoPath = d.PhotoPath,
+                PhotoUrl = string.IsNullOrWhiteSpace(d.PhotoPath)
+                    ? null
+                    : PublicApiUrl.For(Request, $"/api/Profile/Photo/{d.DoctorId}"),
+                RegistrationNumber = string.IsNullOrWhiteSpace(d.PassingCertNo) ? null : d.PassingCertNo,
+                PassingUniversity = string.IsNullOrWhiteSpace(d.PassingUniversity) ? null : d.PassingUniversity,
+                YearsExperience = null,
                 RankingSummary = RankingSummary(d, qualification),
                 RankingReasons = RankingReasons(d, qualification),
                 AverageRating = stats is { ReviewCount: > 0 } ? stats.AverageRating : null,
@@ -554,11 +754,83 @@ namespace Homeocentrum.Niga.API.Controllers
             return map;
         }
 
+        private async Task<Dictionary<int, DateTime?>> LoadNextAvailableAsync(List<int> doctorIds)
+        {
+            var map = new Dictionary<int, DateTime?>();
+            if (doctorIds == null || doctorIds.Count == 0) return map;
+            var today = DateTime.Today;
+            var schedules = await _context.DoctorDailySchedules.AsNoTracking()
+                .Where(s => doctorIds.Contains(s.DoctorId) && s.ScheduleDate >= today)
+                .OrderBy(s => s.ScheduleDate)
+                .Select(s => new { s.DoctorId, s.ScheduleDate, s.WorkStartTime })
+                .ToListAsync();
+            foreach (var doctorId in doctorIds.Distinct())
+            {
+                var next = schedules.FirstOrDefault(s => s.DoctorId == doctorId);
+                map[doctorId] = next == null
+                    ? null
+                    : next.ScheduleDate.Date.Add(next.WorkStartTime.ToTimeSpan());
+            }
+            return map;
+        }
+
+        private async Task EnsureDoctorCareCategoryAsync()
+        {
+            await _context.Database.ExecuteSqlRawAsync("""
+                IF OBJECT_ID(N'dbo.DoctorCareCategory', N'U') IS NULL
+                CREATE TABLE dbo.DoctorCareCategory (
+                    DoctorId int NOT NULL,
+                    CareCategoryId int NOT NULL,
+                    CONSTRAINT PK_DoctorCareCategory PRIMARY KEY (DoctorId, CareCategoryId)
+                );
+                """);
+        }
+
+        private async Task EnsurePublicBookingIdempotencyAsync()
+        {
+            await _context.Database.ExecuteSqlRawAsync("""
+                IF OBJECT_ID(N'dbo.PublicBookingIdempotency', N'U') IS NULL
+                CREATE TABLE dbo.PublicBookingIdempotency (
+                    PublicBookingIdempotencyId int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                    IdempotencyKey nvarchar(80) NOT NULL,
+                    DoctorId int NOT NULL,
+                    PatientMobile nvarchar(20) NOT NULL,
+                    BodyFingerprint nvarchar(200) NOT NULL,
+                    PatientAppId int NOT NULL,
+                    BookingToken nvarchar(64) NOT NULL,
+                    CreatedAt datetime2 NOT NULL
+                );
+                """);
+        }
+
+        private async Task EnsureBookedByUserIdColumnAsync()
+        {
+            await _context.Database.ExecuteSqlRawAsync("""
+                IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
+                    ALTER TABLE dbo.PatientAppointment ADD BookedByUserId BIGINT NULL;
+                """);
+        }
+
+        private static string? NullIfWhite(string? value)
+            => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        private sealed class BookingIdempotencyRow
+        {
+            public int PatientAppId { get; set; }
+            public string BookingToken { get; set; } = "";
+            public string BodyFingerprint { get; set; } = "";
+        }
+
         private sealed class ReviewStat
         {
             public int DoctorId { get; set; }
             public decimal AverageRating { get; set; }
             public int ReviewCount { get; set; }
+        }
+
+        private sealed class IdCount
+        {
+            public int Id { get; set; }
         }
 
         private static string RankingSummary(Doctor d, string? qualification)

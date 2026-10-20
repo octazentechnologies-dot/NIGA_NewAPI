@@ -11,27 +11,54 @@ namespace Homeocentrum.Niga.API.Domain.Services;
 /// <summary>
 /// COM-01.02 — sends queued SMS rows once Msg91 or Twilio keys are present.
 /// Rows stay pending while keys are empty. A failed send does not delete the row.
+/// Does not send on API/IIS start: waits for <see cref="SmsOptions.StartupGraceMinutes"/>,
+/// then suppresses outbox rows that already existed before this process started.
 /// </summary>
 public sealed class SmsOutboxWorker : BackgroundService
 {
     private readonly IServiceScopeFactory _scopes;
     private readonly IOptions<SmsOptions> _sms;
+    private readonly SmsStartupGate _startup;
     private readonly ILogger<SmsOutboxWorker> _logger;
+    private bool _suppressedPreStartRows;
 
-    public SmsOutboxWorker(IServiceScopeFactory scopes, IOptions<SmsOptions> sms, ILogger<SmsOutboxWorker> logger)
+    public SmsOutboxWorker(
+        IServiceScopeFactory scopes,
+        IOptions<SmsOptions> sms,
+        SmsStartupGate startup,
+        ILogger<SmsOutboxWorker> logger)
     {
         _scopes = scopes;
         _sms = sms;
+        _startup = startup;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Never drain on the first tick after process start (IIS recycle / deploy).
+        var initialWait = _startup.RemainingGrace;
+        if (initialWait > TimeSpan.Zero)
+        {
+            _logger.LogInformation(
+                "SMS outbox waiting {Minutes:0.#} min after process start before sending.",
+                initialWait.TotalMinutes);
+            try { await Task.Delay(initialWait, stoppingToken); }
+            catch (OperationCanceledException) { return; }
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await DrainAsync(stoppingToken);
+                if (_startup.IsInGracePeriod)
+                {
+                    _logger.LogDebug("SMS outbox skipped — still in startup grace period.");
+                }
+                else
+                {
+                    await DrainAsync(stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -56,17 +83,43 @@ public sealed class SmsOutboxWorker : BackgroundService
     private async Task DrainAsync(CancellationToken cancellationToken)
     {
         var options = _sms.Value ?? new SmsOptions();
-        var ready = options.Msg91.IsConfigured() || options.Twilio.IsConfigured();
+        if (!options.Enabled)
+            return;
+        var provider = (options.Provider ?? "Stub").Trim();
+        var ready = provider.Equals("Twilio", StringComparison.OrdinalIgnoreCase)
+            ? options.Twilio.IsConfigured()
+            : provider.Equals("Msg91", StringComparison.OrdinalIgnoreCase) && options.Msg91.IsConfigured();
         if (!ready)
             return;
 
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NIGACentrumContext>();
         var sender = scope.ServiceProvider.GetRequiredService<ISmsSender>();
+
+        if (!_suppressedPreStartRows)
+        {
+            // Local CreatedAt is used elsewhere as DateTime.Now — compare in local clock.
+            var processStartedLocal = _startup.ProcessStartedUtc.ToLocalTime();
+            var suppressed = await db.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.NotificationOutbox
+                SET Status = N'SKIPPED_STARTUP',
+                    LastError = N'Suppressed on API/IIS process start (deploy or app-pool recycle).'
+                WHERE Channel = N'SMS'
+                  AND Status IN (N'PENDING', N'PENDING_KEYS', N'QUEUED')
+                  AND CreatedAt < {processStartedLocal}", cancellationToken);
+            _suppressedPreStartRows = true;
+            if (suppressed > 0)
+            {
+                _logger.LogInformation(
+                    "Suppressed {Count} pre-start SMS outbox row(s); they will not send after this process start.",
+                    suppressed);
+            }
+        }
+
         var rows = await db.Database.SqlQuery<OutboxRow>($@"
             SELECT TOP 20 NotificationOutboxId, EventType, Destination, Body
             FROM dbo.NotificationOutbox
-            WHERE Channel = N'SMS' AND Status IN (N'PENDING', N'PENDING_KEYS')
+            WHERE Channel = N'SMS' AND Status IN (N'PENDING', N'PENDING_KEYS', N'QUEUED')
             ORDER BY NotificationOutboxId").ToListAsync(cancellationToken);
 
         foreach (var row in rows)

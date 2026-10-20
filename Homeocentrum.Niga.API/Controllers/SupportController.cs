@@ -24,11 +24,13 @@ public class SupportController : ControllerBase
 
     /// <summary>SUP-01.02 — patient (or signed-in user) creates a support ticket.</summary>
     [HttpPost("/api/Support/Tickets")]
+    [HttpPost("/api/Doctor/SupportTickets")]
     public Task<IActionResult> CreateTicket([FromBody] SupportTicketCreate request)
         => Done(_s3.CreateTicketAsync(request, User.GetUserId(), DoctorOwnership.GetRoleName(User) ?? "Patient"));
 
-    /// <summary>SUP-01.02 — list tickets the caller opened (patient Mine).</summary>
+    /// <summary>SUP-01.02 — list tickets the caller opened (patient Mine). Doctor alias for the same inbox.</summary>
     [HttpGet("/api/Support/Tickets/Mine")]
+    [HttpGet("/api/Doctor/SupportTickets")]
     public Task<IActionResult> MyTickets()
         => Done(_s3.ListMyTicketsAsync(User.GetUserId()));
 

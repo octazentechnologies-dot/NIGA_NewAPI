@@ -169,7 +169,9 @@ builder.Services.AddSwaggerGen(opt =>
     });
     opt.OperationFilter<ApiSecurityOperationFilter>();
     opt.OperationFilter<ApiReadableSummaryOperationFilter>();
+    opt.OperationFilter<MobileOpenApiDetailFilter>();
     opt.DocumentFilter<ApiTagDescriptionsDocumentFilter>();
+    opt.DocumentFilter<MobileOpenApiDetailFilter>();
 });
 }
 
@@ -333,7 +335,10 @@ if (featureFlags.EnableSwagger)
 {
 // Swagger is behind SwaggerAuth. The sign-in page fills the docs URL from this browser host.
 app.UseMiddleware<SwaggerGateMiddleware>("Homeocentrum API");
-app.UseSwagger();
+app.UseSwagger(options =>
+{
+    options.PreSerializeFilters.Add(MobileOpenApiDetailFilter.ApplyServers);
+});
 app.UseSwaggerUI(c =>
 {
     ApiAudienceSwagger.AddEndpoints(c);

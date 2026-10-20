@@ -1,4 +1,3 @@
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -19,14 +18,14 @@ namespace Homeocentrum.Niga.API.Domain.Services
             _logger = logger;
         }
 
-        public Task<bool> SendAsync(string destination, string message, CancellationToken cancellationToken = default)
+        public Task<SmsSendResult> SendAsync(string destination, string message, CancellationToken cancellationToken = default)
         {
             var masked = PhoneNormalizer.Mask(destination);
             _logger.LogInformation(
                 "SMS stub (PRE-03 vendor not configured). DestinationMasked={Masked} Length={Length}",
                 masked,
                 (message ?? string.Empty).Length);
-            return Task.FromResult(true);
+            return Task.FromResult(SmsSendResult.Ok());
         }
     }
 }

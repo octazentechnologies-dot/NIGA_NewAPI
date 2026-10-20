@@ -33,6 +33,9 @@ public class SmsController : ControllerBase
     [HttpPost("/api/Sms/Templates")]
     public Task<IActionResult> SaveTemplate([FromBody] SmsTemplateWrite request) => Done(_s5.SaveSmsTemplateAsync(request, Caller()));
 
+    [HttpDelete("/api/Sms/Templates/{smsTemplateId:int}")]
+    public Task<IActionResult> DeleteTemplate(int smsTemplateId) => Done(_s5.DeleteSmsTemplateAsync(smsTemplateId, Caller()));
+
     [HttpPost("/api/Sms/Send")]
     public Task<IActionResult> SendSms([FromBody] SmsSendRequest request) => Done(_s5.SendSmsAsync(request, Caller()));
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace Homeocentrum.Niga.API.Domain.DTOs
 {
@@ -19,8 +20,10 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
 
         public bool IsLocked { get; set; } = true;
 
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public TimeOnly? BreakStartTime { get; set; }
 
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public TimeOnly? BreakEndTime { get; set; }
     }
 

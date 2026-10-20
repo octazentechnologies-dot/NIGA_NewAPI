@@ -7,79 +7,49 @@ using Microsoft.AspNetCore.Mvc.Infrastructure;
 namespace Homeocentrum.Niga.API.Domain.Security;
 
 /// <summary>
-/// Failed-login throttle per user name and per client IP (in-memory, per API instance).
-/// Five failures for one user name, or thirty from one IP, within 15 minutes block further attempts for 15 minutes.
+/// Counts failed sign-ins per user name (in-memory, per API instance).
+/// There is no wait / lockout: the user may keep trying.
+/// After more than <see cref="PasswordResetHintAfterFailures"/> failures, the login response
+/// asks them to change the password via forget password.
 /// </summary>
 public static class LoginThrottle
 {
-    public const int MaxFailuresPerUser = 5;
-    public const int MaxFailuresPerIp = 30;
-    public static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
-    public static readonly TimeSpan Block = TimeSpan.FromMinutes(15);
+    /// <summary>Wrong attempts above this number get the forget-password message.</summary>
+    public const int PasswordResetHintAfterFailures = 15;
+
+    public const string ForgetPasswordMessage =
+        "Please change password via forget password";
 
     private sealed class Entry
     {
         public int Failures;
-        public DateTime WindowStartUtc;
-        public DateTime BlockedUntilUtc;
     }
 
+    // Case-sensitive keys: Tufan_Patient and tufan_patient are different counters.
     private static readonly ConcurrentDictionary<string, Entry> Entries = new(StringComparer.Ordinal);
 
-    public static TimeSpan? BlockedFor(string? userName, string? ip, DateTime? nowUtc = null)
+    public static int FailureCount(string? userName)
     {
-        var now = nowUtc ?? DateTime.UtcNow;
-        TimeSpan? longest = null;
-        foreach (var key in Keys(userName, ip))
-        {
-            if (Entries.TryGetValue(key, out var e))
-            {
-                lock (e)
-                {
-                    if (e.BlockedUntilUtc > now && (longest == null || e.BlockedUntilUtc - now > longest))
-                        longest = e.BlockedUntilUtc - now;
-                }
-            }
-        }
-        return longest;
+        if (string.IsNullOrWhiteSpace(userName))
+            return 0;
+        return Entries.TryGetValue(UserKey(userName), out var e) ? e.Failures : 0;
     }
 
-    public static void RecordFailure(string? userName, string? ip, DateTime? nowUtc = null)
+    public static bool ShouldSuggestPasswordReset(string? userName)
+        => FailureCount(userName) > PasswordResetHintAfterFailures;
+
+    public static void RecordFailure(string? userName, string? ip = null, DateTime? nowUtc = null)
     {
-        var now = nowUtc ?? DateTime.UtcNow;
+        _ = ip;
+        _ = nowUtc;
+        if (string.IsNullOrWhiteSpace(userName))
+            return;
         if (Entries.Count > 50_000)
-            Purge(now);
-        foreach (var key in Keys(userName, ip))
+            Purge();
+        var e = Entries.GetOrAdd(UserKey(userName), _ => new Entry());
+        lock (e)
         {
-            var isUser = key.StartsWith("u:", StringComparison.Ordinal);
-            var limit = isUser ? MaxFailuresPerUser : MaxFailuresPerIp;
-            var e = Entries.GetOrAdd(key, _ => new Entry { WindowStartUtc = now });
-            var blockStarted = false;
-            lock (e)
-            {
-                if (now - e.WindowStartUtc > Window)
-                {
-                    e.WindowStartUtc = now;
-                    e.Failures = 0;
-                }
-                e.Failures++;
-                if (e.Failures >= limit)
-                {
-                    blockStarted = e.Failures == limit;
-                    e.BlockedUntilUtc = now + Block;
-                }
-            }
-            if (blockStarted)
-            {
-                Logging.AppFileLog.SendOpsAlert("login-block|" + key, isUser ? "Sign-in blocked for a user name" : "Sign-in blocked for a client IP",
-                    new Dictionary<string, string>
-                    {
-                        [isUser ? "User name" : "Client IP"] = key[(key.IndexOf(':') + 1)..],
-                        ["Failed attempts"] = $"{limit} within {(int)Window.TotalMinutes} minutes",
-                        ["Blocked until (local)"] = (now + Block).ToLocalTime().ToString("dd-MMM-yyyy HH:mm"),
-                        ["Meaning"] = isUser ? "Password guessing against one account" : "Many accounts tried from one address",
-                    });
-            }
+            e.Failures++;
         }
     }
 
@@ -91,21 +61,16 @@ public static class LoginThrottle
 
     public static void ResetAll() => Entries.Clear();
 
-    private static IEnumerable<string> Keys(string? userName, string? ip)
-    {
-        if (!string.IsNullOrWhiteSpace(userName)) yield return UserKey(userName);
-        if (!string.IsNullOrWhiteSpace(ip)) yield return "ip:" + ip.Trim();
-    }
+    private static string UserKey(string userName) => "u:" + userName.Trim();
 
-    private static string UserKey(string userName) => "u:" + userName.Trim().ToLowerInvariant();
-
-    private static void Purge(DateTime now)
+    private static void Purge()
     {
+        // Soft cap only: drop entries that have never exceeded the hint threshold.
         foreach (var pair in Entries)
         {
             lock (pair.Value)
             {
-                if (pair.Value.BlockedUntilUtc < now && now - pair.Value.WindowStartUtc > Window)
+                if (pair.Value.Failures <= PasswordResetHintAfterFailures)
                     Entries.TryRemove(pair.Key, out _);
             }
         }
@@ -120,21 +85,8 @@ public sealed class LoginThrottleAttribute : ActionFilterAttribute
 
     public override void OnActionExecuting(ActionExecutingContext context)
     {
-        var userName = ReadUserName(context.ActionArguments.Values);
-        context.HttpContext.Items[UserKey] = userName;
-        var wait = LoginThrottle.BlockedFor(userName, ClientIp(context.HttpContext));
-        if (wait != null)
-        {
-            var minutes = Math.Max(1, (int)Math.Ceiling(wait.Value.TotalMinutes));
-            context.HttpContext.Response.Headers["Retry-After"] = ((int)wait.Value.TotalSeconds).ToString();
-            context.Result = new ObjectResult(new
-            {
-                success = false,
-                code = "TOO_MANY_FAILED_LOGINS",
-                message = $"Too many failed sign-in attempts. Try again in {minutes} minute(s)."
-            })
-            { StatusCode = StatusCodes.Status429TooManyRequests };
-        }
+        context.HttpContext.Items[UserKey] = ReadUserName(context.ActionArguments.Values);
+        // No wait / lockout — always allow the login attempt.
     }
 
     public override void OnActionExecuted(ActionExecutedContext context)
@@ -142,21 +94,22 @@ public sealed class LoginThrottleAttribute : ActionFilterAttribute
         var userName = context.HttpContext.Items[UserKey] as string;
         var status = (context.Result as IStatusCodeActionResult)?.StatusCode ?? (context.Exception == null ? 200 : 500);
         if (status == StatusCodes.Status401Unauthorized)
-            LoginThrottle.RecordFailure(userName, ClientIp(context.HttpContext));
+        {
+            LoginThrottle.RecordFailure(userName);
+            if (LoginThrottle.ShouldSuggestPasswordReset(userName))
+            {
+                context.Result = new ObjectResult(new
+                {
+                    success = false,
+                    message = LoginThrottle.ForgetPasswordMessage
+                })
+                { StatusCode = StatusCodes.Status401Unauthorized };
+            }
+        }
         else if (status >= 200 && status < 300)
+        {
             LoginThrottle.RecordSuccess(userName);
-    }
-
-    /// <summary>
-    /// Loopback means the caller came through a local proxy or tunnel that hid the real address, so every user
-    /// would share one IP bucket; only the per-user-name limit applies then.
-    /// </summary>
-    private static string? ClientIp(HttpContext context)
-    {
-        var ip = context.Connection.RemoteIpAddress;
-        if (ip == null) return null;
-        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
-        return System.Net.IPAddress.IsLoopback(ip) ? null : ip.ToString();
+        }
     }
 
     private static string? ReadUserName(IEnumerable<object?> arguments)

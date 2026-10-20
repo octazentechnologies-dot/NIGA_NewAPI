@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
@@ -18,11 +19,16 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
     {
         private readonly NIGACentrumContext _context;
         private readonly IAppointmentRescheduleNotifier _rescheduleNotifier;
+        private readonly IPushNotificationSender _push;
 
-        public PatientAppointmentService(NIGACentrumContext context, IAppointmentRescheduleNotifier rescheduleNotifier)
+        public PatientAppointmentService(
+            NIGACentrumContext context,
+            IAppointmentRescheduleNotifier rescheduleNotifier,
+            IPushNotificationSender push)
         {
             _context = context;
             _rescheduleNotifier = rescheduleNotifier;
+            _push = push;
         }
 
         public PatientAppointmentModel GetPatientAppById(long PatientAppId, ref ErrorResponseModel errorResponseModel)
@@ -154,6 +160,30 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 };
                 _context.PatientAppointments.Add(patientAppEntity);
                 _context.SaveChanges();
+                try
+                {
+                    var mobile = _context.Patients.AsNoTracking()
+                        .Where(p => p.PatientId == patientAppEntity.PatientId)
+                        .Select(p => p.MobileNo)
+                        .FirstOrDefault();
+                    var doctor = _context.Doctors.AsNoTracking()
+                        .Where(d => d.DoctorId == patientAppEntity.DoctorId)
+                        .Select(d => new { d.FirstName, d.MiddleName, d.LastName })
+                        .FirstOrDefault();
+                    var doctorLabel = doctor == null
+                        ? "your doctor"
+                        : string.Join(" ", new[] { doctor.FirstName, doctor.MiddleName, doctor.LastName }
+                            .Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
+                    if (string.IsNullOrWhiteSpace(doctorLabel)) doctorLabel = "your doctor";
+                    var dateLabel = patientAppEntity.AppointmentDate?.ToString("dd MMM yyyy") ?? "";
+                    var timeLabel = NotificationClock.Format12Hour(patientAppEntity.AppointmentTime);
+                    _rescheduleNotifier.NotifyConfirmAsync(mobile, false, doctorLabel, dateLabel, timeLabel)
+                        .GetAwaiter().GetResult();
+                }
+                catch
+                {
+                    // Appointment is saved; SMS must not roll back the booking.
+                }
                 return "Patient Appointment Saved Successfully";
             }
 
@@ -330,8 +360,15 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             }
 
             // Update status
+            var previousStatus = appointment.Status;
             appointment.Status = model.Status.ToUpper();
             _context.SaveChanges();
+
+            if (string.Equals(appointment.Status, "NOT ARRIVED", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(previousStatus, "NOT ARRIVED", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = NotifyMissedFollowUpAppointmentAsync(appointment);
+            }
 
             return new PatientAppointmentModel
             {
@@ -347,6 +384,91 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 WhatsAppOptInDate = appointment.Patient.WhatsAppOptInDate,
                 Message = "Appointment status updated successfully"
             };
+        }
+
+        /// <summary>
+        /// When reception marks NOT ARRIVED on a follow-up related visit, notify the doctor once.
+        /// </summary>
+        private async Task NotifyMissedFollowUpAppointmentAsync(PatientAppointment appointment)
+        {
+            try
+            {
+                var visitType = appointment.VisitType ?? "";
+                var isFollowUpVisit = visitType.Contains("FOLLOW", StringComparison.OrdinalIgnoreCase);
+                var visitDate = (appointment.AppointmentDate ?? DateTime.Today).Date;
+                if (!isFollowUpVisit)
+                {
+                    var hasOpenFollowUp = await _context.Database.SqlQuery<CountOne>($@"
+                        SELECT COUNT(1) AS Value
+                        FROM dbo.FollowUpPlan fp
+                        INNER JOIN dbo.FollowUpTask ft ON ft.FollowUpPlanId = fp.FollowUpPlanId
+                        WHERE fp.PatientId = {appointment.PatientId}
+                          AND fp.DoctorId = {appointment.DoctorId}
+                          AND ft.Status = N'OPEN'
+                          AND ft.DueDate <= {visitDate}").FirstOrDefaultAsync();
+                    if ((hasOpenFollowUp?.Value ?? 0) <= 0)
+                        return;
+                }
+
+                var already = await _context.Database.SqlQuery<CountOne>($@"
+                    SELECT COUNT(1) AS Value FROM dbo.NotificationOutbox
+                    WHERE EventType = {("APPT_MISS_" + appointment.PatientAppId)}
+                      AND Status IN (N'SENT', N'QUEUED', N'PENDING', N'LOGGED')").FirstOrDefaultAsync();
+                if ((already?.Value ?? 0) > 0)
+                    return;
+
+                var doctorUserId = await _context.Doctors.AsNoTracking()
+                    .Where(d => d.DoctorId == appointment.DoctorId)
+                    .Select(d => d.UserId)
+                    .FirstOrDefaultAsync();
+                if (!doctorUserId.HasValue || doctorUserId.Value <= 0)
+                    return;
+
+                var patientName = appointment.Patient?.PatientName;
+                if (string.IsNullOrWhiteSpace(patientName))
+                {
+                    patientName = await _context.Patients.AsNoTracking()
+                        .Where(p => p.PatientId == appointment.PatientId)
+                        .Select(p => p.PatientName)
+                        .FirstOrDefaultAsync();
+                }
+
+                var patientLabel = string.IsNullOrWhiteSpace(patientName) ? "A patient" : patientName.Trim();
+                var when = NotificationClock.FormatVisit(visitDate, appointment.AppointmentTime);
+                var title = "Follow-up appointment missed";
+                var body = $"{patientLabel} did not arrive for the follow-up visit on {when}.";
+                var deepLink = "/doctor/follow-ups";
+                var userId = (long)doctorUserId.Value;
+
+                var pushResult = await _push.SendToUserAsync(
+                    userId,
+                    title,
+                    body,
+                    new Dictionary<string, string>
+                    {
+                        ["type"] = "APPT_MISSED",
+                        ["patientAppId"] = appointment.PatientAppId.ToString(),
+                        ["deepLink"] = deepLink,
+                    },
+                    "APPT_MISSED");
+
+                var pushStatus = string.IsNullOrWhiteSpace(pushResult.Status) ? "LOGGED" : pushResult.Status.ToUpperInvariant();
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.AppNotification (UserId, Title, Body, PushStatus, Type, DeepLink)
+                    VALUES ({userId}, {title}, {body}, {pushStatus}, N'APPT_MISSED', {deepLink})");
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.NotificationOutbox (Channel, EventType, Destination, Body, Status, LastError, CreatedAt)
+                    VALUES (N'PUSH', {("APPT_MISS_" + appointment.PatientAppId)}, {userId.ToString()}, {body}, N'SENT', NULL, {DateTime.Now})");
+            }
+            catch
+            {
+                /* notification must not block status update */
+            }
+        }
+
+        private sealed class CountOne
+        {
+            public int Value { get; set; }
         }
 
         public PatientAppointmentModel UpdateAppointmentTime(
@@ -456,6 +578,23 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 .ThenBy(x => x.PatientAppId)
                 .ToListAsync();
 
+            var teleByApp = new Dictionary<int, int>();
+            if (appointments.Count > 0)
+            {
+                var sessions = await _context.Database.SqlQuery<TeleSessionIdRow>($@"
+                    SELECT s.PatientAppId, MAX(s.TeleSessionId) AS TeleSessionId
+                    FROM dbo.TeleSession s
+                    INNER JOIN dbo.PatientAppointment a ON a.PatientAppId = s.PatientAppId
+                    WHERE a.UserId = {request.UserId}
+                      AND a.DeleteStatus = 0
+                      AND a.AppointmentDate IS NOT NULL
+                      AND CONVERT(date, a.AppointmentDate) = {appointmentDate}
+                      AND s.Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED')
+                    GROUP BY s.PatientAppId").ToListAsync();
+                foreach (var s in sessions)
+                    teleByApp[s.PatientAppId] = s.TeleSessionId;
+            }
+
             return appointments.Select(appointment => new PatientAppointmentModel
             {
                 PatientAppId = appointment.PatientAppId,
@@ -483,6 +622,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 DateOfBirth = appointment.Patient.DateOfBirth,
                 IsWhatsAppOptIn = appointment.Patient.IsWhatsAppOptIn,
                 WhatsAppOptInDate = appointment.Patient.WhatsAppOptInDate,
+                TeleSessionId = teleByApp.TryGetValue(appointment.PatientAppId, out var sid) ? sid : null,
             }).ToList();
         }
 
@@ -960,6 +1100,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
 
             var oldValue = $"{appointment.AppointmentDate:yyyy-MM-dd} {appointment.AppointmentTime:HH\\:mm\\:ss}";
             var newValue = $"{targetDate:yyyy-MM-dd} {targetTime:HH\\:mm\\:ss}";
+            var oldWhen = NotificationClock.FormatVisit(appointment.AppointmentDate ?? targetDate, appointment.AppointmentTime);
+            var newWhen = NotificationClock.FormatVisit(targetDate, targetTime);
             var timeError = new ErrorResponseModel();
             var updated = UpdateAppointmentTime(new UpdateAppointmentTimeModel
             {
@@ -985,8 +1127,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 result.Notification = await _rescheduleNotifier.NotifyAsync(
                     appointment.Patient?.MobileNo,
                     appointment.Patient?.IsWhatsAppOptIn == true,
-                    oldValue,
-                    newValue);
+                    oldWhen,
+                    newWhen);
             }
             catch (Exception ex)
             {
@@ -995,7 +1137,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     Sms = "logged",
                     WhatsApp = "logged",
                     Push = "later",
-                    Message = $"Your appointment moved from {oldValue} to {newValue}.",
+                    Message = $"Your appointment moved from {oldWhen} to {newWhen}.",
                     Detail = "The appointment change is saved. The patient notice was logged and was not sent."
                 };
                 System.Diagnostics.Trace.TraceWarning("Reschedule notify failed after save: {0}", ex.Message);
@@ -1086,8 +1228,9 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
 
             try
             {
-                var slotLabel =
-                    $"{appointment.AppointmentDate:yyyy-MM-dd} {appointment.AppointmentTime:HH\\:mm\\:ss}";
+                var slotLabel = appointment.AppointmentDate.HasValue
+                    ? NotificationClock.FormatVisit(appointment.AppointmentDate.Value, appointment.AppointmentTime)
+                    : NotificationClock.Format12Hour(appointment.AppointmentTime);
                 result.Notification = await _rescheduleNotifier.NotifyCancelAsync(
                     appointment.Patient?.MobileNo,
                     appointment.Patient?.IsWhatsAppOptIn == true,
@@ -1174,8 +1317,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 var notice = await _rescheduleNotifier.NotifyWaitlistOfferAsync(
                     next.ContactMobile,
                     next.ContactName,
-                    offer.SlotDate,
-                    offer.SlotTime);
+                    appointment.AppointmentDate?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture),
+                    NotificationClock.Format12Hour(appointment.AppointmentTime));
                 offer.Sms = notice.Sms;
                 offer.WhatsApp = notice.WhatsApp;
                 offer.Push = notice.Push;
@@ -1284,6 +1427,12 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             public string ContactMobile { get; set; } = "";
         }
 
+        private sealed class TeleSessionIdRow
+        {
+            public int PatientAppId { get; set; }
+            public int TeleSessionId { get; set; }
+        }
+
         private sealed class CancelPaymentOrderRow
         {
             public long PaymentOrderId { get; set; }
@@ -1371,14 +1520,14 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 .Where(x =>
                     x.DoctorId == doctorId &&
                     x.DeleteStatus != true &&
-                    x.Status != S3AppointmentRules.Cancelled &&
                     x.AppointmentDate.HasValue &&
                     x.AppointmentDate.Value.Date == day);
 
             if (waitingOnly)
             {
                 query = query.Where(x =>
-                    x.Status == "WAITING" || x.Status == "WALK-IN" || x.Status == "E-CONSULT");
+                    x.Status != S3AppointmentRules.Cancelled &&
+                    (x.Status == "WAITING" || x.Status == "WALK-IN" || x.Status == "E-CONSULT"));
             }
 
             var rows = await query

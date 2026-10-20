@@ -47,6 +47,11 @@
     <Content Include="Data\**\*">
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
+    <!-- Firebase Admin SDK key stays in the project; publish copies it next to the API (do not commit). -->
+    <Content Update="homeocentrum-mobile-firebase-adminsdk-fbsvc-a7e5697490.json" Condition="Exists('homeocentrum-mobile-firebase-adminsdk-fbsvc-a7e5697490.json')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 
   <!-- Rebuild copies Domain.dll into this output folder. A running host exe locks that file (MSB3027). -->

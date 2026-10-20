@@ -337,64 +337,56 @@ public class LogRedactorTests
 
 public class LoginThrottleTests
 {
-    // The throttle is process-wide, so every test uses its own user name and IP.
+    // The counter is process-wide, so every test uses its own user name.
     private static string Unique(string prefix) => prefix + Guid.NewGuid().ToString("N")[..8];
 
     [Fact]
-    public void Fifth_failure_for_a_user_blocks_that_user()
+    public void Fifteenth_failure_does_not_hint_yet()
     {
         var user = Unique("u");
-        var now = DateTime.UtcNow;
-        for (var i = 0; i < LoginThrottle.MaxFailuresPerUser - 1; i++)
-            LoginThrottle.RecordFailure(user, Unique("ip"), now);
-        Assert.Null(LoginThrottle.BlockedFor(user, Unique("ip"), now));
-
-        LoginThrottle.RecordFailure(user, Unique("ip"), now);
-        Assert.NotNull(LoginThrottle.BlockedFor(user.ToUpperInvariant(), Unique("ip"), now));
+        for (var i = 0; i < LoginThrottle.PasswordResetHintAfterFailures; i++)
+            LoginThrottle.RecordFailure(user);
+        Assert.Equal(LoginThrottle.PasswordResetHintAfterFailures, LoginThrottle.FailureCount(user));
+        Assert.False(LoginThrottle.ShouldSuggestPasswordReset(user));
     }
 
     [Fact]
-    public void Block_expires_after_the_block_period()
+    public void After_more_than_fifteen_failures_suggests_forget_password()
     {
         var user = Unique("u");
-        var now = DateTime.UtcNow;
-        for (var i = 0; i < LoginThrottle.MaxFailuresPerUser; i++)
-            LoginThrottle.RecordFailure(user, null, now);
-        Assert.Null(LoginThrottle.BlockedFor(user, null, now + LoginThrottle.Block + TimeSpan.FromSeconds(1)));
+        for (var i = 0; i < LoginThrottle.PasswordResetHintAfterFailures + 1; i++)
+            LoginThrottle.RecordFailure(user);
+        Assert.True(LoginThrottle.ShouldSuggestPasswordReset(user));
     }
 
     [Fact]
-    public void Failures_outside_the_window_do_not_add_up()
+    public void Failures_may_continue_with_no_lockout()
     {
         var user = Unique("u");
-        var now = DateTime.UtcNow;
-        for (var i = 0; i < LoginThrottle.MaxFailuresPerUser - 1; i++)
-            LoginThrottle.RecordFailure(user, null, now);
-        var later = now + LoginThrottle.Window + TimeSpan.FromMinutes(1);
-        LoginThrottle.RecordFailure(user, null, later);
-        Assert.Null(LoginThrottle.BlockedFor(user, null, later));
+        for (var i = 0; i < 40; i++)
+            LoginThrottle.RecordFailure(user);
+        Assert.Equal(40, LoginThrottle.FailureCount(user));
+        Assert.True(LoginThrottle.ShouldSuggestPasswordReset(user));
     }
 
     [Fact]
     public void Success_clears_the_user_counter()
     {
         var user = Unique("u");
-        var now = DateTime.UtcNow;
-        for (var i = 0; i < LoginThrottle.MaxFailuresPerUser - 1; i++)
-            LoginThrottle.RecordFailure(user, null, now);
+        for (var i = 0; i < LoginThrottle.PasswordResetHintAfterFailures + 2; i++)
+            LoginThrottle.RecordFailure(user);
         LoginThrottle.RecordSuccess(user);
-        LoginThrottle.RecordFailure(user, null, now);
-        Assert.Null(LoginThrottle.BlockedFor(user, null, now));
+        Assert.Equal(0, LoginThrottle.FailureCount(user));
+        Assert.False(LoginThrottle.ShouldSuggestPasswordReset(user));
     }
 
     [Fact]
-    public void Many_user_names_from_one_ip_block_the_ip()
+    public void Username_counter_is_case_sensitive()
     {
-        var ip = Unique("ip");
-        var now = DateTime.UtcNow;
-        for (var i = 0; i < LoginThrottle.MaxFailuresPerIp; i++)
-            LoginThrottle.RecordFailure(Unique("u"), ip, now);
-        Assert.NotNull(LoginThrottle.BlockedFor(Unique("u"), ip, now));
-        Assert.Null(LoginThrottle.BlockedFor(Unique("u"), Unique("ip"), now));
+        var lower = Unique("abc");
+        var upper = char.ToUpperInvariant(lower[0]) + lower[1..];
+        LoginThrottle.RecordFailure(lower);
+        Assert.Equal(1, LoginThrottle.FailureCount(lower));
+        Assert.Equal(0, LoginThrottle.FailureCount(upper));
     }
 }

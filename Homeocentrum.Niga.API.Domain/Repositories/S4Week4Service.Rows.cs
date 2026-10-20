@@ -134,6 +134,14 @@ public partial class S4Week4Service
         public DateTime? CreatedAt { get; set; }
     }
 
+    private sealed class DoctorPayoutHistRow
+    {
+        public long Id { get; set; }
+        public DateTime At { get; set; }
+        public decimal Amount { get; set; }
+        public string Status { get; set; } = "";
+    }
+
     private sealed class ExceptionRow
     {
         public long PaymentExceptionId { get; set; }
