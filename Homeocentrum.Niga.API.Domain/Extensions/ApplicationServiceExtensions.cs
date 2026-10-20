@@ -67,7 +67,7 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddHttpClient(RazorpayPaymentVerifier.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
             services.AddSingleton<IRazorpayPaymentVerifier, RazorpayPaymentVerifier>();
             services.AddSingleton<ISignedFileUrlService, SignedFileUrlService>();
-            // PRE-03 — Sms:Provider = Stub | Msg91 | Twilio (keys empty → stub log). OTP + appointment notices use ISmsSender.
+            // PRE-03 — Sms:Provider = Stub | Twilio (keys empty → stub log). OTP + appointment notices use ISmsSender.
             services.Configure<SmsOptions>(config.GetSection(SmsOptions.SectionName));
             services.Configure<FirebaseOptions>(config.GetSection(FirebaseOptions.SectionName));
             services.Configure<TeleVideoOptions>(config.GetSection(TeleVideoOptions.SectionName));

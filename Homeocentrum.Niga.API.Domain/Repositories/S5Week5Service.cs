@@ -15,7 +15,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories;
 
 /// <summary>
 /// S5 Week 5 — SMS log, notifications, receipt email, and clinic reports.
-/// SMS goes through <see cref="ISmsSender"/> (Twilio / Msg91 from Sms:* appsettings).
+/// SMS goes through <see cref="ISmsSender"/> (Twilio from Sms:* appsettings).
 /// </summary>
 public partial class S5Week5Service : IS5Week5Service
 {

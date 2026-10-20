@@ -9,7 +9,7 @@ using Homeocentrum.Niga.API.Domain.Data;
 namespace Homeocentrum.Niga.API.Domain.Services;
 
 /// <summary>
-/// COM-01.02 — sends queued SMS rows once Msg91 or Twilio keys are present.
+/// COM-01.02 — sends queued SMS rows once Twilio keys are present.
 /// Rows stay pending while keys are empty. A failed send does not delete the row.
 /// Does not send on API/IIS start: waits for <see cref="SmsOptions.StartupGraceMinutes"/>,
 /// then suppresses outbox rows that already existed before this process started.
@@ -87,8 +87,7 @@ public sealed class SmsOutboxWorker : BackgroundService
             return;
         var provider = (options.Provider ?? "Stub").Trim();
         var ready = provider.Equals("Twilio", StringComparison.OrdinalIgnoreCase)
-            ? options.Twilio.IsConfigured()
-            : provider.Equals("Msg91", StringComparison.OrdinalIgnoreCase) && options.Msg91.IsConfigured();
+            && options.Twilio.IsConfigured();
         if (!ready)
             return;
 

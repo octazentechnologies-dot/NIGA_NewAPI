@@ -167,6 +167,7 @@ internal static class AgoraRtcTokenBuilder
 public sealed class ConfigurableTeleVideoVendor : ITeleVideoVendor
 {
     private readonly TeleVideoOptions _options;
+    private readonly SmsOptions _sms;
     private readonly StubTeleVideoVendor _stub;
     private readonly AgoraTeleVideoVendor _agora;
     private readonly HundredMsTeleVideoVendor _hundredMs;
@@ -174,12 +175,14 @@ public sealed class ConfigurableTeleVideoVendor : ITeleVideoVendor
 
     public ConfigurableTeleVideoVendor(
         IOptions<TeleVideoOptions> options,
+        IOptions<SmsOptions> smsOptions,
         StubTeleVideoVendor stub,
         AgoraTeleVideoVendor agora,
         HundredMsTeleVideoVendor hundredMs,
         ILogger<ConfigurableTeleVideoVendor> logger)
     {
         _options = options.Value ?? new TeleVideoOptions();
+        _sms = smsOptions.Value ?? new SmsOptions();
         _stub = stub;
         _agora = agora;
         _hundredMs = hundredMs;
@@ -217,8 +220,9 @@ public sealed class ConfigurableTeleVideoVendor : ITeleVideoVendor
     private async Task<TeleVideoIssueResult> IssueTwilioShellAsync(TeleVideoIssueRequest request, CancellationToken cancellationToken)
     {
         var stub = await _stub.IssueTokenAsync(request, cancellationToken);
+        var accountSid = _sms.Twilio?.AccountSid?.Trim() ?? string.Empty;
         var tw = _options.Twilio;
-        var ready = tw.IsConfigured();
+        var ready = !string.IsNullOrWhiteSpace(accountSid) && tw.HasApiKeys();
         if (!ready)
             _logger.LogWarning("Twilio Video keys missing — stub token with Twilio client shell.");
 
@@ -231,13 +235,13 @@ public sealed class ConfigurableTeleVideoVendor : ITeleVideoVendor
             ClientConfig = new Dictionary<string, string>
             {
                 ["vendor"] = "Twilio",
-                ["accountSid"] = tw.AccountSid ?? string.Empty,
+                ["accountSid"] = accountSid,
                 ["room"] = request.RoomId,
                 ["identity"] = request.UserAccountId.ToString(),
                 ["ready"] = ready ? "true" : "false",
                 ["hint"] = ready
                     ? "Wire Twilio Video JWT (AccessToken) in ConfigurableTeleVideoVendor when enabling live A/V."
-                    : "Set TeleVideo:Twilio AccountSid / ApiKeySid / ApiKeySecret."
+                    : "Set Sms:Twilio AccountSid and TeleVideo:Twilio ApiKeySid / ApiKeySecret."
             }
         };
     }

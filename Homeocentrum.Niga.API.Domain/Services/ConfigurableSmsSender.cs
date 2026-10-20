@@ -47,7 +47,7 @@ public sealed class ConfigurableSmsSender : ISmsSender
             return SmsSendResult.Fail();
         }
 
-        // RealSms false = dummy OTP mode. Do not call Twilio/Msg91; callers return devCode instead.
+        // RealSms false = dummy OTP mode. Do not call Twilio; callers return devCode instead.
         if (!_options.RealSms)
         {
             _logger.LogInformation(
@@ -66,16 +66,11 @@ public sealed class ConfigurableSmsSender : ISmsSender
         var provider = (_options.Provider ?? "Stub").Trim();
         try
         {
-            if (provider.Equals("Msg91", StringComparison.OrdinalIgnoreCase) && _options.Msg91.IsConfigured())
-                return await SendMsg91Async(to, message, cancellationToken)
-                    ? SmsSendResult.Ok(providerLabel: "Msg91")
-                    : SmsSendResult.Fail();
-
             if (provider.Equals("Twilio", StringComparison.OrdinalIgnoreCase) && _options.Twilio.IsConfigured())
                 return await SendTwilioAsync(to, message, cancellationToken);
 
             await _outbox.EnqueueAsync("SMS", provider, to, message ?? "", "PENDING_KEYS",
-                "Fill Sms:Msg91 or Sms:Twilio in API appsettings. Row will send after keys are set.");
+                "Fill Sms:Twilio in API appsettings. Row will send after keys are set.");
             _logger.LogInformation(
                 "SMS queued PENDING_KEYS ({Provider}). DestinationMasked={Masked} Length={Length}",
                 provider,
@@ -98,33 +93,6 @@ public sealed class ConfigurableSmsSender : ISmsSender
         if (digits.Length == 10 && !string.IsNullOrWhiteSpace(_options.DefaultCountryDialCode))
             return _options.DefaultCountryDialCode.Trim() + digits;
         return digits;
-    }
-
-    private async Task<bool> SendMsg91Async(string to, string message, CancellationToken cancellationToken)
-    {
-        var client = _httpClientFactory.CreateClient("SmsVendor");
-        var url =
-            "https://api.msg91.com/api/sendhttp.php"
-            + "?authkey=" + Uri.EscapeDataString(_options.Msg91.AuthKey)
-            + "&mobiles=" + Uri.EscapeDataString(to)
-            + "&message=" + Uri.EscapeDataString(message ?? string.Empty)
-            + "&sender=" + Uri.EscapeDataString(_options.Msg91.SenderId)
-            + "&route=" + Uri.EscapeDataString(_options.Msg91.Route);
-        if (!string.IsNullOrWhiteSpace(_options.Msg91.OtpTemplateId))
-            url += "&DLT_TE_ID=" + Uri.EscapeDataString(_options.Msg91.OtpTemplateId);
-        if (!string.IsNullOrWhiteSpace(_options.Msg91.DltEntityId))
-            url += "&entityid=" + Uri.EscapeDataString(_options.Msg91.DltEntityId);
-
-        using var response = await client.GetAsync(url, cancellationToken);
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogError("Msg91 SMS failed. Status={Status} Body={Body}", response.StatusCode, body);
-            return false;
-        }
-
-        _logger.LogInformation("Msg91 SMS accepted. DestinationMasked={Masked}", PhoneNormalizer.Mask(to));
-        return true;
     }
 
     private async Task<SmsSendResult> SendTwilioAsync(string to, string message, CancellationToken cancellationToken)

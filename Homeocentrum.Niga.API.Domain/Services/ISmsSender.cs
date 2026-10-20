@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 namespace Homeocentrum.Niga.API.Domain.Services
 {
     /// <summary>
-    /// SEC-07.02 — SMS provider adapter. DI uses <see cref="ConfigurableSmsSender"/> (Stub | Msg91 | Twilio).
+    /// SEC-07.02 — SMS provider adapter. DI uses <see cref="ConfigurableSmsSender"/> (Stub | Twilio).
     /// </summary>
     public interface ISmsSender
     {

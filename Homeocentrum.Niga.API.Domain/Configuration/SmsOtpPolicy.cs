@@ -17,8 +17,6 @@ public static class SmsOtpPolicy
         var provider = (options.Provider ?? "").Trim();
         if (provider.Equals("Twilio", StringComparison.OrdinalIgnoreCase))
             return options.Twilio?.IsConfigured() == true;
-        if (provider.Equals("Msg91", StringComparison.OrdinalIgnoreCase))
-            return options.Msg91?.IsConfigured() == true;
         return false;
     }
 

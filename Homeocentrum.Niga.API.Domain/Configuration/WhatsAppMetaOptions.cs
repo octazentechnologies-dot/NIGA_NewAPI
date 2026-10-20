@@ -1,7 +1,12 @@
 using System;
+using System.Collections.Generic;
 
 namespace Homeocentrum.Niga.API.Domain.Configuration;
 
+/// <summary>
+/// WhatsApp campaigns and notices — single config section.
+/// Provider Twilio reuses Sms:Twilio AccountSid / AuthToken / FromNumber; Meta uses the Meta fields below.
+/// </summary>
 public class WhatsAppMetaOptions
 {
     public const string SectionName = "WhatsAppMeta";
@@ -36,6 +41,27 @@ public class WhatsAppMetaOptions
     /// </summary>
     public string VerifyToken { get; set; } = string.Empty;
 
+    /// <summary>
+    /// WhatsApp sender (whatsapp:+E.164). Empty = whatsapp: + Sms:Twilio:FromNumber.
+    /// </summary>
+    public string WhatsAppFromNumber { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Default / fallback Twilio Content template SID for WhatsApp (trial sample Appointment Reminders).
+    /// </summary>
+    public string WhatsAppDefaultContentSid { get; set; } = "HXfe5ab5f00277942d4d4200328b4d403c";
+
+    /// <summary>
+    /// Optional ContentSid per campaign category / notice key (HospitalService, OffersDiscount, HealthTips, NOTICE).
+    /// </summary>
+    public Dictionary<string, string> WhatsAppContentSids { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// true = try freeform Body first (upgraded accounts). On failure, fall back to ContentSid sample.
+    /// false = always send ContentSid (required on Twilio WhatsApp trial).
+    /// </summary>
+    public bool WhatsAppTryFreeformBodyFirst { get; set; }
+
     public bool IsMetaProvider() =>
         string.Equals(Provider?.Trim(), "Meta", StringComparison.OrdinalIgnoreCase);
 
@@ -48,4 +74,19 @@ public class WhatsAppMetaOptions
 
     public bool IsReceiptWebhookConfigured() =>
         !string.IsNullOrWhiteSpace(AppSecret);
+
+    public string ResolveWhatsAppContentSid(string? categoryOrKey = null)
+    {
+        if (!string.IsNullOrWhiteSpace(categoryOrKey)
+            && WhatsAppContentSids != null
+            && WhatsAppContentSids.TryGetValue(categoryOrKey.Trim(), out var mapped)
+            && !string.IsNullOrWhiteSpace(mapped))
+        {
+            return mapped.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(WhatsAppDefaultContentSid)
+            ? "HXfe5ab5f00277942d4d4200328b4d403c"
+            : WhatsAppDefaultContentSid.Trim();
+    }
 }

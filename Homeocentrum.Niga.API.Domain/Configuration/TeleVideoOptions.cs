@@ -58,15 +58,16 @@ public class AgoraTeleOptions
         !string.IsNullOrWhiteSpace(AppId) && !string.IsNullOrWhiteSpace(AppCertificate);
 }
 
+/// <summary>
+/// Twilio Video API key pair only. AccountSid comes from Sms:Twilio (one Twilio project).
+/// </summary>
 public class TwilioTeleOptions
 {
-    public string AccountSid { get; set; } = string.Empty;
     public string ApiKeySid { get; set; } = string.Empty;
     public string ApiKeySecret { get; set; } = string.Empty;
 
-    public bool IsConfigured() =>
-        !string.IsNullOrWhiteSpace(AccountSid)
-        && !string.IsNullOrWhiteSpace(ApiKeySid)
+    public bool HasApiKeys() =>
+        !string.IsNullOrWhiteSpace(ApiKeySid)
         && !string.IsNullOrWhiteSpace(ApiKeySecret);
 }
 
