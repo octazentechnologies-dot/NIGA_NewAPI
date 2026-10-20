@@ -11,7 +11,7 @@ public interface INotificationOutbox
 }
 
 /// <summary>
-/// PAY-04.04 / APT notify — durable SMS/WhatsApp rows until Msg91 / Meta keys are filled.
+/// PAY-04.04 / APT notify — durable SMS/WhatsApp rows until Twilio / Meta keys are filled.
 /// </summary>
 public sealed class NotificationOutbox : INotificationOutbox
 {

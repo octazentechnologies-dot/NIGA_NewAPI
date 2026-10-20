@@ -121,7 +121,7 @@ namespace Homeocentrum.Niga.API.Controllers
                         ? "OTP created but SMS delivery did not confirm. Check Twilio settings or try again."
                         : "OTP created. SMS is not live; use the development code."
             };
-            // Never return plaintext OTP when Twilio/Msg91 is live.
+            // Never return plaintext OTP when Twilio is live.
             var devCode = SmsOtpPolicy.DevCodeOrNull(_smsOptions, code);
             if (devCode != null)
                 payload["devCode"] = devCode;

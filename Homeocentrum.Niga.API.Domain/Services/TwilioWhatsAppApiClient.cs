@@ -15,7 +15,7 @@ using Homeocentrum.Niga.API.Domain.Security;
 namespace Homeocentrum.Niga.API.Domain.Services;
 
 /// <summary>
-/// Twilio WhatsApp — reuses Sms:Twilio credentials.
+/// Twilio WhatsApp — credentials from Sms:Twilio; From / ContentSid from WhatsAppMeta (single place).
 /// Trial/free accounts must use ContentSid templates; freeform Body is tried only when configured,
 /// then falls back to the sample Appointment Reminders ContentSid so a message still triggers.
 /// </summary>
@@ -23,15 +23,18 @@ public sealed class TwilioWhatsAppApiClient : IWhatsAppMetaApiClient
 {
     private readonly HttpClient _httpClient;
     private readonly TwilioSmsOptions _twilio;
+    private readonly WhatsAppMetaOptions _whatsApp;
     private readonly ILogger<TwilioWhatsAppApiClient> _logger;
 
     public TwilioWhatsAppApiClient(
         HttpClient httpClient,
         IOptions<SmsOptions> smsOptions,
+        IOptions<WhatsAppMetaOptions> whatsAppOptions,
         ILogger<TwilioWhatsAppApiClient> logger)
     {
         _httpClient = httpClient;
         _twilio = smsOptions.Value?.Twilio ?? new TwilioSmsOptions();
+        _whatsApp = whatsAppOptions.Value ?? new WhatsAppMetaOptions();
         _logger = logger;
     }
 
@@ -54,7 +57,7 @@ public sealed class TwilioWhatsAppApiClient : IWhatsAppMetaApiClient
         return SendOutboundAsync(
             recipientNumber,
             messageText,
-            contentSid: _twilio.ResolveWhatsAppContentSid("NOTICE"),
+            contentSid: _whatsApp.ResolveWhatsAppContentSid("NOTICE"),
             mediaUrl: null,
             cancellationToken);
     }
@@ -73,7 +76,7 @@ public sealed class TwilioWhatsAppApiClient : IWhatsAppMetaApiClient
             return SendOutboundAsync(
                 recipientNumber,
                 caption,
-                contentSid: _twilio.ResolveWhatsAppContentSid(),
+                contentSid: _whatsApp.ResolveWhatsAppContentSid(),
                 mediaUrl: null,
                 cancellationToken);
         }
@@ -81,7 +84,7 @@ public sealed class TwilioWhatsAppApiClient : IWhatsAppMetaApiClient
         return SendOutboundAsync(
             recipientNumber,
             caption,
-            contentSid: _twilio.ResolveWhatsAppContentSid(),
+            contentSid: _whatsApp.ResolveWhatsAppContentSid(),
             mediaUrl: mediaId.Trim(),
             cancellationToken);
     }
@@ -102,7 +105,7 @@ public sealed class TwilioWhatsAppApiClient : IWhatsAppMetaApiClient
         }
         else
         {
-            contentSid = _twilio.ResolveWhatsAppContentSid(metaTemplateName);
+            contentSid = _whatsApp.ResolveWhatsAppContentSid(metaTemplateName);
         }
 
         var body = bodyParameters is { Count: > 0 }
@@ -131,11 +134,11 @@ public sealed class TwilioWhatsAppApiClient : IWhatsAppMetaApiClient
             return (false, null, "Recipient mobile number is missing.");
         }
 
-        var fallbackSid = _twilio.ResolveWhatsAppContentSid();
+        var fallbackSid = _whatsApp.ResolveWhatsAppContentSid();
         var primarySid = string.IsNullOrWhiteSpace(contentSid) ? fallbackSid : contentSid.Trim();
 
         // Upgraded accounts may prefer freeform Body; on failure fall back to ContentSid sample.
-        if (_twilio.WhatsAppTryFreeformBodyFirst && !string.IsNullOrWhiteSpace(messageText))
+        if (_whatsApp.WhatsAppTryFreeformBodyFirst && !string.IsNullOrWhiteSpace(messageText))
         {
             var freeform = await PostAsync(to, from, body: messageText, contentSid: null, mediaUrl, cancellationToken);
             if (freeform.Success)
@@ -273,7 +276,7 @@ public sealed class TwilioWhatsAppApiClient : IWhatsAppMetaApiClient
 
     private string ResolveWhatsAppFrom()
     {
-        var overrideFrom = _twilio.WhatsAppFromNumber?.Trim();
+        var overrideFrom = _whatsApp.WhatsAppFromNumber?.Trim();
         if (!string.IsNullOrWhiteSpace(overrideFrom))
         {
             return overrideFrom.StartsWith("whatsapp:", StringComparison.OrdinalIgnoreCase)

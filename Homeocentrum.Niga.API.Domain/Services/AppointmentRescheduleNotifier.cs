@@ -346,11 +346,8 @@ namespace Homeocentrum.Niga.API.Domain.Services
             if (!_smsOptions.Enabled)
                 return false;
             var provider = (_smsOptions.Provider ?? "Stub").Trim();
-            if (provider.Equals("Msg91", StringComparison.OrdinalIgnoreCase))
-                return _smsOptions.Msg91.IsConfigured();
-            if (provider.Equals("Twilio", StringComparison.OrdinalIgnoreCase))
-                return _smsOptions.Twilio.IsConfigured();
-            return false;
+            return provider.Equals("Twilio", StringComparison.OrdinalIgnoreCase)
+                && _smsOptions.Twilio.IsConfigured();
         }
 
         private static string DescribeNotice(AppointmentNotificationResult notice)

@@ -94,7 +94,7 @@ namespace Homeocentrum.Niga.API.Controllers
             var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
             var masked = MaskDestination(request.Destination);
 
-            // Delivery via ISmsSender (ConfigurableSmsSender — Stub / Msg91 / Twilio).
+            // Delivery via ISmsSender (ConfigurableSmsSender — Stub / Twilio).
             // Plaintext OTP is only returned as devCode when real SMS is not live.
             // Twilio Trial sms_2fa embeds its own code — use that for the stored hash.
 

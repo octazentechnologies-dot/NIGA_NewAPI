@@ -17,7 +17,7 @@ public class SmsOtpVerify
 
     public string OtpHash { get; set; } = "";
 
-    /// <summary>Twilio | TwilioTrial | Msg91 | Stub</summary>
+    /// <summary>Twilio | TwilioTrial | Stub</summary>
     public string? Provider { get; set; }
 
     public string? TwilioMessageSid { get; set; }
