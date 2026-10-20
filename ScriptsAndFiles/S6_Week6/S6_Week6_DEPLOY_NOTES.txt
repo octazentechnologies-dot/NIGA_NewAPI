@@ -4,12 +4,13 @@ S6 Week 6 — take this folder to production / last environment
 Location:
   NIGA_NewAPI\ScriptsAndFiles\S6_Week6\
 
-SQL (Database scripts\) — run in numeric order:
+SQL (Database scripts\) — run in this order:
   01_SmsOtpVerify_And_FirebaseNotificationLog.sql
   02_DevicePushToken_DeviceType.sql
   03_DoctorApp_Gap_Schema.sql
   04_Verify_And_Ensure_Gap_Schema.sql
-  05_Verify_S6_Objects.sql   (check only; should print PASSED)
+  06_Runtime_Dev_Schema_Gaps.sql   << includes BookedByUserId, LabOrdersJson, mobile clinic, etc.
+  05_Verify_S6_Objects.sql         (check only; should print PASSED)
 
 Then deploy:
   - New API publish (includes isExpired on Patient/Visits, RealSms, Twilio WhatsApp)
@@ -18,5 +19,9 @@ Then deploy:
 
 Prerequisites (earlier weeks already on prod):
   S1 OtpChallenge, S3 VisitType/ConsultMode, S4/S5 pharmacy/FCM base as already deployed.
+
+Script 06 fixes env gaps that caused:
+  - Invalid column name 'BookedByUserId' (Queue / slots / GetCountApp)
+  - LabOrdersJson missing on FromSql (Patient/Timeline)
 
 See README_PRODUCTION.md for details.
