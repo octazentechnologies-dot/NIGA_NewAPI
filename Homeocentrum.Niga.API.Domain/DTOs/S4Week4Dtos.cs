@@ -211,8 +211,8 @@ public class AppealResolveRequest
 
 public class RemedyLineUpdateRequest
 {
-    [Range(1, int.MaxValue)]
-    public int PotencyId { get; set; }
+    /// <summary>Optional. Omit or null when the doctor does not set a potency. Existing potency is left as-is when omitted.</summary>
+    public int? PotencyId { get; set; }
 
     [StringLength(80)]
     public string? Frequency { get; set; }
@@ -230,7 +230,7 @@ public class SignErxRequest
     public int PatientAppId { get; set; }
 }
 
-/// <summary>Draft prescription. Sign still requires a potency on every line. An empty items list is rejected.</summary>
+/// <summary>Draft prescription. Potency on each line is optional. An empty items list is rejected.</summary>
 public class ErxDraftRequest
 {
     [Range(1, int.MaxValue)]
@@ -249,7 +249,7 @@ public class ErxDraftItem
     [Range(1, int.MaxValue)]
     public int RemedyId { get; set; }
 
-    /// <summary>Optional on a draft. Sign rejects a line that has no potency.</summary>
+    /// <summary>Optional. Leave empty when the doctor does not set a potency.</summary>
     [StringLength(40)]
     public string? PotencyCode { get; set; }
 
