@@ -1,0 +1,1792 @@
+{
+  "root": "/Users/OctazenWork/NIGA_Homepathy/New-API/NIGA_NewAPI/ScriptsAndFiles",
+  "total_sql_files": 107,
+  "unique_sha_total": 91,
+  "duplicate_extra_copies": 16,
+  "by_week": {
+    "S1_Week1": {
+      "file_count": 10,
+      "unique_sha": 10,
+      "duplicate_copies": 0,
+      "historical_count": 10,
+      "delta_vs_historical": 0
+    },
+    "S2_Week2": {
+      "file_count": 27,
+      "unique_sha": 27,
+      "duplicate_copies": 0,
+      "historical_count": 25,
+      "delta_vs_historical": 2
+    },
+    "S3_Week3": {
+      "file_count": 37,
+      "unique_sha": 21,
+      "duplicate_copies": 16,
+      "historical_count": 36,
+      "delta_vs_historical": 1
+    },
+    "S4_Week4": {
+      "file_count": 13,
+      "unique_sha": 13,
+      "duplicate_copies": 0,
+      "historical_count": 4,
+      "delta_vs_historical": 9
+    },
+    "S5_Week5": {
+      "file_count": 15,
+      "unique_sha": 15,
+      "duplicate_copies": 0,
+      "historical_count": null,
+      "delta_vs_historical": "N/A_discovered"
+    },
+    "S6_Week6": {
+      "file_count": 5,
+      "unique_sha": 5,
+      "duplicate_copies": 0,
+      "historical_count": null,
+      "delta_vs_historical": "N/A_discovered"
+    }
+  },
+  "files": [
+    {
+      "week": "S1_Week1",
+      "path": "S1_Week1/Database scripts/01_SEC_M01_Foundation_Security_Server.sql",
+      "name": "01_SEC_M01_Foundation_Security_Server.sql",
+      "size": 13128,
+      "sha256": "0e17d687d778bc0f52d9c9559d9fb2d4ec1ae8ddc2dbd8647d913d19769050a2",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S1_Week1",
+      "path": "S1_Week1/Database scripts/02_ADM_M02_W7_MenuMaster_Account_Pharmacy_Seed.sql",
+      "name": "02_ADM_M02_W7_MenuMaster_Account_Pharmacy_Seed.sql",
+      "size": 6407,
+      "sha256": "4d139a7f0043b319c9005eaa762de87f3b6cc84a9de8fa385abfb839c74139d6",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S1_Week1",
+      "path": "S1_Week1/Database scripts/03_CON_M16_Family_Caregiver.sql",
+      "name": "03_CON_M16_Family_Caregiver.sql",
+      "size": 9830,
+      "sha256": "4d64bbc072f0e769b10b50d760c8e4b5279c9a77922c3214e272ba6a9d414848",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S1_Week1",
+      "path": "S1_Week1/Database scripts/04_S1_Week1_Mobile_Menus_And_Prefs.sql",
+      "name": "04_S1_Week1_Mobile_Menus_And_Prefs.sql",
+      "size": 7759,
+      "sha256": "eaa9575755634205a452b3e1f7e22f92932af9887b9c4ee2d9c50cdd4e9ca087",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S1_Week1",
+      "path": "S1_Week1/Database scripts/05_DEV_Seed_Patient_Portal_TufanPowar.sql",
+      "name": "05_DEV_Seed_Patient_Portal_TufanPowar.sql",
+      "size": 5439,
+      "sha256": "b6f176d4d316a5ce436cbb1e0f4fe4901a7cb52d356a350fac636c8ff4be1df0",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S1_Week1",
+      "path": "S1_Week1/Database scripts/06_VERIFY_S1_Week1.sql",
+      "name": "06_VERIFY_S1_Week1.sql",
+      "size": 5285,
+      "sha256": "23e674b836d674daafe3d76a7b7640b42b44ebbda91205a12183f66871f64c2a",
+      "category": "verification_or_test",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S1_Week1",
+      "path": "S1_Week1/Database scripts/07_UNIT_TEST_S1_Week1_Guards.sql",
+      "name": "07_UNIT_TEST_S1_Week1_Guards.sql",
+      "size": 6826,
+      "sha256": "0881cdc20464be4b83ce9dce752ae7645e1c05c9186d12051c1097ab49eaee2f",
+      "category": "verification_or_test",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S1_Week1",
+      "path": "S1_Week1/Database scripts/08_DEV_Seed_S1_NewTables_Sample_Tested.sql",
+      "name": "08_DEV_Seed_S1_NewTables_Sample_Tested.sql",
+      "size": 16977,
+      "sha256": "bfcdfd0c8127f75601a83ce5d8468027898412e09a587bb8b16a72aadfeefa68",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S1_Week1",
+      "path": "S1_Week1/Database scripts/09_ADM_B04_Doctor_Clinic_Menus.sql",
+      "name": "09_ADM_B04_Doctor_Clinic_Menus.sql",
+      "size": 4361,
+      "sha256": "6666e981f84fb41afdc09cee7c9e5000f328554fd862b7ada5ac1a5d7e99f238",
+      "category": "data",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S1_Week1",
+      "path": "S1_Week1/Database scripts/10_TEST_Sample_Data_Insert.sql",
+      "name": "10_TEST_Sample_Data_Insert.sql",
+      "size": 13428,
+      "sha256": "b32b972bbc57d30c0a3d8af353b4eefa03d202e4c8befe563cea6daef50957c0",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/00_DOC_DoctorDailySchedule_Table.sql",
+      "name": "00_DOC_DoctorDailySchedule_Table.sql",
+      "size": 2610,
+      "sha256": "e93e4a1f1581573ed68cd04a153b3228e7bc0cf98764ba48f4ac7efdcd61d7c2",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/01_DOC_M04_Doctor_Profile_Kyc_Availability.sql",
+      "name": "01_DOC_M04_Doctor_Profile_Kyc_Availability.sql",
+      "size": 4370,
+      "sha256": "710bd5011ad9c8eb5fa837e32096e9c8ed2250df0b4d1b98ab8c8c1ecc5d363a",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/02_WEB_M10_Booking_Token_Policy.sql",
+      "name": "02_WEB_M10_Booking_Token_Policy.sql",
+      "size": 4195,
+      "sha256": "66cdd413916382503cc689fc1da3556faf1d03d0d5cd2be40d813a7080194ec3",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/03_WEB_CLN_Enquiry_CogRun_Activation.sql",
+      "name": "03_WEB_CLN_Enquiry_CogRun_Activation.sql",
+      "size": 2885,
+      "sha256": "8d735438c5569785d7fed464cb0060be7dc056fe360438539a963f4606360fa0",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/04_CLN_M03_3D_Hotspot_SubSection.sql",
+      "name": "04_CLN_M03_3D_Hotspot_SubSection.sql",
+      "size": 1962,
+      "sha256": "6948b4dc460abfff5b76a2a4c86c158ab3d3afeaaf8ec1200daba039c46ebadf",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/05_VERIFY_S2_Week2.sql",
+      "name": "05_VERIFY_S2_Week2.sql",
+      "size": 2640,
+      "sha256": "7b0063552203998e11c0e35ac3ca4e28ff999076c0c8e9c605b3d521b2dd285d",
+      "category": "verification_or_test",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/06_UNIT_TEST_S2_Week2_Guards.sql",
+      "name": "06_UNIT_TEST_S2_Week2_Guards.sql",
+      "size": 3829,
+      "sha256": "ff64950b79b6a38f6f8487787c68c85947bbcafa411f92f2711b005e79dc661d",
+      "category": "verification_or_test",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/07_TEST_Sample_Data_Insert.sql",
+      "name": "07_TEST_Sample_Data_Insert.sql",
+      "size": 16456,
+      "sha256": "9e15eef2bd58e4df351f8cf5cde92ec02dede8f64c4f551f45e2ce2843fcb1a1",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/08_CARE_CATEGORIES_RECEPTION_ARTICLES.sql",
+      "name": "08_CARE_CATEGORIES_RECEPTION_ARTICLES.sql",
+      "size": 5457,
+      "sha256": "f6f9fbec4d898b7701ad80c7d963a60899539110d7bee4899246dccf5b5a81ca",
+      "category": "data",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/09_WEB_TRU_Doctor_Credential_Documents.sql",
+      "name": "09_WEB_TRU_Doctor_Credential_Documents.sql",
+      "size": 4541,
+      "sha256": "321d0b898f8c19f8b90e9f1aadca5f39084d5ab48b028f1f51bd37d218a522ef",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/10_TODAY_SLOTS_POLICY_DIRECTORY.sql",
+      "name": "10_TODAY_SLOTS_POLICY_DIRECTORY.sql",
+      "size": 2966,
+      "sha256": "3cd64a286728c22e4bc1d28e4b03040ec0e54012d89a0e4900ed76c44b90e4df",
+      "category": "data",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/11_FAMILY_RELATION_MASTER.sql",
+      "name": "11_FAMILY_RELATION_MASTER.sql",
+      "size": 3162,
+      "sha256": "14258c5cb8e74818c4bc8793e88e1e6022bdd2b12ba854503332571192b565b5",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/12_DEV_Seed_Role_Users.sql",
+      "name": "12_DEV_Seed_Role_Users.sql",
+      "size": 5487,
+      "sha256": "eba9c11c3e9fbfab48bb96264f78aa2807ff603a7fa9dbed8aeee87830266686",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/13_DOC_Reception_Profile_Menus.sql",
+      "name": "13_DOC_Reception_Profile_Menus.sql",
+      "size": 2868,
+      "sha256": "da8f8a0158f4c57769f59c10f0f53ce0f6e3366600480e8f43f7b96e68267029",
+      "category": "data",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/14_DEV_Dashboard_Users_Verify.sql",
+      "name": "14_DEV_Dashboard_Users_Verify.sql",
+      "size": 2984,
+      "sha256": "d6bf415ad7aa7f4c7f2280eba9b643713cda6b4418401fe88e6c0069f8ec273b",
+      "category": "verification_or_test",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/15_DEV_Seed_Tufan_Role_Logins.sql",
+      "name": "15_DEV_Seed_Tufan_Role_Logins.sql",
+      "size": 15237,
+      "sha256": "615de10b8a31627fde8497db5e1737a320edbab834060ce0797248e32b1df80a",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/16_DEV_Tufan_Role_Logins_Verify.sql",
+      "name": "16_DEV_Tufan_Role_Logins_Verify.sql",
+      "size": 4165,
+      "sha256": "3d63e8f0fba7b022ca89ee33374eeef3a6d338b843f9300459d7d388f4724109",
+      "category": "verification_or_test",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/17_DEV_Tufan_Contact_Email_Mobile.sql",
+      "name": "17_DEV_Tufan_Contact_Email_Mobile.sql",
+      "size": 2503,
+      "sha256": "95e9b6abdb519122097d94aa3a4da2756d49f7c9a4d6c8bcacd52deb2fdf2550",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/19_DEV_Seed_Role_Menus.sql",
+      "name": "19_DEV_Seed_Role_Menus.sql",
+      "size": 18025,
+      "sha256": "eaa9d9142e3096aebc689fdab8d8b424451fa4a5e316ad34665755f52edd7b74",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/22_DEV_Role_Menu_Consistency.sql",
+      "name": "22_DEV_Role_Menu_Consistency.sql",
+      "size": 3649,
+      "sha256": "60e48512858e9075adbf2f9a90f02332e10cca31b12aa8627240afe67b5dc03f",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/23_DEV_Rename_Tufan_Doctor.sql",
+      "name": "23_DEV_Rename_Tufan_Doctor.sql",
+      "size": 4359,
+      "sha256": "2961bbbd95d437b64e7bfa2d50d4c2854488aa5f10f464e18406be4d30e53104",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/24_DEV_Seed_Tufan_Doctor_Clinic.sql",
+      "name": "24_DEV_Seed_Tufan_Doctor_Clinic.sql",
+      "size": 18753,
+      "sha256": "2c06f01f981b2cb00beba3b80b19bb31d0336c466890fd48946aefc0394f8eaa",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/25_DEV_Seed_Tufan_Doctor_Extra_Menus.sql",
+      "name": "25_DEV_Seed_Tufan_Doctor_Extra_Menus.sql",
+      "size": 2285,
+      "sha256": "3f31a4b98370bcda0f95696993fa4e80e7bd8ce7352edd6da52233993ac72ddd",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/25_WEB_Doctor_Credential_FilePath.sql",
+      "name": "25_WEB_Doctor_Credential_FilePath.sql",
+      "size": 2418,
+      "sha256": "29ded31b2deb00fa07897a2d5f4584e2eeb13dd203e669a47a5077f6daea5530",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/26_DEV_Replace_Tufanpowar_Email.sql",
+      "name": "26_DEV_Replace_Tufanpowar_Email.sql",
+      "size": 1760,
+      "sha256": "130973c040969827a4f3d6f469359f8056ee2b7f27a451a8cfc1050cf9c2de9f",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/27_DEV_Tufan_All_Mobile_7768046064.sql",
+      "name": "27_DEV_Tufan_All_Mobile_7768046064.sql",
+      "size": 8307,
+      "sha256": "5df0114d24616f9659be901338358360db1cbdd39e9b29dbb64722cb8910fc0b",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S2_Week2",
+      "path": "S2_Week2/Database scripts/28_DEV_Tufan_Identity.sql",
+      "name": "28_DEV_Tufan_Identity.sql",
+      "size": 4513,
+      "sha256": "90508b85515aa10b56615cbb0b8dde8a5a5d5aeb5cd4f86ed3db23e749f0addb",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/01_S3_Week3_Schema.sql",
+      "name": "01_S3_Week3_Schema.sql",
+      "size": 11914,
+      "sha256": "fee93ac19fb10036ccb81f693a13f3f6a01585387a04bf1d72ebbc39970a63d5",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/01b_M05_APT_02_01.sql",
+      "name": "01b_M05_APT_02_01.sql",
+      "size": 1557,
+      "sha256": "7ed0d9d3afc9c0bbffc41b5c4667518d8dc6167b1fba156db37bee027eaec3dd",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/02_S3_Week3_Menus.sql",
+      "name": "02_S3_Week3_Menus.sql",
+      "size": 3877,
+      "sha256": "2cda741d6360815f496784eabb786307550a5f0348f36a765c666e05bc4fb9ef",
+      "category": "data",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/03_DEV_Seed_S3_Static.sql",
+      "name": "03_DEV_Seed_S3_Static.sql",
+      "size": 6526,
+      "sha256": "c409e1a19cf833fabf6ff7bbe69da0a30dd17db6cac05d1745bbfd7c0951eb18",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/04_M05_APT_09_01.sql",
+      "name": "04_M05_APT_09_01.sql",
+      "size": 2779,
+      "sha256": "3c3b6624c9f76b7c6ebe0a51e069edf074ce26e24e253c6f15f76d3a541a584c",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/05_M06_REC_08_01.sql",
+      "name": "05_M06_REC_08_01.sql",
+      "size": 3033,
+      "sha256": "6a4911ba3e27a3e197fa42b43ba2e566363c97dd9a92f10f257aacbf081473e5",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/05b_M06_REC_02_01.sql",
+      "name": "05b_M06_REC_02_01.sql",
+      "size": 1677,
+      "sha256": "12d1dc4922b39ee06d16a04e898704aa54005e16c70fd74c02dc7038659ba51e",
+      "category": "mixed",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/06_M12_TEL_01_01.sql",
+      "name": "06_M12_TEL_01_01.sql",
+      "size": 2620,
+      "sha256": "2267ee0e59fd279a5b12c345a637612d4a9b2f513e0c9c7e9c0e7be4027d4236",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/06_M12_TEL_07_01.sql",
+      "name": "06_M12_TEL_07_01.sql",
+      "size": 4787,
+      "sha256": "780d7ec97e9ddbdcda1efb7914adebcb3c8167f7f549090a68e528d3717d66a8",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/06_M12_TEL_12_01.sql",
+      "name": "06_M12_TEL_12_01.sql",
+      "size": 5608,
+      "sha256": "dbc2e18a0e4bcf9f4c6bd359364a329076efa7820db4f461642c58f289db5174",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/07_M12_TEL_03_01.sql",
+      "name": "07_M12_TEL_03_01.sql",
+      "size": 5255,
+      "sha256": "8c64dce9c6afc98ec5ae547161817949e9771e9c0fe142ebd4a61992d26bdbc7",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/08_M12_TEL_02_01.sql",
+      "name": "08_M12_TEL_02_01.sql",
+      "size": 6394,
+      "sha256": "7e2b4c3977b544c2485da6a870bd1e6a66a932110834339d4f0b40cf1b17c8fb",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/08_M12_TEL_06_01.sql",
+      "name": "08_M12_TEL_06_01.sql",
+      "size": 3603,
+      "sha256": "6f839b65a10535d9da6940bb1709eb31cdfce4bf51b11156f18429d6d30748b6",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/09_M12_TEL_10_01.sql",
+      "name": "09_M12_TEL_10_01.sql",
+      "size": 4018,
+      "sha256": "22ed35ead36e94fcd84bf09e550d88c3bfdef4d0c12195e09ad9d50c7f75ae5a",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/10_M12_TEL_11_01.sql",
+      "name": "10_M12_TEL_11_01.sql",
+      "size": 3840,
+      "sha256": "a948186e55fc5de05fb9f971af6ffe5c60a0b2fc82d5cf29c1d05ea0d7ddd948",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/10_M14_SUP_01_01.sql",
+      "name": "10_M14_SUP_01_01.sql",
+      "size": 8084,
+      "sha256": "84e7bfbbbc62d04e2555a8f1bc3572fc6b416b904fcf905d0eee42b58f4f8a03",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/11_M14_SUP_03_01.sql",
+      "name": "11_M14_SUP_03_01.sql",
+      "size": 3995,
+      "sha256": "ba943047a4956555e3846f3f7689630b124c75aa94c73321582cf98277b7a80e",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/12_InstantConsult_VisitLink.sql",
+      "name": "12_InstantConsult_VisitLink.sql",
+      "size": 353,
+      "sha256": "03147f02553a678fb07b5c27fb8bdcc7c99549747baa5a08df86b43d1c608d7d",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/12_M14_SUP_06_01.sql",
+      "name": "12_M14_SUP_06_01.sql",
+      "size": 5057,
+      "sha256": "17d30e31d11f7d114fc5a550156225f7baeb8e22aff10f6d0de9de31b2aeeb97",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/13_M14_SUP_07_01.sql",
+      "name": "13_M14_SUP_07_01.sql",
+      "size": 4187,
+      "sha256": "aaeeed7a5fc877de49c8839ad48dd2668827d45a2181bcd20246f22d1f48f835",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "CANONICAL"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/14_M14_SUP_05_01_Enquiry_SLA.sql",
+      "name": "14_M14_SUP_05_01_Enquiry_SLA.sql",
+      "size": 283,
+      "sha256": "8399a921b1603bbf7ad5840614e9c5b2c8c6b1a226bceb7e40427e00f831cd3b",
+      "category": "mixed",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M05_APT_02_01.sql",
+      "name": "M05_APT_02_01.sql",
+      "size": 1557,
+      "sha256": "7ed0d9d3afc9c0bbffc41b5c4667518d8dc6167b1fba156db37bee027eaec3dd",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/01b_M05_APT_02_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M05_APT_09_01.sql",
+      "name": "M05_APT_09_01.sql",
+      "size": 2779,
+      "sha256": "3c3b6624c9f76b7c6ebe0a51e069edf074ce26e24e253c6f15f76d3a541a584c",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/04_M05_APT_09_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M06_REC_02_01.sql",
+      "name": "M06_REC_02_01.sql",
+      "size": 1677,
+      "sha256": "12d1dc4922b39ee06d16a04e898704aa54005e16c70fd74c02dc7038659ba51e",
+      "category": "mixed",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/05b_M06_REC_02_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M06_REC_08_01.sql",
+      "name": "M06_REC_08_01.sql",
+      "size": 3033,
+      "sha256": "6a4911ba3e27a3e197fa42b43ba2e566363c97dd9a92f10f257aacbf081473e5",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/05_M06_REC_08_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M12_TEL_01_01.sql",
+      "name": "M12_TEL_01_01.sql",
+      "size": 2620,
+      "sha256": "2267ee0e59fd279a5b12c345a637612d4a9b2f513e0c9c7e9c0e7be4027d4236",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/06_M12_TEL_01_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M12_TEL_02_01.sql",
+      "name": "M12_TEL_02_01.sql",
+      "size": 6394,
+      "sha256": "7e2b4c3977b544c2485da6a870bd1e6a66a932110834339d4f0b40cf1b17c8fb",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/08_M12_TEL_02_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M12_TEL_03_01.sql",
+      "name": "M12_TEL_03_01.sql",
+      "size": 5255,
+      "sha256": "8c64dce9c6afc98ec5ae547161817949e9771e9c0fe142ebd4a61992d26bdbc7",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/07_M12_TEL_03_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M12_TEL_06_01.sql",
+      "name": "M12_TEL_06_01.sql",
+      "size": 3603,
+      "sha256": "6f839b65a10535d9da6940bb1709eb31cdfce4bf51b11156f18429d6d30748b6",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/08_M12_TEL_06_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M12_TEL_07_01.sql",
+      "name": "M12_TEL_07_01.sql",
+      "size": 4787,
+      "sha256": "780d7ec97e9ddbdcda1efb7914adebcb3c8167f7f549090a68e528d3717d66a8",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/06_M12_TEL_07_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M12_TEL_10_01.sql",
+      "name": "M12_TEL_10_01.sql",
+      "size": 4018,
+      "sha256": "22ed35ead36e94fcd84bf09e550d88c3bfdef4d0c12195e09ad9d50c7f75ae5a",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/09_M12_TEL_10_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M12_TEL_11_01.sql",
+      "name": "M12_TEL_11_01.sql",
+      "size": 3840,
+      "sha256": "a948186e55fc5de05fb9f971af6ffe5c60a0b2fc82d5cf29c1d05ea0d7ddd948",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/10_M12_TEL_11_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M12_TEL_12_01.sql",
+      "name": "M12_TEL_12_01.sql",
+      "size": 5608,
+      "sha256": "dbc2e18a0e4bcf9f4c6bd359364a329076efa7820db4f461642c58f289db5174",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/06_M12_TEL_12_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M14_SUP_01_01.sql",
+      "name": "M14_SUP_01_01.sql",
+      "size": 8084,
+      "sha256": "84e7bfbbbc62d04e2555a8f1bc3572fc6b416b904fcf905d0eee42b58f4f8a03",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/10_M14_SUP_01_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M14_SUP_03_01.sql",
+      "name": "M14_SUP_03_01.sql",
+      "size": 3995,
+      "sha256": "ba943047a4956555e3846f3f7689630b124c75aa94c73321582cf98277b7a80e",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/11_M14_SUP_03_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M14_SUP_06_01.sql",
+      "name": "M14_SUP_06_01.sql",
+      "size": 5057,
+      "sha256": "17d30e31d11f7d114fc5a550156225f7baeb8e22aff10f6d0de9de31b2aeeb97",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/12_M14_SUP_06_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S3_Week3",
+      "path": "S3_Week3/Database scripts/M14_SUP_07_01.sql",
+      "name": "M14_SUP_07_01.sql",
+      "size": 4187,
+      "sha256": "aaeeed7a5fc877de49c8839ad48dd2668827d45a2181bcd20246f22d1f48f835",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": "S3_Week3/Database scripts/13_M14_SUP_07_01.sql",
+      "canonical_or_duplicate": "DUPLICATE_COPY"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/01_S4_Week4_Schema.sql",
+      "name": "01_S4_Week4_Schema.sql",
+      "size": 21017,
+      "sha256": "c0cc20b14a1928511cb24781f7e298264b8e7a9b596a24f16d7aa9a46e5bc8a8",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/02_S4_Notification_Outbox.sql",
+      "name": "02_S4_Notification_Outbox.sql",
+      "size": 1012,
+      "sha256": "4f490ad6fdbf08e86a42c2ae279b1a352048331a7bfd3916af48b047c23c5adc",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/03_S4_Week4_Menus.sql",
+      "name": "03_S4_Week4_Menus.sql",
+      "size": 7056,
+      "sha256": "bcd0d750274d1726a59516b5a6025716044e7c60ce5fcbc0263c74d1d2fff252",
+      "category": "data",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/04_S4_Week4_Demo_Data.sql",
+      "name": "04_S4_Week4_Demo_Data.sql",
+      "size": 6985,
+      "sha256": "61689e90e40bcbef06271cc84f2d6e85a8ecbad9bc9a51afd63e405d5a99f2c8",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/05_S4_UserAddressLocation_Schema.sql",
+      "name": "05_S4_UserAddressLocation_Schema.sql",
+      "size": 7666,
+      "sha256": "8047a1f95f2121be652406e0ec556535adae137c29d45bdb5773f7d8998ab141",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/06_S4_CountryMaster_Data.sql",
+      "name": "06_S4_CountryMaster_Data.sql",
+      "size": 19879,
+      "sha256": "987489845ef3f3c128e210d8b04fb62881994800002c548e1e9dcc86193e5f9f",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/07_S4_StateMaster_Data.sql",
+      "name": "07_S4_StateMaster_Data.sql",
+      "size": 152910,
+      "sha256": "2896b7781d4a4f56ce7a819b295df744e3420171347211c5ebc657b1d4098843",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/08_S4_IndiaLocation_Data.sql",
+      "name": "08_S4_IndiaLocation_Data.sql",
+      "size": 5133088,
+      "sha256": "78496405a9f3df0dc2d1b220513f9792b59644b57bfcee1cd043bceada154781",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/09_S4_AddressLocation_Other.sql",
+      "name": "09_S4_AddressLocation_Other.sql",
+      "size": 2178,
+      "sha256": "989fb1b5fa0432f4d065f815f643b161fd84896f85d07b6a960c02254305e260",
+      "category": "data",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/10_S4_AddressLocation_EnteredBy.sql",
+      "name": "10_S4_AddressLocation_EnteredBy.sql",
+      "size": 1585,
+      "sha256": "515d91322e820eaaf2ddd9c2cf17b441c58b5c2b42606ec7ce72836cc53584f0",
+      "category": "mixed",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/11_S4_AddressLocation_UserData.sql",
+      "name": "11_S4_AddressLocation_UserData.sql",
+      "size": 1944,
+      "sha256": "a7713c03740c39c1d2bb7e1104a06b2da314f1166473a04f2b46614645d02662",
+      "category": "mixed",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/12_S4_AddressLocation_CheckAndApply.sql",
+      "name": "12_S4_AddressLocation_CheckAndApply.sql",
+      "size": 15175,
+      "sha256": "28e6b95f4c62e7d9467e69069f4a12454e6b2de7de5386df8726086093acaf91",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S4_Week4",
+      "path": "S4_Week4/Database scripts/13_S4_DoctorProfile_Fields.sql",
+      "name": "13_S4_DoctorProfile_Fields.sql",
+      "size": 1814,
+      "sha256": "c7007fd0dadb945195ac25e37ecc57b1a854b3da0ec54d5e7806bec9672d10b6",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/01_S5_Week5_Schema.sql",
+      "name": "01_S5_Week5_Schema.sql",
+      "size": 4889,
+      "sha256": "39fa0a3c0183703440b967eda6ec8e5b3f303388ca8c76bdced735bfdd9054ad",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/02_S5_Week5_Menus.sql",
+      "name": "02_S5_Week5_Menus.sql",
+      "size": 3541,
+      "sha256": "8290272ef233404747153f5cf00bf566fb4c8cc6bfbf99b1d41d10ff8420c945",
+      "category": "data",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/03_S5_Week5_Demo_Data.sql",
+      "name": "03_S5_Week5_Demo_Data.sql",
+      "size": 3761,
+      "sha256": "e479b7a6ce77150058766dfe6632ca4e172c203f5a592b194317574227739375",
+      "category": "seed_demo_or_dev",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/04_S5_Patient_Address_Lines.sql",
+      "name": "04_S5_Patient_Address_Lines.sql",
+      "size": 2841,
+      "sha256": "6dbe91a8509832f746fc41fb40702aabc18a39ee8a480c8dd34ce42d56cabe2a",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/05_S5_Doctor_Reminders.sql",
+      "name": "05_S5_Doctor_Reminders.sql",
+      "size": 2477,
+      "sha256": "babf3a0ecf5f34d9d8fe6ee5f623fdff7027856182e5595f95fa77b01b7be4a2",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/06_S5_Review_Doctor_Reply.sql",
+      "name": "06_S5_Review_Doctor_Reply.sql",
+      "size": 889,
+      "sha256": "31bb4ccbaba8d1482fdff2e214004523a674363bd24f7c8b0e91f5bdc6194a15",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/07_S5_Pharmacy_Config.sql",
+      "name": "07_S5_Pharmacy_Config.sql",
+      "size": 1326,
+      "sha256": "1e6f73faa21f33e02e6e29a9366931ec62ca788f72690652d425c718e1ff95e6",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/08_S5_Medicine_Order_Review.sql",
+      "name": "08_S5_Medicine_Order_Review.sql",
+      "size": 1227,
+      "sha256": "f67b48604ec2fd958c3ce9713d9280befc4e50f27e29e53fb380cbbf5355dbfb",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/09_Security_Audit_Log.sql",
+      "name": "09_Security_Audit_Log.sql",
+      "size": 3465,
+      "sha256": "8458b3c4ece015fa097497f1b0790cc4536c6761411a5cfce0a550add1d5b7d3",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/10_Security_Test_Tenant_LOCAL_ONLY.sql",
+      "name": "10_Security_Test_Tenant_LOCAL_ONLY.sql",
+      "size": 3803,
+      "sha256": "059a4a015ad5628b4d8c35c7789a2938b26bc06230903362c7cfe8967fe87db0",
+      "category": "environment_specific",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/11_Consent_Notice_Version_Guardian.sql",
+      "name": "11_Consent_Notice_Version_Guardian.sql",
+      "size": 8249,
+      "sha256": "61717608960d626f33b9e4a3ec3c380f0170a591049414461ec151227f98d6f0",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/12_Rubric_Remedy_Author_Indexes.sql",
+      "name": "12_Rubric_Remedy_Author_Indexes.sql",
+      "size": 2429,
+      "sha256": "c8ae711e237919bc36e6c0e17c3a3cbf4861eb5e443c3861977e59a7ae95832e",
+      "category": "mixed",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/13_Remove_Junk_Roles.sql",
+      "name": "13_Remove_Junk_Roles.sql",
+      "size": 1496,
+      "sha256": "9c45ad227c2c87470b9578ea2ec55c9e45287af63cb276ebbd02b5fdf68130b8",
+      "category": "data",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": true
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/14_Required_Extras.sql",
+      "name": "14_Required_Extras.sql",
+      "size": 2282,
+      "sha256": "b88d10d8743daec391d33057d10241d8be7087c483f2b47df0c350eae4e44776",
+      "category": "data",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": true,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S5_Week5",
+      "path": "S5_Week5/Database scripts/15_SubSection_SearchNormalized_FullText.sql",
+      "name": "15_SubSection_SearchNormalized_FullText.sql",
+      "size": 7583,
+      "sha256": "4f95a6af0890502bf3809ef0bd80606f4ea19eea5855cfaecf818b9cfce119d3",
+      "category": "schema",
+      "signals": {
+        "create_table": false,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S6_Week6",
+      "path": "S6_Week6/Database scripts/01_SmsOtpVerify_And_FirebaseNotificationLog.sql",
+      "name": "01_SmsOtpVerify_And_FirebaseNotificationLog.sql",
+      "size": 1974,
+      "sha256": "7ee435e25300694895fa55a0a19b0582f9853f300378b788dd3d7733bbcc9b33",
+      "category": "verification_or_test",
+      "signals": {
+        "create_table": true,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S6_Week6",
+      "path": "S6_Week6/Database scripts/02_DevicePushToken_DeviceType.sql",
+      "name": "02_DevicePushToken_DeviceType.sql",
+      "size": 2123,
+      "sha256": "6d4e4d161db3af00942fce7aaa6f528fba356a813fca8ca8072eb4800791f7d1",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S6_Week6",
+      "path": "S6_Week6/Database scripts/03_DoctorApp_Gap_Schema.sql",
+      "name": "03_DoctorApp_Gap_Schema.sql",
+      "size": 2433,
+      "sha256": "d7a58ad772568bccaf4fe9f26c2fd49ae553090a60eb2c1c85d7b24e69399828",
+      "category": "schema",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S6_Week6",
+      "path": "S6_Week6/Database scripts/04_Verify_And_Ensure_Gap_Schema.sql",
+      "name": "04_Verify_And_Ensure_Gap_Schema.sql",
+      "size": 2796,
+      "sha256": "f5fdc2c96c436835318dd8c068944e0bc16e7ec534c8e1aa4f8129f3ee52b175",
+      "category": "verification_or_test",
+      "signals": {
+        "create_table": true,
+        "alter_table": true,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    },
+    {
+      "week": "S6_Week6",
+      "path": "S6_Week6/Database scripts/05_Verify_S6_Objects.sql",
+      "name": "05_Verify_S6_Objects.sql",
+      "size": 1943,
+      "sha256": "46cd02408fc77786822a54768c9e9fcf132f0577dcac7550c58041febae6cdeb",
+      "category": "verification_or_test",
+      "signals": {
+        "create_table": false,
+        "alter_table": false,
+        "insert": false,
+        "destructive_keywords": false
+      },
+      "duplicate_of": null,
+      "canonical_or_duplicate": "UNIQUE"
+    }
+  ],
+  "missing_schema_generated": [
+    {
+      "path": "Missing_Schema/README.md",
+      "size": 1243,
+      "sha256": "220cada62d59b1a81b30bee4eddf5ab480d3614c221c26e5f9d6628d85db4ca6"
+    },
+    {
+      "path": "Missing_Schema/Documentation/Stage_S6_Execution_Plan.md",
+      "size": 1358,
+      "sha256": "270d4138b95390a38b20f7460f0e270fdc56a529ff74fcc161675fab9a5c4727"
+    },
+    {
+      "path": "Missing_Schema/10_Environment_Specific/README_DevOnly_Mobile_And_Local.md",
+      "size": 1294,
+      "sha256": "e3b5bb815da18f5f4fb9765cd3598c2b83648ef47e8c381bfbc6249e4cab3099"
+    },
+    {
+      "path": "Missing_Schema/11_Verification/001_Verify_S6_Parity_Markers.sql",
+      "size": 3690,
+      "sha256": "c009a180336cea477612980c6c66a9eb6734e633b67aedc753b56079965e868d"
+    },
+    {
+      "path": "Missing_Schema/12_Rollback_And_Recovery/Stage_S6_Rollback_Notes.md",
+      "size": 858,
+      "sha256": "14d22363d5de448782f4b21f6ff9b85e0c9bbdeb8625848c601ffa844443afbc"
+    }
+  ],
+  "audit_date": "2026-10-20"
+}

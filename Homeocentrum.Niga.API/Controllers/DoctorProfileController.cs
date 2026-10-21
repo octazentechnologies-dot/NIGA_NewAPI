@@ -353,8 +353,17 @@ namespace Homeocentrum.Niga.API.Controllers
             };
 
             _context.DoctorCredentialDocuments.Add(row);
+            var statusResetToPending = await ApplyCredentialsResubmittedAsync(doctor);
             await _context.SaveChangesAsync();
-            return Ok(new { success = true, data = MapCredential(row) });
+            if (statusResetToPending)
+                await InsertDocumentsResubmittedEventAsync(doctor.DoctorId);
+            return Ok(new
+            {
+                success = true,
+                data = MapCredential(row),
+                verificationStatus = string.IsNullOrWhiteSpace(doctor.VerificationStatus) ? "Pending" : doctor.VerificationStatus,
+                statusResetToPending
+            });
         }
 
         /// <summary>Edit qualification details on an uploaded document, optionally replacing the file.</summary>
@@ -409,8 +418,22 @@ namespace Homeocentrum.Niga.API.Controllers
             row.Specialization = TrimTo(specialization, 150);
             row.Institution = TrimTo(institution, 200);
             row.PassingYear = passingYear is > 1900 and < 2200 ? passingYear : null;
+
+            // Replacing the file counts as a resubmit when admin asked for more info or rejected.
+            var statusResetToPending = false;
+            if (file != null && file.Length > 0)
+                statusResetToPending = await ApplyCredentialsResubmittedAsync(doctor);
+
             await _context.SaveChangesAsync();
-            return Ok(new { success = true, data = MapCredential(row) });
+            if (statusResetToPending)
+                await InsertDocumentsResubmittedEventAsync(doctor.DoctorId);
+            return Ok(new
+            {
+                success = true,
+                data = MapCredential(row),
+                verificationStatus = string.IsNullOrWhiteSpace(doctor.VerificationStatus) ? "Pending" : doctor.VerificationStatus,
+                statusResetToPending
+            });
         }
 
         [HttpDelete("Me/CredentialDocuments/{id:int}")]
@@ -610,6 +633,45 @@ namespace Homeocentrum.Niga.API.Controllers
             _context.DoctorVerifications.Add(row);
             await _context.SaveChangesAsync();
             return row;
+        }
+
+        /// <summary>
+        /// After Rejected or NeedsInfo, a new/replaced credential file returns the doctor to Pending
+        /// so admin sees them in the open queue again. Does not change Verified or existing Pending.
+        /// Call <see cref="InsertDocumentsResubmittedEventAsync"/> after a successful SaveChanges.
+        /// </summary>
+        private async Task<bool> ApplyCredentialsResubmittedAsync(Doctor doctor)
+        {
+            var current = (doctor.VerificationStatus ?? "").Trim();
+            var resubmittable =
+                current.Equals("Rejected", StringComparison.OrdinalIgnoreCase)
+                || current.Equals("NeedsInfo", StringComparison.OrdinalIgnoreCase);
+            if (!resubmittable)
+                return false;
+
+            doctor.VerificationStatus = "Pending";
+            doctor.ChangedDate = DateTime.UtcNow;
+
+            var verification = await _context.DoctorVerifications
+                .FirstOrDefaultAsync(v => v.DoctorId == doctor.DoctorId && !v.DeleteStatus);
+            if (verification != null)
+            {
+                verification.Status = "Pending";
+                verification.ChangedDate = DateTime.UtcNow;
+            }
+
+            return true;
+        }
+
+        private async Task InsertDocumentsResubmittedEventAsync(int doctorId)
+        {
+            var byUserId = User.GetUserId();
+            var status = "Pending";
+            var note = "Documents resubmitted";
+            var at = DateTime.Now;
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.DoctorVerificationEvent (DoctorId, Status, Note, ByUserId, At)
+                VALUES ({doctorId}, {status}, {note}, {byUserId}, {at})");
         }
 
         private async Task<IActionResult> ReceptionMeAsync()
