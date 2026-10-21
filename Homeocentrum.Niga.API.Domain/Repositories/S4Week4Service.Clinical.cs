@@ -24,7 +24,41 @@ public partial class S4Week4Service
             return Fail(403, "FORBIDDEN", "Doctor context is required.");
         var doctor = await _context.Doctors.AsNoTracking().FirstOrDefaultAsync(d => d.DoctorId == caller.DoctorId && !d.DeleteStatus);
         if (doctor == null) return Fail(404, "NOT_FOUND", "Doctor not found.");
-        return Ok(new { success = true, data = new { doctor.DoctorId, doctor.VerificationStatus, isVerified = IsVerified(doctor.VerificationStatus) } });
+
+        var status = string.IsNullOrWhiteSpace(doctor.VerificationStatus) ? "Pending" : doctor.VerificationStatus.Trim();
+        var canResubmitDocuments = IsResubmittableStatus(status);
+
+        // Latest admin decision note (NeedsInfo / Rejected / Verified) — not the system "Documents resubmitted" event.
+        var latestAdmin = await _context.Database.SqlQuery<VerificationEventRow>($@"
+            SELECT TOP 1 DoctorVerificationEventId, DoctorId, Status, Note, ByUserId, At
+            FROM dbo.DoctorVerificationEvent
+            WHERE DoctorId = {doctor.DoctorId}
+              AND Status IN (N'NeedsInfo', N'Rejected', N'Verified')
+            ORDER BY At DESC").FirstOrDefaultAsync();
+
+        var latestResubmit = await _context.Database.SqlQuery<VerificationEventRow>($@"
+            SELECT TOP 1 DoctorVerificationEventId, DoctorId, Status, Note, ByUserId, At
+            FROM dbo.DoctorVerificationEvent
+            WHERE DoctorId = {doctor.DoctorId}
+              AND Status = N'Pending'
+              AND Note = N'Documents resubmitted'
+            ORDER BY At DESC").FirstOrDefaultAsync();
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                doctorId = doctor.DoctorId,
+                verificationStatus = status,
+                isVerified = IsVerified(status),
+                canResubmitDocuments,
+                latestNote = string.IsNullOrWhiteSpace(latestAdmin?.Note) ? null : latestAdmin!.Note!.Trim(),
+                latestDecisionStatus = latestAdmin?.Status,
+                latestDecisionAt = latestAdmin?.At,
+                lastResubmittedAt = latestResubmit?.At
+            }
+        });
     }
 
     public async Task<S4ActionResult> VerificationQueueAsync(string? status, S4Caller caller)
@@ -94,7 +128,30 @@ public partial class S4Week4Service
                 d.EnteredDate
             })
             .ToListAsync();
-        return Ok(new { success = true, data = new { doctor.DoctorId, doctor.VerificationStatus, events, documents } });
+
+        var latestAdmin = events.FirstOrDefault(e =>
+            string.Equals(e.Status, "NeedsInfo", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(e.Status, "Rejected", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(e.Status, "Verified", StringComparison.OrdinalIgnoreCase));
+        var lastResubmit = events.FirstOrDefault(e =>
+            string.Equals(e.Status, "Pending", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(e.Note, "Documents resubmitted", StringComparison.Ordinal));
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                doctor.DoctorId,
+                doctor.VerificationStatus,
+                latestNote = string.IsNullOrWhiteSpace(latestAdmin?.Note) ? null : latestAdmin!.Note!.Trim(),
+                latestDecisionStatus = latestAdmin?.Status,
+                latestDecisionAt = latestAdmin?.At,
+                lastResubmittedAt = lastResubmit?.At,
+                events,
+                documents
+            }
+        });
     }
 
     public async Task<S4ActionResult> DecideVerificationAsync(int doctorId, VerificationDecisionRequest request, S4Caller caller)
@@ -116,6 +173,33 @@ public partial class S4Week4Service
         if (doctor == null) return Fail(404, "NOT_FOUND", "Doctor not found.");
         doctor.VerificationStatus = status;
         doctor.ChangedDate = DateTime.Now;
+
+        // Keep DoctorVerification row in sync with Doctor.VerificationStatus (single source of truth for apps).
+        var verification = await _context.DoctorVerifications
+            .FirstOrDefaultAsync(v => v.DoctorId == doctorId && !v.DeleteStatus);
+        if (verification == null)
+        {
+            verification = new DoctorVerification
+            {
+                DoctorId = doctorId,
+                Status = status,
+                ReviewerNote = string.IsNullOrWhiteSpace(request!.Note) ? null : request.Note.Trim(),
+                ReviewedBy = caller.UserId > 0 && caller.UserId <= int.MaxValue ? (int)caller.UserId : null,
+                ReviewedAt = DateTime.Now,
+                EnteredDate = DateTime.UtcNow,
+                DeleteStatus = false
+            };
+            _context.DoctorVerifications.Add(verification);
+        }
+        else
+        {
+            verification.Status = status;
+            verification.ReviewerNote = string.IsNullOrWhiteSpace(request!.Note) ? null : request.Note.Trim();
+            verification.ReviewedBy = caller.UserId > 0 && caller.UserId <= int.MaxValue ? (int)caller.UserId : null;
+            verification.ReviewedAt = DateTime.Now;
+            verification.ChangedDate = DateTime.UtcNow;
+        }
+
         await _context.SaveChangesAsync();
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.DoctorVerificationEvent (DoctorId, Status, Note, ByUserId, At)
@@ -2302,6 +2386,11 @@ public partial class S4Week4Service
 
     private static TimeSpan? ParseTime(string? value)
         => TimeSpan.TryParse(value, out var time) ? time : null;
+
+    private static bool IsResubmittableStatus(string? status)
+        => status != null
+           && (status.Equals("Rejected", StringComparison.OrdinalIgnoreCase)
+               || status.Equals("NeedsInfo", StringComparison.OrdinalIgnoreCase));
 
     private sealed class VerificationEventRow
     {
