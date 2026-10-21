@@ -57,7 +57,12 @@ namespace Homeocentrum.Niga.API.Domain.Services
             }, cancellationToken);
             return await NotifyChannelsAsync(
                 mobile, whatsAppOptIn, message, null, "Appointment rescheduled", "appointment_reschedule",
-                new Dictionary<string, string> { ["action"] = "appointment_reschedule" }, cancellationToken);
+                new Dictionary<string, string>
+                {
+                    ["action"] = "appointment_reschedule",
+                    ["type"] = "APPOINTMENT",
+                    ["deepLink"] = "/patientdashboard"
+                }, cancellationToken);
         }
 
         public async Task<AppointmentNotificationResult> NotifyCancelAsync(
@@ -75,7 +80,12 @@ namespace Homeocentrum.Niga.API.Domain.Services
             }, cancellationToken);
             return await NotifyChannelsAsync(
                 mobile, whatsAppOptIn, message, null, "Appointment cancelled", "appointment_cancel",
-                new Dictionary<string, string> { ["action"] = "appointment_cancel" }, cancellationToken);
+                new Dictionary<string, string>
+                {
+                    ["action"] = "appointment_cancel",
+                    ["type"] = "APPOINTMENT",
+                    ["deepLink"] = "/patientdashboard"
+                }, cancellationToken);
         }
 
         public async Task<AppointmentNotificationResult> NotifyWaitlistOfferAsync(
@@ -94,7 +104,12 @@ namespace Homeocentrum.Niga.API.Domain.Services
             }, cancellationToken);
             return await NotifyChannelsAsync(
                 mobile, true, message, null, "Slot available", "waitlist_offer",
-                new Dictionary<string, string> { ["action"] = "waitlist_offer" }, cancellationToken);
+                new Dictionary<string, string>
+                {
+                    ["action"] = "waitlist_offer",
+                    ["type"] = "APPOINTMENT",
+                    ["deepLink"] = "/patient/waitlist"
+                }, cancellationToken);
         }
 
         public async Task<AppointmentNotificationResult> NotifyTeleReadyAsync(
@@ -112,7 +127,9 @@ namespace Homeocentrum.Niga.API.Domain.Services
                 new Dictionary<string, string>
                 {
                     ["action"] = "tele_ready",
-                    ["room"] = roomId ?? ""
+                    ["type"] = "APPOINTMENT",
+                    ["room"] = roomId ?? "",
+                    ["deepLink"] = "/patient/rejoin"
                 }, cancellationToken);
         }
 
@@ -146,8 +163,10 @@ namespace Homeocentrum.Niga.API.Domain.Services
                 new Dictionary<string, string>
                 {
                     ["action"] = "appointment_confirm",
+                    ["type"] = "APPOINTMENT",
                     ["date"] = slotDate ?? "",
-                    ["time"] = slotTime ?? ""
+                    ["time"] = slotTime ?? "",
+                    ["deepLink"] = "/patientdashboard"
                 }, cancellationToken);
         }
 
@@ -173,8 +192,10 @@ namespace Homeocentrum.Niga.API.Domain.Services
                 new Dictionary<string, string>
                 {
                     ["action"] = "appointment_remind",
+                    ["type"] = "APPOINTMENT",
                     ["date"] = slotDate ?? "",
-                    ["time"] = slotTime ?? ""
+                    ["time"] = slotTime ?? "",
+                    ["deepLink"] = "/patientdashboard"
                 }, cancellationToken);
         }
 

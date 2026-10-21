@@ -736,6 +736,19 @@ public partial class S4Week4Service
             P("@Patient", snapshot.PatientId),
             P("@Doctor", snapshot.DoctorId),
             P("@At", DateTime.Now));
+        try
+        {
+            await _clinicInbox.NotifyDoctorUserAsync(
+                snapshot.DoctorId,
+                "Refill requested",
+                "A patient requested a prescription refill.",
+                "refill",
+                "/doctor/pharmacy-queries");
+        }
+        catch
+        {
+            /* refill is saved */
+        }
         return Ok(new { success = true, data = new { refillRequestId = id, status = "PENDING" } });
     }
 
@@ -820,6 +833,21 @@ public partial class S4Week4Service
             UPDATE dbo.RefillRequest
             SET Status = {status}, Reason = {reason}, DecidedAt = {DateTime.Now}
             WHERE RefillRequestId = {refillId}");
+        try
+        {
+            await _clinicInbox.NotifyPatientAsync(
+                row.PatientId,
+                approve ? "Refill approved" : "Refill declined",
+                approve
+                    ? "Your prescription refill was approved."
+                    : ("Your prescription refill was declined" + (string.IsNullOrWhiteSpace(reason) ? "." : ": " + reason.Trim())),
+                "refill",
+                "/patient/prescriptions");
+        }
+        catch
+        {
+            /* decision is saved */
+        }
         return Ok(new { success = true, data = new { refillId, status } });
     }
 
@@ -1256,6 +1284,7 @@ public partial class S4Week4Service
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.MedicineOrder SET PharmacyPartnerId = {pharmacyId}, Status = N'OFFERED' WHERE MedicineOrderId = {orderId}");
         await AddMedicineEventAsync(orderId, "OFFERED", "Rerouted to pharmacy " + pharmacyId);
+        await NotifyMedicineStatusAsync(orderId, "OFFERED");
         return Ok(new { success = true, data = new { orderId, pharmacyId, status = "OFFERED" } });
     }
 

@@ -20,15 +20,18 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         private readonly NIGACentrumContext _context;
         private readonly IAppointmentRescheduleNotifier _rescheduleNotifier;
         private readonly IPushNotificationSender _push;
+        private readonly IClinicInboxFanout _clinicInbox;
 
         public PatientAppointmentService(
             NIGACentrumContext context,
             IAppointmentRescheduleNotifier rescheduleNotifier,
-            IPushNotificationSender push)
+            IPushNotificationSender push,
+            IClinicInboxFanout clinicInbox)
         {
             _context = context;
             _rescheduleNotifier = rescheduleNotifier;
             _push = push;
+            _clinicInbox = clinicInbox;
         }
 
         public PatientAppointmentModel GetPatientAppById(long PatientAppId, ref ErrorResponseModel errorResponseModel)
@@ -162,9 +165,9 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 _context.SaveChanges();
                 try
                 {
-                    var mobile = _context.Patients.AsNoTracking()
+                    var patient = _context.Patients.AsNoTracking()
                         .Where(p => p.PatientId == patientAppEntity.PatientId)
-                        .Select(p => p.MobileNo)
+                        .Select(p => new { p.MobileNo, p.PatientName })
                         .FirstOrDefault();
                     var doctor = _context.Doctors.AsNoTracking()
                         .Where(d => d.DoctorId == patientAppEntity.DoctorId)
@@ -177,7 +180,15 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     if (string.IsNullOrWhiteSpace(doctorLabel)) doctorLabel = "your doctor";
                     var dateLabel = patientAppEntity.AppointmentDate?.ToString("dd MMM yyyy") ?? "";
                     var timeLabel = NotificationClock.Format12Hour(patientAppEntity.AppointmentTime);
-                    _rescheduleNotifier.NotifyConfirmAsync(mobile, false, doctorLabel, dateLabel, timeLabel)
+                    _rescheduleNotifier.NotifyConfirmAsync(patient?.MobileNo, false, doctorLabel, dateLabel, timeLabel)
+                        .GetAwaiter().GetResult();
+                    var patientLabel = string.IsNullOrWhiteSpace(patient?.PatientName) ? "A patient" : patient.PatientName.Trim();
+                    var when = $"{dateLabel} {timeLabel}".Trim();
+                    _clinicInbox.NotifyDoctorAndReceptionAsync(
+                            patientAppEntity.DoctorId,
+                            "New appointment",
+                            $"{patientLabel} booked for {when}.",
+                            "appointment_confirm")
                         .GetAwaiter().GetResult();
                 }
                 catch
@@ -440,7 +451,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 var deepLink = "/doctor/follow-ups";
                 var userId = (long)doctorUserId.Value;
 
-                var pushResult = await _push.SendToUserAsync(
+                await _push.SendToUserAsync(
                     userId,
                     title,
                     body,
@@ -452,10 +463,6 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     },
                     "APPT_MISSED");
 
-                var pushStatus = string.IsNullOrWhiteSpace(pushResult.Status) ? "LOGGED" : pushResult.Status.ToUpperInvariant();
-                await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                    INSERT INTO dbo.AppNotification (UserId, Title, Body, PushStatus, Type, DeepLink)
-                    VALUES ({userId}, {title}, {body}, {pushStatus}, N'APPT_MISSED', {deepLink})");
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
                     INSERT INTO dbo.NotificationOutbox (Channel, EventType, Destination, Body, Status, LastError, CreatedAt)
                     VALUES (N'PUSH', {("APPT_MISS_" + appointment.PatientAppId)}, {userId.ToString()}, {body}, N'SENT', NULL, {DateTime.Now})");
@@ -1129,6 +1136,14 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     appointment.Patient?.IsWhatsAppOptIn == true,
                     oldWhen,
                     newWhen);
+                var patientLabel = string.IsNullOrWhiteSpace(appointment.Patient?.PatientName)
+                    ? "A patient"
+                    : appointment.Patient.PatientName.Trim();
+                await _clinicInbox.NotifyDoctorAndReceptionAsync(
+                    appointment.DoctorId,
+                    "Appointment rescheduled",
+                    $"{patientLabel} moved from {oldWhen} to {newWhen}.",
+                    "appointment_reschedule");
             }
             catch (Exception ex)
             {
@@ -1236,6 +1251,14 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     appointment.Patient?.IsWhatsAppOptIn == true,
                     slotLabel,
                     request.ReasonCode);
+                var patientLabel = string.IsNullOrWhiteSpace(appointment.Patient?.PatientName)
+                    ? "A patient"
+                    : appointment.Patient.PatientName.Trim();
+                await _clinicInbox.NotifyDoctorAndReceptionAsync(
+                    appointment.DoctorId,
+                    "Appointment cancelled",
+                    $"{patientLabel} cancelled the visit at {slotLabel}.",
+                    "appointment_cancel");
             }
             catch (Exception ex)
             {

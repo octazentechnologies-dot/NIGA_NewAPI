@@ -196,56 +196,44 @@ public partial class S5Week5Service : IS5Week5Service
         var token = (request?.Token ?? "").Trim();
         if (token.Length < 8)
             return S4ActionResult.Fail(400, "VALIDATION", "A device token is required.");
-        if (token.Length > 512) token = token.Substring(0, 512);
         var deviceType = DeviceTypeNormalizer.Normalize(
             !string.IsNullOrWhiteSpace(request?.DeviceType) ? request!.DeviceType : request?.Platform);
         var platform = deviceType.Equals("iOS", StringComparison.OrdinalIgnoreCase) ? "ios"
             : deviceType.Equals("Android", StringComparison.OrdinalIgnoreCase) ? "android"
             : "web";
-        var now = DateTime.UtcNow;
-        var existing = await _context.Database.SqlQuery<CountRow>($@"
-            SELECT COUNT(1) AS Value FROM dbo.DeviceToken
-            WHERE UserId = {caller.UserId} AND Token = {token}").FirstAsync();
-        if (existing.Value > 0)
+
+        // Legacy DeviceToken table is optional; FCM send uses DevicePushToken only.
+        try
         {
-            await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                UPDATE dbo.DeviceToken SET Platform = {platform}, UpdatedAt = {DateTime.Now}
-                WHERE UserId = {caller.UserId} AND Token = {token}");
+            var existing = await _context.Database.SqlQuery<CountRow>($@"
+                SELECT COUNT(1) AS Value FROM dbo.DeviceToken
+                WHERE UserId = {caller.UserId} AND Token = {token}").FirstAsync();
+            if (existing.Value > 0)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE dbo.DeviceToken SET Platform = {platform}, UpdatedAt = {DateTime.Now}
+                    WHERE UserId = {caller.UserId} AND Token = {token}");
+            }
+            else
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.DeviceToken (UserId, Token, Platform)
+                    VALUES ({caller.UserId}, {token}, {platform})");
+            }
         }
-        else
+        catch
         {
-            await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                INSERT INTO dbo.DeviceToken (UserId, Token, Platform)
-                VALUES ({caller.UserId}, {token}, {platform})");
+            /* dbo.DeviceToken may not exist on every environment */
         }
 
-        // Canonical store for FCM send + logout clear.
-        var pushRow = await _context.DevicePushTokens
-            .FirstOrDefaultAsync(d => d.UserId == caller.UserId && d.Token == token && !d.DeleteStatus);
-        if (pushRow == null)
+        var row = await _push.UpsertTokenAsync(caller.UserId, token, deviceType, request?.DeviceId);
+        return S4ActionResult.Ok(new
         {
-            _context.DevicePushTokens.Add(new Master.DevicePushToken
-            {
-                UserId = caller.UserId,
-                Platform = "FCM",
-                DeviceType = deviceType,
-                Token = token,
-                DeviceId = string.IsNullOrWhiteSpace(request?.DeviceId) ? null : request!.DeviceId!.Trim(),
-                CreatedAt = now,
-                UpdatedAt = now,
-                DeleteStatus = false
-            });
-        }
-        else
-        {
-            pushRow.DeviceType = deviceType;
-            pushRow.Platform = "FCM";
-            pushRow.UpdatedAt = now;
-            if (!string.IsNullOrWhiteSpace(request?.DeviceId))
-                pushRow.DeviceId = request!.DeviceId!.Trim();
-        }
-        await _context.SaveChangesAsync();
-        return S4ActionResult.Ok(new { success = true, platform, deviceType });
+            success = true,
+            platform,
+            deviceType = row.DeviceType,
+            devicePushTokenId = row.DevicePushTokenId
+        });
     });
 
     public Task<S4ActionResult> WhatsAppReceiptAsync(WhatsAppReceiptRequest request) =>
@@ -316,9 +304,6 @@ public partial class S5Week5Service : IS5Week5Service
         if (request == null || request.UserId <= 0 || title.Length == 0)
             return S4ActionResult.Fail(400, "VALIDATION", "UserId and title are required.");
         var push = await DeliverPushAsync(request.UserId, title, body);
-        await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO dbo.AppNotification (UserId, Title, Body, PushStatus)
-            VALUES ({request.UserId}, {title}, {body}, {push})");
         return S4ActionResult.Ok(new { success = true, pushStatus = push });
     });
 
@@ -768,7 +753,12 @@ public partial class S5Week5Service : IS5Week5Service
     /// <summary>COM-03.04 — FCM via the shared Firebase sender (Website / Android / iOS).</summary>
     private async Task<string> DeliverPushAsync(long userId, string title, string body)
     {
-        var push = await _push.SendToUserAsync(userId, title, body);
+        var push = await _push.SendToUserAsync(
+            userId,
+            title,
+            body,
+            new Dictionary<string, string> { ["type"] = "SYSTEM", ["action"] = "admin_send" },
+            "admin_send");
         return push.Status.ToUpperInvariant();
     }
 

@@ -1,3 +1,5 @@
+using Homeocentrum.Niga.API.Domain.Master;
+
 namespace Homeocentrum.Niga.API.Domain.Services;
 
 public sealed class PushDeliveryResult
@@ -20,7 +22,8 @@ public interface IPushNotificationSender
 {
     /// <summary>
     /// Send to all registered devices for <paramref name="userId"/>.
-    /// Writes a <c>FirebaseNotificationLog</c> row. Safe to call on every successful API action.
+    /// Writes a <c>FirebaseNotificationLog</c> row and a per-user <c>AppNotification</c> inbox
+    /// row (web bell). Safe to call on every successful API action.
     /// </summary>
     Task<PushDeliveryResult> SendToUserAsync(
         long userId,
@@ -35,6 +38,16 @@ public interface IPushNotificationSender
 
     /// <summary>Soft-delete tokens on logout (all devices, or one token when provided).</summary>
     Task ClearUserTokensAsync(long userId, string? token = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Insert or refresh a device token. Same token or same (user + deviceType + deviceId) updates in place.
+    /// </summary>
+    Task<DevicePushToken> UpsertTokenAsync(
+        long userId,
+        string token,
+        string? deviceType,
+        string? deviceId,
+        CancellationToken cancellationToken = default);
 
     Task EnsureSchemaAsync(CancellationToken cancellationToken = default);
 }

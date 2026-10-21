@@ -27,6 +27,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         private readonly IHttpContextAccessor _http;
         private readonly IConfiguration _config;
         private readonly ILogger<S3Week3Service> _logger;
+        private readonly IClinicInboxFanout _clinicInbox;
 
         public S3Week3Service(
             NIGACentrumContext context,
@@ -35,7 +36,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             IAppointmentRescheduleNotifier notifier,
             IHttpContextAccessor http,
             IConfiguration config,
-            ILogger<S3Week3Service> logger)
+            ILogger<S3Week3Service> logger,
+            IClinicInboxFanout clinicInbox)
         {
             _context = context;
             _appointments = appointments;
@@ -44,6 +46,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             _http = http;
             _config = config;
             _logger = logger;
+            _clinicInbox = clinicInbox;
         }
 
         public async Task<S3ActionResult> JoinWaitlistAsync(JoinWaitlistRequest request)
@@ -1218,6 +1221,27 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 UPDATE dbo.InstantConsultRequest
                 SET Status = N'ACCEPTED', PatientAppId = {appt.PatientAppId}, TeleSessionId = {session.Id}
                 WHERE InstantConsultRequestId = {requestId}");
+
+            try
+            {
+                await _clinicInbox.NotifyDoctorAndReceptionAsync(
+                    doctorId,
+                    "Instant consult accepted",
+                    "An instant tele visit is booked and the waiting room is open.",
+                    "tele_ready",
+                    "/doctor/tele-consultation",
+                    "/reception/appointments");
+                await _clinicInbox.NotifyPatientAsync(
+                    request.PatientId.Value,
+                    "Instant consult ready",
+                    "A doctor accepted your instant consult. Join the tele visit.",
+                    "tele_ready",
+                    "/patient/rejoin");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Instant consult inbox notify failed for request {RequestId}.", requestId);
+            }
 
             return S3ActionResult.Ok(new
             {
