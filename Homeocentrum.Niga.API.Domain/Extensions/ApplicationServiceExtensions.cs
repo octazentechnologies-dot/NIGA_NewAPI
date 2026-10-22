@@ -84,6 +84,7 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.ITeleVideoVendor, Homeocentrum.Niga.API.Domain.Services.Tele.ConfigurableTeleVideoVendor>();
             // Scoped: WhatsApp Meta typed client + SMS/push for reschedule/cancel/waitlist/tele notices.
             services.AddScoped<IAppointmentRescheduleNotifier, AppointmentRescheduleNotifier>();
+            services.AddScoped<IClinicInboxFanout, ClinicInboxFanout>();
             services.Configure<Homeocentrum.Niga.API.Domain.DTOs.SmtpSettingsModel>(config.GetSection("smtp"));
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<ISectionRepository, SectionService>();

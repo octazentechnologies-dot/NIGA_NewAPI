@@ -170,7 +170,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 prescriptionRemedyDetailEntity.RemedyId = item.RemedyId;
                 prescriptionRemedyDetailEntity.Description = item.Description;
                 prescriptionRemedyDetailEntity.Dose = item.Dose;
-                prescriptionRemedyDetailEntity.PotencyId = item.PotencyId;
+                prescriptionRemedyDetailEntity.PotencyId = item.PotencyId is int potencyId && potencyId > 0 ? potencyId : null;
                 prescriptionRemedyDetailEntity.Frequency = item.Frequency;
                 prescriptionRemedyDetailEntity.Duration = item.Duration;
                 prescriptionRemedyDetailEntity.Instructions = item.Instructions;

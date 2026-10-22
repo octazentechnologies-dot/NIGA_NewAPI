@@ -36,6 +36,7 @@ public partial class S4Week4Service : IS4Week4Service
     private readonly SmsOptions _smsOptions;
     private readonly IRazorpayPaymentVerifier _razorpay;
     private readonly IStoredFileStore _files;
+    private readonly IClinicInboxFanout _clinicInbox;
 
     public S4Week4Service(
         NIGACentrumContext context,
@@ -49,7 +50,8 @@ public partial class S4Week4Service : IS4Week4Service
         ISmsTemplateRenderer templates,
         IOptions<SmsOptions> smsOptions,
         IRazorpayPaymentVerifier razorpay,
-        IStoredFileStore files)
+        IStoredFileStore files,
+        IClinicInboxFanout clinicInbox)
     {
         _context = context;
         _config = config;
@@ -58,6 +60,7 @@ public partial class S4Week4Service : IS4Week4Service
         _logger = logger;
         _notify = notify;
         _outbox = outbox;
+        _clinicInbox = clinicInbox;
         _sms = sms;
         _templates = templates;
         _smsOptions = smsOptions.Value ?? new SmsOptions();
@@ -676,7 +679,20 @@ public partial class S4Week4Service : IS4Week4Service
                 {
                     ["url"] = site + payLinkUrl
                 });
-                await _notify.NotifyChannelsAsync(mobile, true, payBody, default);
+                await _notify.NotifyChannelsAsync(
+                    mobile,
+                    true,
+                    payBody,
+                    null,
+                    "Payment link",
+                    "pay_link",
+                    new Dictionary<string, string>
+                    {
+                        ["action"] = "pay_link",
+                        ["type"] = "PAYMENT",
+                        ["deepLink"] = payLinkUrl
+                    },
+                    default);
             }
             catch (Exception ex)
             {
@@ -1083,7 +1099,9 @@ public partial class S4Week4Service : IS4Week4Service
                 where a.PatientAppId == patientAppId
                 select new
                 {
+                    a.DoctorId,
                     p.MobileNo,
+                    p.PatientName,
                     OptIn = p.IsWhatsAppOptIn == true,
                     Doctor = ((d.FirstName ?? "") + " " + (d.MiddleName ?? "") + " " + (d.LastName ?? "")).Trim(),
                     a.AppointmentDate,
@@ -1097,6 +1115,12 @@ public partial class S4Week4Service : IS4Week4Service
             var time = NotificationClock.Format12Hour(row.AppointmentTime);
             // Prefer BookedByUserId so FCM hits the patient app login that held the slot.
             await _notify.NotifyConfirmAsync(row.MobileNo, row.OptIn, doctorLabel, day, time, row.BookedByUserId);
+            var patientLabel = string.IsNullOrWhiteSpace(row.PatientName) ? "A patient" : row.PatientName.Trim();
+            await _clinicInbox.NotifyDoctorAndReceptionAsync(
+                row.DoctorId,
+                "New appointment",
+                $"{patientLabel} booked for {day} {time}.".Trim(),
+                "appointment_confirm");
         }
         catch (Exception ex)
         {
@@ -1453,7 +1477,24 @@ IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
             {
                 ["status"] = "#" + orderId + " is now " + status
             });
-            await _notify.NotifyChannelsAsync(mobile, true, message, default);
+            await _notify.NotifyChannelsAsync(
+                mobile,
+                true,
+                message,
+                null,
+                "Medicine order update",
+                "medicine_status",
+                new Dictionary<string, string>
+                {
+                    ["action"] = "medicine_status",
+                    ["type"] = "MEDICINE",
+                    ["deepLink"] = "/patient/medicine-orders"
+                },
+                default);
+            await _clinicInbox.NotifyPharmacyPartnerAsync(
+                order.PharmacyPartnerId,
+                "Medicine order update",
+                message);
             await _outbox.EnqueueAsync(
                 "Push",
                 "MedicineStatus",

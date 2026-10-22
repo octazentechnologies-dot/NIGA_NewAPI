@@ -2550,6 +2550,7 @@ namespace Homeocentrum.Niga.API.Domain.Data
 
             entity.Property(e => e.CreatedDate).HasColumnType("datetime");
             entity.Property(e => e.Dose).HasMaxLength(250);
+            entity.Property(e => e.PotencyId).IsRequired(false);
             entity.Property(e => e.Frequency).HasMaxLength(80);
             entity.Property(e => e.Duration).HasMaxLength(80);
             entity.Property(e => e.Instructions).HasMaxLength(500);

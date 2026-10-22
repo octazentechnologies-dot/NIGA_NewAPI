@@ -260,9 +260,13 @@ No body (empty body is fine).
 
 ---
 
-## 6. In-app notification list (optional)
+## 6. In-app notification list (web bell + mobile inbox)
 
-Inbox stored in `AppNotification` (separate from FCM delivery). Useful if the app shows a notification center.
+Every `SendToUserAsync` FCM send also inserts a per-user row in `dbo.AppNotification` (same `UserId` as the JWT login). The web header bell (`GET /Notifications`) and mobile inbox both read this table.
+
+The row is written even when FCM is skipped (no device token) so the bell still shows confirm / cancel / reschedule / reminder / tele / medicine / pay-link / missed follow-up / admin send.
+
+Clinic staff also get a row keyed to **their own login id** (doctor `UserMaster.UserId`, reception `ReceptionStaffId`, pharmacy `PharmacyPartner.UserId`). Patient rows use the patient portal `UserId`. Coverage: book / cancel / reschedule, appointment request, CareLink, refill, medicine status, diary reminder.
 
 ### `GET /Notifications`
 
@@ -294,8 +298,8 @@ Authorization: Bearer <JWT>
       "isRead": false,
       "pushStatus": "SENT",
       "createdAt": "2026-10-18T10:30:00",
-      "type": null,
-      "deepLink": null
+      "type": "APPOINTMENT",
+      "deepLink": "/appointments"
     }
   ]
 }

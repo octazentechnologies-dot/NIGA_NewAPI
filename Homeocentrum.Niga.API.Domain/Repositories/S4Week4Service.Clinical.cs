@@ -431,11 +431,17 @@ public partial class S4Week4Service
     {
         if (!caller.IsDoctor && !caller.IsAdmin)
             return Fail(403, "FORBIDDEN", "Only the treating doctor can update a remedy line.");
-        if (request == null || request.PotencyId <= 0)
-            return Fail(400, "VALIDATION", "PotencyId is required.");
-        var potency = await _context.Database.SqlQuery<PotencyRow>($@"
-            SELECT PotencyId, Code, SortOrder FROM dbo.PotencyMaster WHERE PotencyId = {request.PotencyId}").FirstOrDefaultAsync();
-        if (potency == null) return Fail(400, "VALIDATION", "PotencyId is not in the potency list.");
+        if (request == null)
+            return Fail(400, "VALIDATION", "Request body is required.");
+        int? potencyId = request.PotencyId is int pid && pid > 0 ? pid : null;
+        string? potencyCode = null;
+        if (potencyId.HasValue)
+        {
+            var potency = await _context.Database.SqlQuery<PotencyRow>($@"
+                SELECT PotencyId, Code, SortOrder FROM dbo.PotencyMaster WHERE PotencyId = {potencyId.Value}").FirstOrDefaultAsync();
+            if (potency == null) return Fail(400, "VALIDATION", "PotencyId is not in the potency list.");
+            potencyCode = potency.Code;
+        }
         var line = await _context.PrescriptionRemedyDetails.AsNoTracking()
             .FirstOrDefaultAsync(r => r.PrescriptionRemedyId == prescriptionRemedyId && r.DeletedStatus != true);
         if (line == null) return Fail(404, "NOT_FOUND", "Remedy line not found.");
@@ -448,14 +454,29 @@ public partial class S4Week4Service
             WHERE PatientAppId = {appointment.PatientAppId} AND Status = N'SIGNED'").FirstAsync();
         if (signed.Value > 0)
             return Fail(409, "CONFLICT", "A signed prescription cannot be edited.");
-        await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            UPDATE dbo.PrescriptionRemedyDetail
-            SET PotencyId = {request.PotencyId},
-                Frequency = {TrimOrNull(request.Frequency, 80)},
-                Duration = {TrimOrNull(request.Duration, 80)},
-                Instructions = {TrimOrNull(request.Instructions, 500)}
-            WHERE PrescriptionRemedyId = {prescriptionRemedyId}");
-        return Ok(new { success = true, message = "Remedy line updated.", data = new { prescriptionRemedyId, potency.Code } });
+        var frequency = TrimOrNull(request.Frequency, 80);
+        var duration = TrimOrNull(request.Duration, 80);
+        var instructions = TrimOrNull(request.Instructions, 500);
+        if (potencyId.HasValue)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.PrescriptionRemedyDetail
+                SET PotencyId = {potencyId.Value},
+                    Frequency = {frequency},
+                    Duration = {duration},
+                    Instructions = {instructions}
+                WHERE PrescriptionRemedyId = {prescriptionRemedyId}");
+        }
+        else
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.PrescriptionRemedyDetail
+                SET Frequency = {frequency},
+                    Duration = {duration},
+                    Instructions = {instructions}
+                WHERE PrescriptionRemedyId = {prescriptionRemedyId}");
+        }
+        return Ok(new { success = true, message = "Remedy line updated.", data = new { prescriptionRemedyId, potencyCode } });
     }
 
     private async Task<string> UnsignedErxReasonAsync(int patientAppId)
@@ -468,14 +489,6 @@ public partial class S4Week4Service
             WHERE r.AppointmentId = {patientAppId} AND ISNULL(r.DeletedStatus, 0) = 0").ToListAsync();
         if (lines.Count == 0)
             return "This visit is not signed. Add at least one remedy before signing.";
-        var missing = lines
-            .Where(l => string.IsNullOrWhiteSpace(l.PotencyCode))
-            .Select(l => l.RemedyName)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct()
-            .ToList();
-        if (missing.Count > 0)
-            return "This visit is not signed. Missing potency on: " + string.Join(", ", missing) + ".";
         return "This visit is not signed yet. Use Sign & lock to lock the prescription.";
     }
 
@@ -561,14 +574,6 @@ public partial class S4Week4Service
             WHERE r.AppointmentId = {appointment.PatientAppId} AND ISNULL(r.DeletedStatus, 0) = 0").ToListAsync();
         if (lines.Count == 0)
             return Fail(400, "VALIDATION", "Add at least one remedy before signing.");
-        var missingPotency = lines
-            .Where(l => string.IsNullOrWhiteSpace(l.PotencyCode))
-            .Select(l => l.RemedyName)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct()
-            .ToList();
-        if (missingPotency.Count > 0)
-            return Fail(400, "VALIDATION", "Cannot sign yet. Missing potency on: " + string.Join(", ", missingPotency) + ".");
 
         var labs = await _context.PatientLabOrders.AsNoTracking()
             .Where(l => l.PatientId == appointment.PatientId && !l.DeleteStatus)
@@ -820,6 +825,19 @@ public partial class S4Week4Service
             P("@Patient", snapshot.PatientId),
             P("@Doctor", snapshot.DoctorId),
             P("@At", DateTime.Now));
+        try
+        {
+            await _clinicInbox.NotifyDoctorUserAsync(
+                snapshot.DoctorId,
+                "Refill requested",
+                "A patient requested a prescription refill.",
+                "refill",
+                "/doctor/pharmacy-queries");
+        }
+        catch
+        {
+            /* refill is saved */
+        }
         return Ok(new { success = true, data = new { refillRequestId = id, status = "PENDING" } });
     }
 
@@ -904,6 +922,21 @@ public partial class S4Week4Service
             UPDATE dbo.RefillRequest
             SET Status = {status}, Reason = {reason}, DecidedAt = {DateTime.Now}
             WHERE RefillRequestId = {refillId}");
+        try
+        {
+            await _clinicInbox.NotifyPatientAsync(
+                row.PatientId,
+                approve ? "Refill approved" : "Refill declined",
+                approve
+                    ? "Your prescription refill was approved."
+                    : ("Your prescription refill was declined" + (string.IsNullOrWhiteSpace(reason) ? "." : ": " + reason.Trim())),
+                "refill",
+                "/patient/prescriptions");
+        }
+        catch
+        {
+            /* decision is saved */
+        }
         return Ok(new { success = true, data = new { refillId, status } });
     }
 
@@ -1340,6 +1373,7 @@ public partial class S4Week4Service
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.MedicineOrder SET PharmacyPartnerId = {pharmacyId}, Status = N'OFFERED' WHERE MedicineOrderId = {orderId}");
         await AddMedicineEventAsync(orderId, "OFFERED", "Rerouted to pharmacy " + pharmacyId);
+        await NotifyMedicineStatusAsync(orderId, "OFFERED");
         return Ok(new { success = true, data = new { orderId, pharmacyId, status = "OFFERED" } });
     }
 

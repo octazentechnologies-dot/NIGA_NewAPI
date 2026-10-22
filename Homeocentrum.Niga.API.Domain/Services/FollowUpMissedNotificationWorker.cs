@@ -100,7 +100,7 @@ public sealed class FollowUpMissedNotificationWorker : BackgroundService
             var deepLink = "/doctor/follow-ups";
             var userId = (long)row.DoctorUserId.Value;
 
-            var pushResult = await push.SendToUserAsync(
+            await push.SendToUserAsync(
                 userId,
                 title,
                 body,
@@ -111,12 +111,6 @@ public sealed class FollowUpMissedNotificationWorker : BackgroundService
                     ["deepLink"] = deepLink,
                 },
                 "FOLLOW_UP_MISSED",
-                cancellationToken);
-
-            var pushStatus = string.IsNullOrWhiteSpace(pushResult.Status) ? "LOGGED" : pushResult.Status.ToUpperInvariant();
-            await db.Database.ExecuteSqlInterpolatedAsync($@"
-                INSERT INTO dbo.AppNotification (UserId, Title, Body, PushStatus, Type, DeepLink)
-                VALUES ({userId}, {title}, {body}, {pushStatus}, N'FOLLOW_UP_MISSED', {deepLink})",
                 cancellationToken);
 
             await db.Database.ExecuteSqlInterpolatedAsync($@"
@@ -184,7 +178,7 @@ public sealed class FollowUpMissedNotificationWorker : BackgroundService
             var deepLink = "/doctor/follow-ups";
             var userId = (long)row.DoctorUserId.Value;
 
-            var pushResult = await push.SendToUserAsync(
+            await push.SendToUserAsync(
                 userId,
                 title,
                 body,
@@ -195,12 +189,6 @@ public sealed class FollowUpMissedNotificationWorker : BackgroundService
                     ["deepLink"] = deepLink,
                 },
                 "APPT_MISSED",
-                cancellationToken);
-
-            var pushStatus = string.IsNullOrWhiteSpace(pushResult.Status) ? "LOGGED" : pushResult.Status.ToUpperInvariant();
-            await db.Database.ExecuteSqlInterpolatedAsync($@"
-                INSERT INTO dbo.AppNotification (UserId, Title, Body, PushStatus, Type, DeepLink)
-                VALUES ({userId}, {title}, {body}, {pushStatus}, N'APPT_MISSED', {deepLink})",
                 cancellationToken);
 
             await db.Database.ExecuteSqlInterpolatedAsync($@"

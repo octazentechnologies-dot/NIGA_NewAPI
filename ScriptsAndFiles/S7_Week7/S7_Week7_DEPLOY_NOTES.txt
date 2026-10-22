@@ -1,0 +1,13 @@
+S7 Week 7 — prescription potency optional
+=========================================
+
+Location:
+  NIGA_NewAPI\ScriptsAndFiles\S7_Week7\
+
+SQL (Database scripts\) — run in this order:
+  01_Prescription_Potency_Optional.sql
+
+Doctors may save and sign a prescription without filling potency.
+No foreign key is added from PrescriptionRemedyDetail.PotencyId to PotencyMaster.
+
+Then deploy the New API and UI (potency is optional in Patient Board and eRx sign).

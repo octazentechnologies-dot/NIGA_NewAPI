@@ -44,73 +44,20 @@ namespace Homeocentrum.Niga.API.Controllers
                 return StatusCode(StatusCodes.Status403Forbidden,
                     new { success = false, message = "userId must match the signed-in user." });
 
-            await _push.EnsureSchemaAsync();
-
-            var deviceType = DeviceTypeNormalizer.Normalize(
-                !string.IsNullOrWhiteSpace(request.DeviceType) ? request.DeviceType : request.Platform);
-            var token = request.Token.Trim();
-            if (token.Length > 512)
-                token = token[..512];
-            var now = DateTime.UtcNow;
-            var deviceId = string.IsNullOrWhiteSpace(request.DeviceId) ? null : request.DeviceId.Trim();
-
-            DevicePushToken? row;
+            DevicePushToken row;
             try
             {
-                // 1) Same token → update
-                row = await _context.DevicePushTokens
-                    .FirstOrDefaultAsync(d => d.UserId == jwtUserId && d.Token == token && !d.DeleteStatus);
-
-                // 2) Same physical device (deviceId) → refresh token
-                if (row == null && !string.IsNullOrWhiteSpace(deviceId))
-                {
-                    row = await _context.DevicePushTokens
-                        .FirstOrDefaultAsync(d =>
-                            d.UserId == jwtUserId
-                            && d.DeviceType == deviceType
-                            && d.DeviceId == deviceId
-                            && !d.DeleteStatus);
-                }
-
-                // 3) Soft-deleted same token → revive
-                if (row == null)
-                {
-                    row = await _context.DevicePushTokens
-                        .FirstOrDefaultAsync(d => d.UserId == jwtUserId && d.Token == token && d.DeleteStatus);
-                }
+                row = await _push.UpsertTokenAsync(
+                    jwtUserId,
+                    request.Token,
+                    !string.IsNullOrWhiteSpace(request.DeviceType) ? request.DeviceType : request.Platform,
+                    request.DeviceId);
             }
             catch (Exception ex)
             {
                 return this.ServerError(ex);
             }
 
-            if (row == null)
-            {
-                row = new DevicePushToken
-                {
-                    UserId = jwtUserId,
-                    Platform = "FCM",
-                    DeviceType = deviceType,
-                    Token = token,
-                    DeviceId = deviceId,
-                    CreatedAt = now,
-                    UpdatedAt = now,
-                    DeleteStatus = false
-                };
-                _context.DevicePushTokens.Add(row);
-            }
-            else
-            {
-                row.Token = token;
-                row.DeviceType = deviceType;
-                row.Platform = "FCM";
-                if (!string.IsNullOrWhiteSpace(deviceId))
-                    row.DeviceId = deviceId;
-                row.UpdatedAt = now;
-                row.DeleteStatus = false;
-            }
-
-            await _context.SaveChangesAsync();
             return Ok(new
             {
                 success = true,

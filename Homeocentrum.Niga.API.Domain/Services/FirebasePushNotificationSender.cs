@@ -83,6 +83,29 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
                 CREATE INDEX IX_FirebaseNotificationLog_User_Created
                     ON dbo.FirebaseNotificationLog (UserId, CreatedAt DESC);
             END
+
+            IF OBJECT_ID(N'dbo.AppNotification', N'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.AppNotification (
+                    AppNotificationId bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_AppNotification PRIMARY KEY,
+                    UserId bigint NOT NULL,
+                    Title nvarchar(160) NOT NULL,
+                    Body nvarchar(1000) NOT NULL,
+                    IsRead bit NOT NULL CONSTRAINT DF_AppNotification_IsRead DEFAULT (0),
+                    PushStatus nvarchar(30) NOT NULL,
+                    CreatedAt datetime NOT NULL CONSTRAINT DF_AppNotification_CreatedAt DEFAULT (GETDATE()),
+                    Type nvarchar(40) NULL,
+                    DeepLink nvarchar(300) NULL
+                );
+                CREATE INDEX IX_AppNotification_User ON dbo.AppNotification (UserId, CreatedAt DESC);
+            END
+            ELSE
+            BEGIN
+                IF COL_LENGTH(N'dbo.AppNotification', N'Type') IS NULL
+                    ALTER TABLE dbo.AppNotification ADD Type nvarchar(40) NULL;
+                IF COL_LENGTH(N'dbo.AppNotification', N'DeepLink') IS NULL
+                    ALTER TABLE dbo.AppNotification ADD DeepLink nvarchar(300) NULL;
+            END
             """, cancellationToken);
         Volatile.Write(ref _schemaReady, 1);
     }
@@ -120,6 +143,7 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
             result.Status = "skipped";
             result.Detail = "No device token registered.";
             await WriteLogAsync(userId, actionKey, title, body, result, cancellationToken);
+            await WriteInboxAsync(userId, actionKey, title, body, data, result, cancellationToken);
             return result;
         }
 
@@ -131,6 +155,7 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
                 "Push logged (not sent). UserId={UserId} Tokens={Count} Action={Action} Title={Title}",
                 userId, tokens.Count, actionKey, title);
             await WriteLogAsync(userId, actionKey, title, body, result, cancellationToken);
+            await WriteInboxAsync(userId, actionKey, title, body, data, result, cancellationToken);
             return result;
         }
 
@@ -149,15 +174,46 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
         {
             try
             {
+                var titleText = title ?? "Homeocentrum";
+                var bodyText = body ?? string.Empty;
                 var message = new Message
                 {
                     Token = row.Token,
                     Notification = new Notification
                     {
-                        Title = title ?? "Homeocentrum",
-                        Body = body ?? string.Empty
+                        Title = titleText,
+                        Body = bodyText
                     },
-                    Data = payload
+                    Data = payload,
+                    Android = new AndroidConfig
+                    {
+                        Priority = Priority.High,
+                        Notification = new AndroidNotification
+                        {
+                            Title = titleText,
+                            Body = bodyText,
+                            Sound = "default",
+                            ChannelId = "homeocentrum"
+                        }
+                    },
+                    Apns = new ApnsConfig
+                    {
+                        Aps = new Aps
+                        {
+                            Sound = "default",
+                            ContentAvailable = true,
+                            Badge = 1
+                        }
+                    },
+                    Webpush = new WebpushConfig
+                    {
+                        Notification = new WebpushNotification
+                        {
+                            Title = titleText,
+                            Body = bodyText,
+                            Icon = "/favicon.ico"
+                        }
+                    }
                 };
                 await FirebaseMessaging.DefaultInstance.SendAsync(message, cancellationToken);
                 sent++;
@@ -190,6 +246,7 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
         }
 
         await WriteLogAsync(userId, actionKey, title, body, result, cancellationToken);
+        await WriteInboxAsync(userId, actionKey, title, body, data, result, cancellationToken);
         return result;
     }
 
@@ -223,6 +280,72 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
         return match?.UserId;
     }
 
+    public async Task<DevicePushToken> UpsertTokenAsync(
+        long userId,
+        string token,
+        string? deviceType,
+        string? deviceId,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureSchemaAsync(cancellationToken);
+        var trimmed = (token ?? "").Trim();
+        if (trimmed.Length > 512)
+            trimmed = trimmed[..512];
+        var type = DeviceTypeNormalizer.Normalize(deviceType);
+        var id = string.IsNullOrWhiteSpace(deviceId) ? null : deviceId.Trim();
+        if (id != null && id.Length > 100)
+            id = id[..100];
+        var now = DateTime.UtcNow;
+
+        var row = await _context.DevicePushTokens
+            .FirstOrDefaultAsync(d => d.UserId == userId && d.Token == trimmed && !d.DeleteStatus, cancellationToken);
+
+        if (row == null && !string.IsNullOrWhiteSpace(id))
+        {
+            row = await _context.DevicePushTokens
+                .FirstOrDefaultAsync(d =>
+                    d.UserId == userId
+                    && d.DeviceType == type
+                    && d.DeviceId == id
+                    && !d.DeleteStatus, cancellationToken);
+        }
+
+        if (row == null)
+        {
+            row = await _context.DevicePushTokens
+                .FirstOrDefaultAsync(d => d.UserId == userId && d.Token == trimmed && d.DeleteStatus, cancellationToken);
+        }
+
+        if (row == null)
+        {
+            row = new DevicePushToken
+            {
+                UserId = userId,
+                Platform = "FCM",
+                DeviceType = type,
+                Token = trimmed,
+                DeviceId = id,
+                CreatedAt = now,
+                UpdatedAt = now,
+                DeleteStatus = false
+            };
+            _context.DevicePushTokens.Add(row);
+        }
+        else
+        {
+            row.Token = trimmed;
+            row.DeviceType = type;
+            row.Platform = "FCM";
+            if (!string.IsNullOrWhiteSpace(id))
+                row.DeviceId = id;
+            row.UpdatedAt = now;
+            row.DeleteStatus = false;
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return row;
+    }
+
     public async Task ClearUserTokensAsync(long userId, string? token = null, CancellationToken cancellationToken = default)
     {
         if (userId <= 0)
@@ -244,6 +367,38 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
 
         if (rows.Count > 0)
             await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task WriteInboxAsync(
+        long userId,
+        string action,
+        string? title,
+        string? body,
+        IReadOnlyDictionary<string, string>? data,
+        PushDeliveryResult result,
+        CancellationToken cancellationToken)
+    {
+        if (userId <= 0)
+            return;
+
+        try
+        {
+            var type = AppNotificationInbox.MapType(action, data, title, body);
+            var deepLink = AppNotificationInbox.MapDeepLink(action, data);
+            var pushStatus = string.IsNullOrWhiteSpace(result.Status)
+                ? "SKIPPED"
+                : result.Status.Trim().ToUpperInvariant();
+            var inboxTitle = Truncate(string.IsNullOrWhiteSpace(title) ? "Homeocentrum" : title, 160);
+            var inboxBody = Truncate(body ?? "", 1000);
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dbo.AppNotification (UserId, Title, Body, IsRead, PushStatus, CreatedAt, Type, DeepLink)
+                VALUES ({userId}, {inboxTitle}, {inboxBody}, 0, {pushStatus}, {DateTime.Now}, {type}, {deepLink})",
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AppNotification inbox write failed for UserId={UserId}.", userId);
+        }
     }
 
     private async Task WriteLogAsync(

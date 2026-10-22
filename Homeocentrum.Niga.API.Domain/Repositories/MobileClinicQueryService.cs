@@ -24,6 +24,7 @@ public class MobileClinicQueryService
     private readonly IAppointmentRescheduleNotifier _notify;
     private readonly ISmsTemplateRenderer _templates;
     private readonly ISmsSender _sms;
+    private readonly IClinicInboxFanout _clinicInbox;
 
     public MobileClinicQueryService(
         NIGACentrumContext context,
@@ -31,7 +32,8 @@ public class MobileClinicQueryService
         IConfiguration config,
         IAppointmentRescheduleNotifier notify,
         ISmsTemplateRenderer templates,
-        ISmsSender sms)
+        ISmsSender sms,
+        IClinicInboxFanout clinicInbox)
     {
         _context = context;
         _http = http;
@@ -39,6 +41,7 @@ public class MobileClinicQueryService
         _notify = notify;
         _templates = templates;
         _sms = sms;
+        _clinicInbox = clinicInbox;
     }
 
     public async Task<S4ActionResult> DoctorFollowUpsAsync(S4Caller caller, string? status, DateTime? from, DateTime? to)
@@ -807,6 +810,18 @@ public class MobileClinicQueryService
             });
             if (!string.IsNullOrWhiteSpace(mobile))
                 await _sms.SendAsync(mobile, body);
+            var patientName = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == caller.PatientId.Value)
+                .Select(p => p.PatientName)
+                .FirstOrDefaultAsync();
+            var patientLabel = string.IsNullOrWhiteSpace(patientName) ? "A patient" : patientName.Trim();
+            await _clinicInbox.NotifyDoctorAndReceptionAsync(
+                request.DoctorId,
+                "Appointment request",
+                $"{patientLabel} requested a visit on {request.RequestedDate!.Value:dd MMM yyyy} {request.RequestedTime!.Trim()}.",
+                "appointment_request",
+                "/doctor/appointment-requests",
+                "/reception/appointments");
         }
         catch { /* request already saved */ }
         return Ok(new { appointmentRequestId = created.AppointmentRequestId, status = "PENDING" });
@@ -919,6 +934,17 @@ public class MobileClinicQueryService
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
                 UPDATE dbo.AppointmentRequest SET Status = N'DECLINED'
                 WHERE AppointmentRequestId = {id}");
+            try
+            {
+                await _clinicInbox.NotifyDoctorAndReceptionAsync(
+                    row.DoctorId,
+                    "Appointment request declined",
+                    "The patient declined the proposed time.",
+                    "appointment_request",
+                    "/doctor/appointment-requests",
+                    "/reception/appointments");
+            }
+            catch { /* decline is saved */ }
             return Ok(new { appointmentRequestId = id, status = "DECLINED", patientAppId = (int?)null });
         }
 
@@ -964,6 +990,16 @@ public class MobileClinicQueryService
                 row.DoctorName ?? "your doctor",
                 row.ProposedDate.Value.ToString("dd MMM yyyy"),
                 NotificationClock.Format12Hour(time));
+            var patientName = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == caller.PatientId.Value)
+                .Select(p => p.PatientName)
+                .FirstOrDefaultAsync();
+            var patientLabel = string.IsNullOrWhiteSpace(patientName) ? "A patient" : patientName.Trim();
+            await _clinicInbox.NotifyDoctorAndReceptionAsync(
+                row.DoctorId,
+                "New appointment",
+                $"{patientLabel} booked for {row.ProposedDate.Value:dd MMM yyyy} {NotificationClock.Format12Hour(time)}.",
+                "appointment_confirm");
         }
         catch { /* booking already saved */ }
         return Ok(new { appointmentRequestId = id, status = "ACCEPTED", patientAppId = appt.PatientAppId });
@@ -1027,6 +1063,16 @@ public class MobileClinicQueryService
                 doctorLabel,
                 row.RequestedDate.ToString("dd MMM yyyy"),
                 NotificationClock.Format12Hour(time));
+            var patientName = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == row.PatientId)
+                .Select(p => p.PatientName)
+                .FirstOrDefaultAsync();
+            var patientLabel = string.IsNullOrWhiteSpace(patientName) ? "A patient" : patientName.Trim();
+            await _clinicInbox.NotifyDoctorAndReceptionAsync(
+                caller.DoctorId.Value,
+                "New appointment",
+                $"{patientLabel} booked for {row.RequestedDate:dd MMM yyyy} {NotificationClock.Format12Hour(time)}.",
+                "appointment_confirm");
         }
         catch { /* booking already saved */ }
         return Ok(new { status = "ACCEPTED", patientAppId = appt.PatientAppId });
@@ -1037,11 +1083,25 @@ public class MobileClinicQueryService
         await EnsureSchemaAsync();
         if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
         if (string.IsNullOrWhiteSpace(reason)) return Fail(400, "VALIDATION", "A decline reason is required.");
+        var pending = await LoadRequestAsync(id, caller.DoctorId.Value);
         var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.AppointmentRequest
             SET Status = N'DECLINED', Reason = {reason.Trim()}
             WHERE AppointmentRequestId = {id} AND DoctorId = {caller.DoctorId.Value} AND Status = N'PENDING'");
         if (updated == 0) return Fail(404, "NOT_FOUND", "Pending request not found.");
+        if (pending != null)
+        {
+            try
+            {
+                await _clinicInbox.NotifyPatientAsync(
+                    pending.PatientId,
+                    "Appointment request declined",
+                    "The clinic declined your appointment request" + (string.IsNullOrWhiteSpace(reason) ? "." : ": " + reason.Trim()),
+                    "appointment_request",
+                    "/patient/appointment-requests");
+            }
+            catch { /* decline is saved */ }
+        }
         return Ok(new { status = "DECLINED" });
     }
 
@@ -1073,6 +1133,12 @@ public class MobileClinicQueryService
                 });
                 if (!string.IsNullOrWhiteSpace(mobile))
                     await _sms.SendAsync(mobile, body);
+                await _clinicInbox.NotifyPatientAsync(
+                    req.PatientId,
+                    "New appointment time proposed",
+                    body,
+                    "appointment_request",
+                    "/patient/appointment-requests");
             }
         }
         catch { /* proposal already saved */ }
@@ -1129,6 +1195,16 @@ public class MobileClinicQueryService
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.CareLinkRequest (FromDoctorId, ToDoctorId, PatientId, Note, FeeAmount, Status, CreatedAt)
             VALUES ({caller.DoctorId.Value}, {request.ToDoctorId}, {request.PatientId}, {Trim(request.Note)}, {request.FeeAmount}, N'OPEN', {DateTime.Now})");
+        try
+        {
+            await _clinicInbox.NotifyDoctorUserAsync(
+                request.ToDoctorId,
+                "CareLink request",
+                "Another doctor sent you a CareLink consult request.",
+                "carelink",
+                "/doctor/carelink");
+        }
+        catch { /* request already saved */ }
         return Ok(new { status = "OPEN" });
     }
 
@@ -1145,6 +1221,25 @@ public class MobileClinicQueryService
             SET Status = {next}
             WHERE CareLinkRequestId = {id} AND ToDoctorId = {caller.DoctorId.Value} AND Status = N'OPEN'");
         if (updated == 0) return Fail(404, "NOT_FOUND", "Open care link not found.");
+        try
+        {
+            var link = await _context.Database.SqlQuery<CareLinkRow>($@"
+                SELECT c.CareLinkRequestId, c.FromDoctorId, c.ToDoctorId, c.PatientId, pt.PatientName,
+                       c.Note, c.FeeAmount, c.Opinion, c.Status, c.CreatedAt
+                FROM dbo.CareLinkRequest c
+                INNER JOIN dbo.Patient pt ON pt.PatientId = c.PatientId
+                WHERE c.CareLinkRequestId = {id}").FirstOrDefaultAsync();
+            if (link != null)
+            {
+                await _clinicInbox.NotifyDoctorUserAsync(
+                    link.FromDoctorId,
+                    "CareLink " + next.ToLowerInvariant(),
+                    "The receiving doctor " + next.ToLowerInvariant() + " your CareLink request.",
+                    "carelink",
+                    "/doctor/carelink");
+            }
+        }
+        catch { /* response already saved */ }
         return Ok(new { status = next });
     }
 

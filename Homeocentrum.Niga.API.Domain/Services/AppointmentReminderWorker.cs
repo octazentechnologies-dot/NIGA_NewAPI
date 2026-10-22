@@ -142,6 +142,7 @@ public sealed class AppointmentReminderWorker : BackgroundService
             db,
             scope.ServiceProvider.GetRequiredService<ISmsSender>(),
             scope.ServiceProvider.GetRequiredService<ISmsTemplateRenderer>(),
+            scope.ServiceProvider.GetRequiredService<IPushNotificationSender>(),
             cancellationToken);
     }
 
@@ -149,9 +150,10 @@ public sealed class AppointmentReminderWorker : BackgroundService
         NIGACentrumContext db,
         ISmsSender sms,
         ISmsTemplateRenderer templates,
+        IPushNotificationSender push,
         CancellationToken cancellationToken)
     {
-        // Patient self-reminders with NotifyPush — deliver as SMS within a 2-hour due window.
+        // Patient self-reminders with NotifyPush — SMS + web/mobile inbox within a 2-hour due window.
         var from = DateTime.Now.AddMinutes(-30);
         var to = DateTime.Now.AddHours(2);
         var diary = await db.Database.SqlQuery<DiaryReminderRow>($@"
@@ -159,6 +161,7 @@ public sealed class AppointmentReminderWorker : BackgroundService
                 r.PatientReminderId,
                 r.Title,
                 r.DueAt,
+                r.UserId,
                 p.MobileNo
             FROM dbo.PatientReminder r
             INNER JOIN dbo.Patient p ON p.PatientId = r.PatientId
@@ -187,6 +190,21 @@ public sealed class AppointmentReminderWorker : BackgroundService
                 INSERT INTO dbo.NotificationOutbox (Channel, EventType, Destination, Body, Status, LastError, CreatedAt)
                 VALUES (N'SMS', {("DIARY_REMIND_" + row.PatientReminderId)}, {row.MobileNo}, {body}, {status}, NULL, {DateTime.Now})",
                 cancellationToken);
+            if (row.UserId > 0)
+            {
+                await push.SendToUserAsync(
+                    row.UserId,
+                    string.IsNullOrWhiteSpace(row.Title) ? "Reminder" : row.Title,
+                    body,
+                    new Dictionary<string, string>
+                    {
+                        ["action"] = "diary_remind",
+                        ["type"] = "SYSTEM",
+                        ["deepLink"] = "/patient/reminders"
+                    },
+                    "diary_remind",
+                    cancellationToken);
+            }
         }
     }
 
@@ -205,6 +223,7 @@ public sealed class AppointmentReminderWorker : BackgroundService
         public int PatientReminderId { get; set; }
         public string Title { get; set; } = "";
         public DateTime DueAt { get; set; }
+        public long UserId { get; set; }
         public string? MobileNo { get; set; }
     }
 }
