@@ -96,7 +96,7 @@ public interface IS4Week4Service
     Task<S4ActionResult> DeliverMedicineAsync(int orderId, S4Caller caller);
     Task<S4ActionResult> MedicineTrackingAsync(int orderId, S4Caller caller);
     Task<S4ActionResult> PatientMedicineOrdersAsync(S4Caller caller);
-    Task<S4ActionResult> CloneRefillOrderAsync(int refillId, S4Caller caller);
+    Task<S4ActionResult> CloneRefillOrderAsync(int refillId, S4Caller caller, MedicineOrderCreateRequest? request = null);
     Task<S4ActionResult> ListMedicineExceptionsAsync(S4Caller caller);
     Task<S4ActionResult> RerouteMedicineAsync(int orderId, int pharmacyId, S4Caller caller);
     Task<S4ActionResult> SaveRoutingAsync(RoutingRuleRequest request, S4Caller caller);

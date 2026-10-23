@@ -107,6 +107,9 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddHostedService<RubricRemedyImportBackgroundService>();
             services.AddScoped<IDoctorDashBoardService, DoctorDashBoardService>();
             services.AddScoped<MobileClinicQueryService>();
+            services.AddSignalR();
+            services.AddSingleton<Homeocentrum.Niga.API.Domain.Realtime.IClinicRealtimeNotifier,
+                Homeocentrum.Niga.API.Domain.Realtime.ClinicRealtimeNotifier>();
             services.AddScoped<IPatientLabOrderServices, PatientLabOrderServices>();
             services.AddScoped<IPatientLabEntryServices, PatientLabEntryServices>();
             services.AddScoped<ILabTestMasterServices, LabTestMasterServices>();

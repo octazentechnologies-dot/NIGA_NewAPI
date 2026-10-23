@@ -2,6 +2,7 @@ using System.Threading;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Interfaces;
+using Homeocentrum.Niga.API.Domain.Realtime;
 using Homeocentrum.Niga.API.Domain.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,7 @@ public class MobileClinicQueryService
     private readonly ISmsTemplateRenderer _templates;
     private readonly ISmsSender _sms;
     private readonly IClinicInboxFanout _clinicInbox;
+    private readonly IClinicRealtimeNotifier _realtime;
 
     public MobileClinicQueryService(
         NIGACentrumContext context,
@@ -33,7 +35,8 @@ public class MobileClinicQueryService
         IAppointmentRescheduleNotifier notify,
         ISmsTemplateRenderer templates,
         ISmsSender sms,
-        IClinicInboxFanout clinicInbox)
+        IClinicInboxFanout clinicInbox,
+        IClinicRealtimeNotifier realtime)
     {
         _context = context;
         _http = http;
@@ -42,6 +45,7 @@ public class MobileClinicQueryService
         _templates = templates;
         _sms = sms;
         _clinicInbox = clinicInbox;
+        _realtime = realtime;
     }
 
     public async Task<S4ActionResult> DoctorFollowUpsAsync(S4Caller caller, string? status, DateTime? from, DateTime? to)
@@ -745,7 +749,7 @@ public class MobileClinicQueryService
         await EnsureSchemaAsync();
         if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
         var rows = await _context.Database.SqlQuery<AppointmentRequestRow>($@"
-            SELECT r.AppointmentRequestId, r.PatientId, pt.PatientName, r.RequestedDate, r.RequestedTime,
+            SELECT r.AppointmentRequestId, r.DoctorId, r.PatientId, pt.PatientName, r.RequestedDate, r.RequestedTime,
                    r.ConsultMode, r.Status, r.Reason, r.ProposedDate, r.ProposedTime, r.PatientAppId, r.CreatedAt
             FROM dbo.AppointmentRequest r
             INNER JOIN dbo.Patient pt ON pt.PatientId = r.PatientId
@@ -754,6 +758,14 @@ public class MobileClinicQueryService
         if (!string.IsNullOrWhiteSpace(status))
             rows = rows.Where(r => string.Equals(r.Status, status.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
         return Ok(rows);
+    }
+
+    public async Task<S4ActionResult> CountPendingAppointmentRequestsForDoctorAsync(S4Caller caller)
+    {
+        await EnsureSchemaAsync();
+        if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
+        var pending = await CountPendingAppointmentRequestsAsync(caller.DoctorId.Value);
+        return Ok(new { pendingCount = pending });
     }
 
     public async Task<S4ActionResult> CreateAppointmentRequestAsync(AppointmentRequestWrite request, S4Caller caller, string? idempotencyKey = null)
@@ -773,7 +785,7 @@ public class MobileClinicQueryService
         if (!string.IsNullOrEmpty(key))
         {
             var prior = await _context.Database.SqlQuery<AppointmentRequestRow>($@"
-                SELECT TOP 1 r.AppointmentRequestId, r.PatientId, CAST(NULL AS nvarchar(200)) AS PatientName,
+                SELECT TOP 1 r.AppointmentRequestId, r.DoctorId, r.PatientId, CAST(NULL AS nvarchar(200)) AS PatientName,
                        r.RequestedDate, r.RequestedTime, r.ConsultMode, r.Status, r.Reason,
                        r.ProposedDate, r.ProposedTime, r.PatientAppId, r.CreatedAt
                 FROM dbo.AppointmentRequest r
@@ -791,12 +803,23 @@ public class MobileClinicQueryService
             VALUES ({request.DoctorId}, {caller.PatientId.Value}, {request.RequestedDate.Value.Date}, {request.RequestedTime.Trim()},
                     {Trim(request.ConsultMode) ?? "InClinic"}, N'PENDING', {Trim(request.Reason)}, {DateTime.Now}, {key})");
         var created = await _context.Database.SqlQuery<AppointmentRequestRow>($@"
-            SELECT TOP 1 r.AppointmentRequestId, r.PatientId, CAST(NULL AS nvarchar(200)) AS PatientName,
+            SELECT TOP 1 r.AppointmentRequestId, r.DoctorId, r.PatientId, CAST(NULL AS nvarchar(200)) AS PatientName,
                    r.RequestedDate, r.RequestedTime, r.ConsultMode, r.Status, r.Reason,
                    r.ProposedDate, r.ProposedTime, r.PatientAppId, r.CreatedAt
             FROM dbo.AppointmentRequest r
             WHERE r.PatientId = {caller.PatientId.Value}
             ORDER BY r.AppointmentRequestId DESC").FirstAsync();
+        try
+        {
+            var pname = await _context.Patients.AsNoTracking()
+                .Where(p => p.PatientId == caller.PatientId.Value)
+                .Select(p => p.PatientName)
+                .FirstOrDefaultAsync();
+            created.PatientName = pname;
+            created.DoctorId = request.DoctorId;
+            await PublishAppointmentRequestAsync(request.DoctorId, "created", created.AppointmentRequestId, "PENDING", created);
+        }
+        catch { /* realtime best-effort */ }
         try
         {
             var mobile = await _context.Patients.AsNoTracking()
@@ -888,7 +911,7 @@ public class MobileClinicQueryService
         if (!caller.IsPatient || !caller.PatientId.HasValue)
             return Fail(403, "FORBIDDEN", "Patient context is required.");
         var row = await _context.Database.SqlQuery<AppointmentRequestRow>($@"
-            SELECT AppointmentRequestId, PatientId, CAST(NULL AS nvarchar(200)) AS PatientName,
+            SELECT AppointmentRequestId, DoctorId, PatientId, CAST(NULL AS nvarchar(200)) AS PatientName,
                    RequestedDate, RequestedTime, ConsultMode, Status, Reason, ProposedDate, ProposedTime, PatientAppId, CreatedAt
             FROM dbo.AppointmentRequest
             WHERE AppointmentRequestId = {id}").FirstOrDefaultAsync();
@@ -900,6 +923,8 @@ public class MobileClinicQueryService
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.AppointmentRequest SET Status = N'CANCELLED'
             WHERE AppointmentRequestId = {id}");
+        try { await PublishAppointmentRequestAsync(row.DoctorId, "cancelled", id, "CANCELLED", row); }
+        catch { /* realtime best-effort */ }
         return Ok(new { appointmentRequestId = id, status = "CANCELLED" });
     }
 
@@ -945,6 +970,8 @@ public class MobileClinicQueryService
                     "/reception/appointments");
             }
             catch { /* decline is saved */ }
+            try { await PublishAppointmentRequestAsync(row.DoctorId, "patient_responded", id, "DECLINED"); }
+            catch { /* realtime best-effort */ }
             return Ok(new { appointmentRequestId = id, status = "DECLINED", patientAppId = (int?)null });
         }
 
@@ -1002,6 +1029,8 @@ public class MobileClinicQueryService
                 "appointment_confirm");
         }
         catch { /* booking already saved */ }
+        try { await PublishAppointmentRequestAsync(row.DoctorId, "patient_responded", id, "ACCEPTED"); }
+        catch { /* realtime best-effort */ }
         return Ok(new { appointmentRequestId = id, status = "ACCEPTED", patientAppId = appt.PatientAppId });
     }
 
@@ -1075,6 +1104,8 @@ public class MobileClinicQueryService
                 "appointment_confirm");
         }
         catch { /* booking already saved */ }
+        try { await PublishAppointmentRequestAsync(caller.DoctorId.Value, "accepted", id, "ACCEPTED", row); }
+        catch { /* realtime best-effort */ }
         return Ok(new { status = "ACCEPTED", patientAppId = appt.PatientAppId });
     }
 
@@ -1102,6 +1133,8 @@ public class MobileClinicQueryService
             }
             catch { /* decline is saved */ }
         }
+        try { await PublishAppointmentRequestAsync(caller.DoctorId.Value, "declined", id, "DECLINED"); }
+        catch { /* realtime best-effort */ }
         return Ok(new { status = "DECLINED" });
     }
 
@@ -1142,8 +1175,52 @@ public class MobileClinicQueryService
             }
         }
         catch { /* proposal already saved */ }
+        try
+        {
+            var proposedRow = await LoadRequestAsync(id, caller.DoctorId.Value);
+            await PublishAppointmentRequestAsync(caller.DoctorId.Value, "proposed", id, "PROPOSED", proposedRow);
+        }
+        catch { /* realtime best-effort */ }
         return Ok(new { status = "PROPOSED" });
     }
+
+
+    private async Task<int> CountPendingAppointmentRequestsAsync(int doctorId)
+    {
+        var n = await _context.Database.SqlQuery<CountRow>($@"
+            SELECT COUNT(1) AS Value
+            FROM dbo.AppointmentRequest
+            WHERE DoctorId = {doctorId} AND Status IN (N'PENDING', N'PROPOSED')").FirstOrDefaultAsync();
+        return n?.Value ?? 0;
+    }
+
+    private async Task PublishAppointmentRequestAsync(
+        int doctorId,
+        string eventType,
+        int appointmentRequestId,
+        string status,
+        AppointmentRequestRow? row = null)
+    {
+        if (doctorId <= 0) return;
+        var pending = await CountPendingAppointmentRequestsAsync(doctorId);
+        await _realtime.AppointmentRequestChangedAsync(doctorId, new
+        {
+            eventType,
+            appointmentRequestId,
+            status,
+            pendingCount = pending,
+            patientId = row?.PatientId,
+            patientName = row?.PatientName,
+            requestedDate = row?.RequestedDate,
+            requestedTime = row?.RequestedTime,
+            consultMode = row?.ConsultMode,
+            reason = row?.Reason,
+            proposedDate = row?.ProposedDate,
+            proposedTime = row?.ProposedTime,
+            createdAt = row?.CreatedAt
+        });
+    }
+
 
     private async Task<string> DoctorLabelAsync(int doctorId)
     {
@@ -1359,7 +1436,7 @@ public class MobileClinicQueryService
 
     private async Task<AppointmentRequestRow?> LoadRequestAsync(int id, int doctorId)
         => await _context.Database.SqlQuery<AppointmentRequestRow>($@"
-            SELECT r.AppointmentRequestId, r.PatientId, pt.PatientName, r.RequestedDate, r.RequestedTime,
+            SELECT r.AppointmentRequestId, r.DoctorId, r.PatientId, pt.PatientName, r.RequestedDate, r.RequestedTime,
                    r.ConsultMode, r.Status, r.Reason, r.ProposedDate, r.ProposedTime, r.PatientAppId, r.CreatedAt
             FROM dbo.AppointmentRequest r
             INNER JOIN dbo.Patient pt ON pt.PatientId = r.PatientId
@@ -1648,6 +1725,7 @@ public class MobileClinicQueryService
     private sealed class AppointmentRequestRow
     {
         public int AppointmentRequestId { get; set; }
+        public int DoctorId { get; set; }
         public int PatientId { get; set; }
         public string? PatientName { get; set; }
         public DateTime RequestedDate { get; set; }
