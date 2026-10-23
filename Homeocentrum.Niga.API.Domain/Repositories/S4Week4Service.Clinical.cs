@@ -174,6 +174,12 @@ public partial class S4Week4Service
         doctor.VerificationStatus = status;
         doctor.ChangedDate = DateTime.Now;
 
+        // Doctor.VerificationStatus uses "Verified"; DoctorVerification.Status CHECK allows only
+        // Pending / Approved / Rejected / NeedsInfo — map Approve accordingly.
+        var dvStatus = string.Equals(status, "Verified", StringComparison.OrdinalIgnoreCase)
+            ? "Approved"
+            : status;
+
         // Keep DoctorVerification row in sync with Doctor.VerificationStatus (single source of truth for apps).
         var verification = await _context.DoctorVerifications
             .FirstOrDefaultAsync(v => v.DoctorId == doctorId && !v.DeleteStatus);
@@ -182,7 +188,7 @@ public partial class S4Week4Service
             verification = new DoctorVerification
             {
                 DoctorId = doctorId,
-                Status = status,
+                Status = dvStatus,
                 ReviewerNote = string.IsNullOrWhiteSpace(request!.Note) ? null : request.Note.Trim(),
                 ReviewedBy = caller.UserId > 0 && caller.UserId <= int.MaxValue ? (int)caller.UserId : null,
                 ReviewedAt = DateTime.Now,
@@ -193,7 +199,7 @@ public partial class S4Week4Service
         }
         else
         {
-            verification.Status = status;
+            verification.Status = dvStatus;
             verification.ReviewerNote = string.IsNullOrWhiteSpace(request!.Note) ? null : request.Note.Trim();
             verification.ReviewedBy = caller.UserId > 0 && caller.UserId <= int.MaxValue ? (int)caller.UserId : null;
             verification.ReviewedAt = DateTime.Now;
@@ -831,7 +837,10 @@ public partial class S4Week4Service
                 return Fail(403, "FORBIDDEN", "A patient profile is required.");
             var mine = await _context.Database.SqlQuery<RefillListRow>($@"
                 SELECT r.RefillRequestId, r.ErxSnapshotId, r.PatientId, r.DoctorId, r.Status, r.Reason, r.CreatedAt, r.DecidedAt,
-                       p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId
+                       p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId,
+                       s.SignedAt,
+                       (SELECT COUNT(1) FROM dbo.ErxSnapshotItem i WHERE i.ErxSnapshotId = r.ErxSnapshotId) AS ItemCount,
+                       (SELECT TOP 1 i.RemedyName FROM dbo.ErxSnapshotItem i WHERE i.ErxSnapshotId = r.ErxSnapshotId ORDER BY i.ErxSnapshotItemId) AS FirstRemedyName
                 FROM dbo.RefillRequest r
                 LEFT JOIN dbo.Patient p ON p.PatientId = r.PatientId
                 LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
@@ -846,18 +855,21 @@ public partial class S4Week4Service
             return Fail(403, "FORBIDDEN", "A doctor profile is required.");
         var doctorId = caller.IsAdmin ? 0 : caller.DoctorId!.Value;
         var filter = (status ?? "PENDING").Trim().ToUpperInvariant();
-        if (filter is not ("PENDING" or "APPROVED" or "REJECTED" or "ALL"))
-            return Fail(400, "VALIDATION", "Status must be PENDING, APPROVED, REJECTED, or ALL.");
+        if (filter is not ("PENDING" or "APPROVED" or "REJECTED" or "ORDERED" or "ALL"))
+            return Fail(400, "VALIDATION", "Status must be PENDING, APPROVED, REJECTED, ORDERED, or ALL.");
         var rows = await _context.Database.SqlQuery<RefillListRow>($@"
             SELECT TOP 200 r.RefillRequestId, r.ErxSnapshotId, r.PatientId, r.DoctorId, r.Status, r.Reason, r.CreatedAt, r.DecidedAt,
-                   p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId
+                   p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId,
+                   s.SignedAt,
+                   (SELECT COUNT(1) FROM dbo.ErxSnapshotItem i WHERE i.ErxSnapshotId = r.ErxSnapshotId) AS ItemCount,
+                   (SELECT TOP 1 i.RemedyName FROM dbo.ErxSnapshotItem i WHERE i.ErxSnapshotId = r.ErxSnapshotId ORDER BY i.ErxSnapshotItemId) AS FirstRemedyName
             FROM dbo.RefillRequest r
             LEFT JOIN dbo.Patient p ON p.PatientId = r.PatientId
             LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
             LEFT JOIN dbo.ErxSnapshot s ON s.ErxSnapshotId = r.ErxSnapshotId
             WHERE ({doctorId} = 0 OR r.DoctorId = {doctorId})
               AND ({filter} = N'ALL' OR r.Status = {filter})
-            ORDER BY CASE WHEN r.Status = N'PENDING' THEN 0 ELSE 1 END, r.CreatedAt DESC").ToListAsync();
+            ORDER BY CASE WHEN r.Status = N'PENDING' THEN 0 WHEN r.Status = N'APPROVED' THEN 1 ELSE 2 END, r.CreatedAt DESC").ToListAsync();
         return Ok(new { success = true, data = rows });
     }
 
@@ -865,7 +877,10 @@ public partial class S4Week4Service
     {
         var row = await _context.Database.SqlQuery<RefillListRow>($@"
             SELECT r.RefillRequestId, r.ErxSnapshotId, r.PatientId, r.DoctorId, r.Status, r.Reason, r.CreatedAt, r.DecidedAt,
-                   p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId
+                   p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId,
+                   s.SignedAt,
+                   (SELECT COUNT(1) FROM dbo.ErxSnapshotItem i WHERE i.ErxSnapshotId = r.ErxSnapshotId) AS ItemCount,
+                   (SELECT TOP 1 i.RemedyName FROM dbo.ErxSnapshotItem i WHERE i.ErxSnapshotId = r.ErxSnapshotId ORDER BY i.ErxSnapshotItemId) AS FirstRemedyName
             FROM dbo.RefillRequest r
             LEFT JOIN dbo.Patient p ON p.PatientId = r.PatientId
             LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
@@ -1304,18 +1319,64 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = rows });
     }
 
-    public async Task<S4ActionResult> CloneRefillOrderAsync(int refillId, S4Caller caller)
+    public async Task<S4ActionResult> CloneRefillOrderAsync(int refillId, S4Caller caller, MedicineOrderCreateRequest? request = null)
     {
         if (!caller.IsPatient) return Fail(403, "FORBIDDEN", "The patient starts the refill order.");
         var refill = await _context.Database.SqlQuery<RefillRow>($@"
             SELECT RefillRequestId, ErxSnapshotId, PatientId, DoctorId, Status, Reason, CreatedAt
             FROM dbo.RefillRequest WHERE RefillRequestId = {refillId}").FirstOrDefaultAsync();
         if (refill == null) return Fail(404, "NOT_FOUND", "Refill not found.");
+        if (string.Equals(refill.Status, "ORDERED", StringComparison.OrdinalIgnoreCase))
+            return Fail(409, "CONFLICT", "This refill was already turned into an order.");
         if (!string.Equals(refill.Status, "APPROVED", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "The doctor has not approved this refill.");
         if (refill.PatientId != caller.PatientId)
             return Fail(403, "FORBIDDEN", "This refill belongs to another patient.");
-        return await CreateMedicineOrderAsync(new MedicineOrderCreateRequest { ErxSnapshotId = refill.ErxSnapshotId }, caller);
+
+        var created = await CreateMedicineOrderAsync(new MedicineOrderCreateRequest
+        {
+            ErxSnapshotId = refill.ErxSnapshotId,
+            PharmacyPartnerId = request?.PharmacyPartnerId,
+            AddressId = request?.AddressId
+        }, caller);
+        if (created.StatusCode >= 400)
+            return created;
+
+        var orderId = 0;
+        try
+        {
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(created.Body));
+            if (doc.RootElement.TryGetProperty("data", out var data)
+                && data.TryGetProperty("medicineOrderId", out var idEl)
+                && idEl.TryGetInt32(out var parsed))
+                orderId = parsed;
+        }
+        catch
+        {
+            orderId = 0;
+        }
+
+        if (orderId > 0)
+        {
+            await GrantMedicineConsentAsync(orderId, caller);
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.RefillRequest
+                SET Status = N'ORDERED', DecidedAt = ISNULL(DecidedAt, {DateTime.Now})
+                WHERE RefillRequestId = {refillId} AND Status = N'APPROVED'");
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    medicineOrderId = orderId,
+                    status = "OFFERED",
+                    refillStatus = "ORDERED",
+                    namesRevealed = false
+                }
+            });
+        }
+
+        return created;
     }
 
     public async Task<S4ActionResult> ListMedicineExceptionsAsync(S4Caller caller)
@@ -2509,6 +2570,9 @@ public partial class S4Week4Service
         public string? PatientName { get; set; }
         public string? DoctorName { get; set; }
         public int? PatientAppId { get; set; }
+        public DateTime? SignedAt { get; set; }
+        public int ItemCount { get; set; }
+        public string? FirstRemedyName { get; set; }
     }
 
     private sealed class RefillRow

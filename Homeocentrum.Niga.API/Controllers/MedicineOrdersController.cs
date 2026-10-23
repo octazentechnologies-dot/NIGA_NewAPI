@@ -72,7 +72,8 @@ public class MedicineOrdersController : ControllerBase
     public Task<IActionResult> MyOrders() => Done(_s4.PatientMedicineOrdersAsync(Caller()));
 
     [HttpPost("/api/MedicineOrders/Refill/{refillId:int}")]
-    public Task<IActionResult> RefillOrder(int refillId) => Done(_s4.CloneRefillOrderAsync(refillId, Caller()));
+    public Task<IActionResult> RefillOrder(int refillId, [FromBody] MedicineOrderCreateRequest? request)
+        => Done(_s4.CloneRefillOrderAsync(refillId, Caller(), request));
 
     [HttpGet("/api/Admin/HomemedsExceptions")]
     public Task<IActionResult> MedExceptions() => Done(_s4.ListMedicineExceptionsAsync(Caller()));

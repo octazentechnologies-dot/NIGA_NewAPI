@@ -215,6 +215,18 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = JwtSettings.Validation(configuration);
     options.Events = new JwtBearerEvents
     {
+        OnMessageReceived = ctx =>
+        {
+            // SignalR browser clients pass JWT as ?access_token= (WebSockets cannot set Authorization).
+            var accessToken = ctx.Request.Query["access_token"];
+            var path = ctx.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken)
+                && path.StartsWithSegments("/hubs"))
+            {
+                ctx.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        },
         OnTokenValidated = ctx =>
         {
             var jti = ctx.Principal?.FindFirst("jti")?.Value;
@@ -412,6 +424,8 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
     }
 });
 app.MapControllers();
+app.MapHub<Homeocentrum.Niga.API.Domain.Realtime.ClinicRealtimeHub>(
+    Homeocentrum.Niga.API.Domain.Realtime.ClinicRealtimeHub.HubPath);
 
 
 

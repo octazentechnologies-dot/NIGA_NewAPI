@@ -336,6 +336,10 @@ public class MobileDoctorController : ControllerBase
     public Task<IActionResult> AppointmentRequests([FromQuery] string? status)
         => Done(_clinic.ListAppointmentRequestsAsync(Caller(), status));
 
+    [HttpGet("/api/Doctor/AppointmentRequests/PendingCount")]
+    public Task<IActionResult> AppointmentRequestsPendingCount()
+        => Done(_clinic.CountPendingAppointmentRequestsForDoctorAsync(Caller()));
+
     [HttpPost("/api/Doctor/AppointmentRequests/{id:int}/Accept")]
     public Task<IActionResult> AcceptRequest(int id) => Done(_clinic.AcceptAppointmentRequestAsync(id, Caller()));
 
