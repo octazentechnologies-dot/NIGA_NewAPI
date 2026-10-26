@@ -1620,10 +1620,15 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         };
 
         private async Task<List<SubSectionSearchResultModel>> BuildSearchResultsWithAncestorsAsync(
-            List<SubSectionSearchMatchRow> rankedMatches)
+            List<SubSectionSearchMatchRow> rankedMatches,
+            string[]? searchWords = null,
+            string? trailingPrefix = null)
         {
             if (rankedMatches == null || rankedMatches.Count == 0)
                 return new List<SubSectionSearchResultModel>();
+
+            if (searchWords is { Length: > 0 })
+                ApplyRelevanceScores(rankedMatches, searchWords, trailingPrefix);
 
             try
             {
@@ -1681,8 +1686,20 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                         ChildCount = childCounts.TryGetValue((int)match.SubSectionId, out var matchChildCount)
                             ? matchChildCount
                             : 0,
-                        Ancestors = ancestors
+                        Ancestors = ancestors,
+                        Score = match.Score,
+                        MatchedTokenCount = match.MatchedTokenCount,
+                        DisplayPath = FormatSubSectionDisplayPath(match.SubSectionName)
                     });
+                }
+
+                // Keep API order aligned with relevance when scores were applied.
+                if (searchWords is { Length: > 0 })
+                {
+                    results = results
+                        .OrderByDescending(r => r.Score)
+                        .ThenByDescending(r => r.MatchedTokenCount)
+                        .ToList();
                 }
 
                 return results;
@@ -1697,7 +1714,10 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     SubSectionName = match.SubSectionName,
                     ParentSubSectionId = match.ParentSubSectionId,
                     ChildCount = 0,
-                    Ancestors = new List<SubSectionLevelModel>()
+                    Ancestors = new List<SubSectionLevelModel>(),
+                    Score = match.Score,
+                    MatchedTokenCount = match.MatchedTokenCount,
+                    DisplayPath = FormatSubSectionDisplayPath(match.SubSectionName)
                 }).ToList();
             }
         }
@@ -1787,9 +1807,255 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         {
             return normalizedQuery
                 .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(w => w.Replace("\"", string.Empty).Replace("'", string.Empty).Trim())
                 .Where(w => w.Length >= 2 && !StopWords.Contains(w))
-                .Distinct()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        /// <summary>
+        /// Multi-word CONTAINS: AND for precise matches (Google/Amazon style); OR only as recall fallback.
+        /// Synonym groups expand inside a token clause, e.g. agg → ("agg*" OR "aggravation*").
+        /// </summary>
+        private static string BuildFullTextQuery(string[] words, bool requireAllTokens)
+        {
+            var parts = words.Select(BuildFullTextTokenClause);
+            return string.Join(requireAllTokens ? " AND " : " OR ", parts);
+        }
+
+        private static string BuildFullTextTokenClause(string word)
+        {
+            var variants = ExpandSearchTokenVariants(word)
+                .Select(v => v.Replace("\"", string.Empty).Trim())
+                .Where(v => v.Length >= 2)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (variants.Count == 0)
+                return $"\"{word}*\"";
+            if (variants.Count == 1)
+                return $"\"{variants[0]}*\"";
+            return "(" + string.Join(" OR ", variants.Select(v => $"\"{v}*\"")) + ")";
+        }
+
+        /// <summary>
+        /// Smaller candidate windows keep suggestion latency low; OR fill is skipped when AND already has strong hits.
+        /// </summary>
+        private static int SuggestionCandidateTop(int top) =>
+            Math.Min(Math.Max(top * 3, 30), 100);
+
+        private static bool HasStrongAndCoverage(
+            List<SubSectionSearchMatchRow> matches,
+            string[] words,
+            int top,
+            string? trailingPrefix = null)
+        {
+            if (matches == null || matches.Count == 0 || words == null || words.Length == 0)
+                return false;
+            ApplyRelevanceScores(matches, words, trailingPrefix);
+            var need = Math.Min(3, Math.Max(1, top / 2));
+            return matches.Count(m => m.MatchedTokenCount >= words.Length) >= need;
+        }
+
+        private static string FormatSubSectionDisplayPath(string? fullName)
+        {
+            if (string.IsNullOrWhiteSpace(fullName))
+                return string.Empty;
+            return Regex.Replace(fullName.Trim(), @"\s*-\s*", " › ");
+        }
+
+        /// <summary>
+        /// Prefer rubrics that match more query tokens, in order, over FTS rank alone.
+        /// </summary>
+        private static void ApplyRelevanceScores(
+            List<SubSectionSearchMatchRow> matches,
+            string[] words,
+            string? trailingPrefix = null)
+        {
+            if (matches == null || matches.Count == 0 || words == null || words.Length == 0)
+                return;
+
+            foreach (var match in matches)
+            {
+                var (score, matchedCount) = ComputeRelevanceScore(
+                    match.SubSectionName,
+                    words,
+                    match.Rank,
+                    trailingPrefix);
+                match.Score = score;
+                match.MatchedTokenCount = matchedCount;
+            }
+        }
+
+        private static (int Score, int MatchedCount) ComputeRelevanceScore(
+            string? name,
+            string[] words,
+            int ftsRank,
+            string? trailingPrefix = null)
+        {
+            var hay = NormalizeSubSectionSearchText(name ?? string.Empty);
+            if (string.IsNullOrEmpty(hay) || words.Length == 0)
+                return (ftsRank, 0);
+
+            var hayTokens = hay.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var matchedCount = 0;
+            var coverageScore = 0;
+            var firstIndex = -1;
+            var lastIndex = -1;
+            var orderBonus = 0;
+
+            foreach (var word in words)
+            {
+                var variants = ExpandSearchTokenVariants(word);
+                var foundAt = -1;
+                foreach (var variant in variants)
+                {
+                    for (var i = 0; i < hayTokens.Length; i++)
+                    {
+                        if (hayTokens[i].StartsWith(variant, StringComparison.Ordinal)
+                            || hayTokens[i].Equals(variant, StringComparison.Ordinal))
+                        {
+                            foundAt = i;
+                            break;
+                        }
+                    }
+                    if (foundAt >= 0)
+                        break;
+
+                    var idx = hay.IndexOf(variant, StringComparison.Ordinal);
+                    if (idx >= 0)
+                    {
+                        foundAt = hay.Substring(0, idx).Count(c => c == ' ');
+                        break;
+                    }
+                }
+
+                if (foundAt < 0)
+                    continue;
+
+                matchedCount++;
+                coverageScore += 1000;
+                if (firstIndex < 0)
+                    firstIndex = foundAt;
+                if (foundAt >= lastIndex)
+                {
+                    orderBonus += 120;
+                    lastIndex = foundAt;
+                }
+                else
+                {
+                    orderBonus += 20;
+                }
+            }
+
+            var genericPenalty = 0;
+            if (hay.Contains("complaints of", StringComparison.Ordinal)
+                && matchedCount < words.Length
+                && matchedCount <= 2)
+            {
+                genericPenalty = 400;
+            }
+
+            var allMatchedBonus = matchedCount == words.Length ? 1200 : 0;
+            var phraseBonus = 0;
+            if (matchedCount >= 3 && matchedCount == words.Length && orderBonus >= 120 * matchedCount)
+                phraseBonus = 500;
+
+            // Google-style: once the query is fully covered, prefer the shortest path that
+            // ends at the last query token — not deep children (pressing pain, last drops…).
+            var pathShape = 0;
+            if (matchedCount == words.Length && lastIndex >= 0)
+            {
+                var trailingExtra = Math.Max(0, hayTokens.Length - 1 - lastIndex);
+                pathShape -= trailingExtra * 220;
+                var matchSpan = Math.Max(0, lastIndex - Math.Max(0, firstIndex) + 1);
+                var extraMiddle = Math.Max(0, matchSpan - words.Length);
+                pathShape -= extraMiddle * 90; // e.g. "Neck of bladder" detour
+                pathShape += Math.Max(0, 14 - hayTokens.Length) * 35; // compact path wins
+                // Exact terminal: path ends on last matched query token (… after › agg.)
+                if (trailingExtra == 0)
+                    pathShape += 900;
+            }
+            else
+            {
+                // Incomplete query: slight preference for more specific nodes.
+                pathShape += Math.Min(hayTokens.Length, 12) * 8;
+            }
+
+            // Typing "after a" → boost next segment starting with "a" (agg.).
+            if (!string.IsNullOrEmpty(trailingPrefix) && lastIndex >= 0)
+            {
+                for (var i = lastIndex; i < hayTokens.Length && i <= lastIndex + 2; i++)
+                {
+                    if (hayTokens[i].StartsWith(trailingPrefix, StringComparison.Ordinal))
+                    {
+                        pathShape += i <= lastIndex + 1 ? 850 : 250;
+                        break;
+                    }
+                }
+            }
+
+            var score = coverageScore
+                + orderBonus
+                + pathShape
+                + allMatchedBonus
+                + phraseBonus
+                + Math.Min(ftsRank, 500)
+                - genericPenalty;
+
+            return (score, matchedCount);
+        }
+
+        /// <summary>
+        /// Last typed fragment (including stop words like "a") for prefix boosting toward "agg.".
+        /// </summary>
+        private static string? GetTrailingPrefixHint(string normalizedQuery, string[] words)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedQuery))
+                return null;
+            var rawParts = normalizedQuery.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (rawParts.Length == 0)
+                return null;
+            var last = rawParts[^1];
+            if (last.Length == 0 || last.Length > 6)
+                return null;
+            if (words.Length > 0 && words[^1].Equals(last, StringComparison.OrdinalIgnoreCase))
+                return null;
+            return last;
+        }
+
+        private static IEnumerable<string> ExpandSearchTokenVariants(string word)
+        {
+            yield return word;
+            if (word.Equals("agg", StringComparison.OrdinalIgnoreCase)
+                || word.Equals("aggravation", StringComparison.OrdinalIgnoreCase)
+                || word.Equals("aggravated", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return "agg";
+                yield return "aggravation";
+                yield return "aggravated";
+            }
+        }
+
+        private static List<SubSectionSearchMatchRow> RankAndTake(
+            List<SubSectionSearchMatchRow> matches,
+            string[] words,
+            int top,
+            string? trailingPrefix = null)
+        {
+            if (matches == null || matches.Count == 0)
+                return new List<SubSectionSearchMatchRow>();
+
+            ApplyRelevanceScores(matches, words, trailingPrefix);
+            return matches
+                .OrderByDescending(m => m.Score)
+                .ThenByDescending(m => m.MatchedTokenCount)
+                .ThenBy(m => (m.SubSectionName ?? string.Empty).Length)
+                .ThenByDescending(m => m.Rank)
+                .ThenBy(m => m.SubSectionName)
+                .GroupBy(m => m.SubSectionId)
+                .Select(g => g.First())
+                .Take(Math.Max(1, top))
+                .ToList();
         }
 
         /// <summary>
@@ -2344,38 +2610,58 @@ SELECT CASE WHEN EXISTS (
                 if (string.IsNullOrWhiteSpace(query))
                     return new List<SubSectionSearchResponse>();
 
-                string cacheKey = $"subsection_search_{query}_{top}";
+                string cacheKey = $"subsection_search_v3_{query}_{top}";
 
                 if (_cache.TryGetValue(cacheKey, out List<SubSectionSearchResponse> cached))
                     return cached;
 
-                var words = GetSearchWords(NormalizeSubSectionSearchText(query));
+                var normalized = NormalizeSubSectionSearchText(query);
+                var words = GetSearchWords(normalized);
 
                 if (!words.Any())
                     return new List<SubSectionSearchResponse>();
 
-                var fullTextQuery = string.Join(" OR ",
-                    words.Select(w => $"\"{w}*\""));
+                var trailingPrefix = GetTrailingPrefixHint(normalized, words);
 
-                var sql = @"
-            SELECT TOP (@Top)
-                s.SubSectionID AS Id,
-                s.SubSectionName AS Name,
-                ft.RANK
-            FROM dbo.SubSectionMaster s
-            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
-                ON s.SubSectionID = ft.[KEY]
-            WHERE s.DeleteStatus = 0
-            ORDER BY ft.RANK DESC";
+                // Prefer AND (precise); OR only to fill when AND is too sparse / weak.
+                var candidateTop = SuggestionCandidateTop(top);
+                var andQuery = BuildFullTextQuery(words, requireAllTokens: true);
+                var rows = await QuerySubSectionSearchResponsesAsync(andQuery, candidateTop);
+                var andMatchRows = rows.Select(r => new SubSectionSearchMatchRow
+                {
+                    SubSectionId = r.Id,
+                    SubSectionName = r.Name,
+                    Rank = r.RANK
+                }).ToList();
+                if (!HasStrongAndCoverage(andMatchRows, words, top, trailingPrefix) && words.Length > 1)
+                {
+                    var orQuery = BuildFullTextQuery(words, requireAllTokens: false);
+                    var orRows = await QuerySubSectionSearchResponsesAsync(orQuery, candidateTop);
+                    var seen = new HashSet<int>(rows.Select(r => r.Id));
+                    foreach (var row in orRows)
+                    {
+                        if (seen.Add(row.Id))
+                            rows.Add(row);
+                    }
+                }
 
-                var result = await _context.Database.SqlQueryRaw<SubSectionSearchResponse>(sql,
-                        new SqlParameter("@Top", top),
-                        new SqlParameter("@SearchQuery", fullTextQuery))
-                    .ToListAsync();
+                var scored = rows
+                    .Select(r =>
+                    {
+                        var (score, matched) = ComputeRelevanceScore(r.Name, words, r.RANK, trailingPrefix);
+                        return new { Row = r, Score = score, Matched = matched };
+                    })
+                    .OrderByDescending(x => x.Score)
+                    .ThenByDescending(x => x.Matched)
+                    .ThenBy(x => (x.Row.Name ?? string.Empty).Length)
+                    .ThenByDescending(x => x.Row.RANK)
+                    .Take(Math.Max(1, top))
+                    .Select(x => x.Row)
+                    .ToList();
 
-                _cache.Set(cacheKey, result, TimeSpan.FromMinutes(5));
+                _cache.Set(cacheKey, scored, TimeSpan.FromMinutes(5));
 
-                return result;
+                return scored;
             }
             catch (Exception ex)
             {
@@ -2430,28 +2716,31 @@ SELECT CASE WHEN EXISTS (
             top = Math.Max(5, Math.Min(top, scope == "global" ? 20 : 100));
 
             var cacheKey = sectionId.HasValue
-                ? $"subsection_search_{scope}_{sectionId.Value}_{query.ToLowerInvariant()}_{top}"
-                : $"subsection_search_{scope}_{query.ToLowerInvariant()}_{top}";
+                ? $"subsection_search_v3_{scope}_{sectionId.Value}_{query.ToLowerInvariant()}_{top}"
+                : $"subsection_search_v3_{scope}_{query.ToLowerInvariant()}_{top}";
 
             if (_cache.TryGetValue(cacheKey, out List<SubSectionSearchResultModel> cached))
                 return cached;
 
-            var words = GetSearchWords(NormalizeSubSectionSearchText(query));
+            var normalized = NormalizeSubSectionSearchText(query);
+            var words = GetSearchWords(normalized);
             if (!words.Any())
                 return new List<SubSectionSearchResultModel>();
+            var trailingPrefix = GetTrailingPrefixHint(normalized, words);
 
             var previousTimeout = _context.Database.GetCommandTimeout();
             _context.Database.SetCommandTimeout(scope == "global" ? 45 : previousTimeout ?? 30);
 
             try
             {
-                var rankedMatches = await TrySearchSubSectionsFullTextAsync(sectionId, words, top);
+                var rankedMatches = await TrySearchSubSectionsFullTextAsync(sectionId, words, top, trailingPrefix);
                 if (!rankedMatches.Any())
                 {
                     rankedMatches = await SearchSubSectionsWithEfLikeAsync(sectionId, words, top);
+                    rankedMatches = RankAndTake(rankedMatches, words, top, trailingPrefix);
                 }
 
-                var result = await BuildSearchResultsWithAncestorsAsync(rankedMatches);
+                var result = await BuildSearchResultsWithAncestorsAsync(rankedMatches, words, trailingPrefix);
                 if (result.Any())
                 {
                     _cache.Set(cacheKey, result, TimeSpan.FromMinutes(5));
@@ -2493,15 +2782,17 @@ SELECT CASE WHEN EXISTS (
             var offset = (pageNumber - 1) * pageSize;
 
             var cacheKey = sectionId.HasValue
-                ? $"subsection_search_paged_{scope}_{sectionId.Value}_{query.ToLowerInvariant()}_{pageNumber}_{pageSize}"
-                : $"subsection_search_paged_{scope}_{query.ToLowerInvariant()}_{pageNumber}_{pageSize}";
+                ? $"subsection_search_paged_v4_{scope}_{sectionId.Value}_{query.ToLowerInvariant()}_{pageNumber}_{pageSize}"
+                : $"subsection_search_paged_v4_{scope}_{query.ToLowerInvariant()}_{pageNumber}_{pageSize}";
 
             if (_cache.TryGetValue(cacheKey, out SubSectionSearchPagedResultModel cached))
                 return cached;
 
-            var words = GetSearchWords(NormalizeSubSectionSearchText(query));
+            var normalized = NormalizeSubSectionSearchText(query);
+            var words = GetSearchWords(normalized);
             if (!words.Any())
                 return new SubSectionSearchPagedResultModel();
+            var trailingPrefix = GetTrailingPrefixHint(normalized, words);
 
             var previousTimeout = _context.Database.GetCommandTimeout();
             _context.Database.SetCommandTimeout(scope == "global" ? 45 : previousTimeout ?? 30);
@@ -2515,7 +2806,8 @@ SELECT CASE WHEN EXISTS (
                 if (fullTextCount > 0)
                 {
                     totalCount = fullTextCount;
-                    rankedMatches = await TrySearchSubSectionsFullTextPagedAsync(sectionId, words, offset, pageSize);
+                    rankedMatches = await TrySearchSubSectionsFullTextPagedAsync(
+                        sectionId, words, offset, pageSize, trailingPrefix);
                 }
                 else
                 {
@@ -2534,14 +2826,19 @@ SELECT CASE WHEN EXISTS (
                     rankedMatches = await SearchSubSectionsWithEfLikePagedAsync(sectionId, words, offset, pageSize);
                 }
 
-                var items = await BuildSearchResultsWithAncestorsAsync(rankedMatches);
+                rankedMatches = RankAndTake(rankedMatches, words, rankedMatches.Count, trailingPrefix);
+                var items = await BuildSearchResultsWithAncestorsAsync(rankedMatches, words, trailingPrefix);
+                // Full FTS totalCount can exceed the ranked window. A short page means no more
+                // useful rows — do not keep HasMore true or clients loop infinite scroll forever.
+                var hasMore = items.Count >= pageSize
+                    && (offset + items.Count) < totalCount;
                 var result = new SubSectionSearchPagedResultModel
                 {
                     Items = items,
                     TotalCount = totalCount,
                     PageNumber = pageNumber,
                     PageSize = pageSize,
-                    HasMore = pageNumber * pageSize < totalCount
+                    HasMore = hasMore
                 };
 
                 if (result.Items.Any())
@@ -2621,6 +2918,124 @@ SELECT CASE WHEN EXISTS (
             }
         }
 
+        private async Task<List<SubSectionSearchResponse>> QuerySubSectionSearchResponsesAsync(
+            string fullTextQuery,
+            int top)
+        {
+            var sql = @"
+            SELECT TOP (@Top)
+                s.SubSectionID AS Id,
+                s.SubSectionName AS Name,
+                ft.RANK
+            FROM dbo.SubSectionMaster s
+            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
+                ON s.SubSectionID = ft.[KEY]
+            WHERE s.DeleteStatus = 0
+            ORDER BY ft.RANK DESC";
+
+            return await _context.Database.SqlQueryRaw<SubSectionSearchResponse>(sql,
+                    new SqlParameter("@Top", top),
+                    new SqlParameter("@SearchQuery", fullTextQuery))
+                .ToListAsync();
+        }
+
+        private async Task<int> ExecuteFullTextCountAsync(long? sectionId, string fullTextQuery)
+        {
+            var sectionFilter = sectionId.HasValue ? " AND s.SectionID = @SectionId" : string.Empty;
+            var sql = $@"
+            SELECT COUNT(*)
+            FROM dbo.SubSectionMaster s
+            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
+                ON s.SubSectionID = ft.[KEY]
+            WHERE s.DeleteStatus = 0{sectionFilter}";
+
+            var parameters = new List<SqlParameter>
+            {
+                new SqlParameter("@SearchQuery", fullTextQuery)
+            };
+            if (sectionId.HasValue)
+                parameters.Add(new SqlParameter("@SectionId", sectionId.Value));
+
+            await _context.Database.OpenConnectionAsync();
+            try
+            {
+                using (var command = _context.Database.GetDbConnection().CreateCommand())
+                {
+                    command.CommandText = sql;
+                    foreach (var parameter in parameters)
+                        command.Parameters.Add(parameter);
+
+                    var scalar = await command.ExecuteScalarAsync();
+                    return scalar == null || scalar == DBNull.Value ? 0 : Convert.ToInt32(scalar);
+                }
+            }
+            finally
+            {
+                _context.Database.CloseConnection();
+            }
+        }
+
+        private async Task<List<SubSectionSearchMatchRow>> ExecuteFullTextMatchQueryAsync(
+            long? sectionId,
+            string fullTextQuery,
+            int top)
+        {
+            var sectionFilter = sectionId.HasValue ? " AND s.SectionID = @SectionId" : string.Empty;
+            var sql = $@"
+            SELECT TOP ({top})
+                s.SubSectionID AS SubSectionId,
+                s.SubSectionName AS SubSectionName,
+                s.ParentSubSectionID AS ParentSubSectionId,
+                ft.RANK AS Rank
+            FROM dbo.SubSectionMaster s
+            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
+                ON s.SubSectionID = ft.[KEY]
+            WHERE s.DeleteStatus = 0{sectionFilter}
+            ORDER BY ft.RANK DESC";
+
+            var parameters = new List<SqlParameter>
+            {
+                new SqlParameter("@SearchQuery", fullTextQuery)
+            };
+            if (sectionId.HasValue)
+                parameters.Add(new SqlParameter("@SectionId", sectionId.Value));
+
+            return await _context.Database.SqlQueryRaw<SubSectionSearchMatchRow>(sql, parameters.ToArray())
+                .ToListAsync();
+        }
+
+        private async Task<List<SubSectionSearchMatchRow>> ExecuteFullTextMatchPagedQueryAsync(
+            long? sectionId,
+            string fullTextQuery,
+            int offset,
+            int pageSize)
+        {
+            var sectionFilter = sectionId.HasValue ? " AND s.SectionID = @SectionId" : string.Empty;
+            // OFFSET/FETCH values must be inlined – EF Core FromSql does not bind @Offset/@PageSize correctly.
+            var sql = $@"
+            SELECT
+                s.SubSectionID AS SubSectionId,
+                s.SubSectionName AS SubSectionName,
+                s.ParentSubSectionID AS ParentSubSectionId,
+                ft.RANK AS Rank
+            FROM dbo.SubSectionMaster s
+            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
+                ON s.SubSectionID = ft.[KEY]
+            WHERE s.DeleteStatus = 0{sectionFilter}
+            ORDER BY ft.RANK DESC
+            OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
+
+            var parameters = new List<SqlParameter>
+            {
+                new SqlParameter("@SearchQuery", fullTextQuery)
+            };
+            if (sectionId.HasValue)
+                parameters.Add(new SqlParameter("@SectionId", sectionId.Value));
+
+            return await _context.Database.SqlQueryRaw<SubSectionSearchMatchRow>(sql, parameters.ToArray())
+                .ToListAsync();
+        }
+
         private async Task<int> TryCountSubSectionsFullTextAsync(long? sectionId, string[] words)
         {
             if (!IsSearchNormalizedFullTextAvailable())
@@ -2628,45 +3043,11 @@ SELECT CASE WHEN EXISTS (
 
             try
             {
-                var fullTextQuery = string.Join(" OR ", words.Select(w => $"\"{w}*\""));
-                var sectionFilter = sectionId.HasValue ? " AND s.SectionID = @SectionId" : string.Empty;
+                var andCount = await ExecuteFullTextCountAsync(sectionId, BuildFullTextQuery(words, requireAllTokens: true));
+                if (andCount > 0 || words.Length <= 1)
+                    return andCount;
 
-                var sql = $@"
-            SELECT COUNT(*)
-            FROM dbo.SubSectionMaster s
-            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
-                ON s.SubSectionID = ft.[KEY]
-            WHERE s.DeleteStatus = 0{sectionFilter}";
-
-                var parameters = new List<SqlParameter>
-                {
-                    new SqlParameter("@SearchQuery", fullTextQuery)
-                };
-
-                if (sectionId.HasValue)
-                {
-                    parameters.Add(new SqlParameter("@SectionId", sectionId.Value));
-                }
-
-                await _context.Database.OpenConnectionAsync();
-                try
-                {
-                    using (var command = _context.Database.GetDbConnection().CreateCommand())
-                    {
-                        command.CommandText = sql;
-                        foreach (var parameter in parameters)
-                        {
-                            command.Parameters.Add(parameter);
-                        }
-
-                        var scalar = await command.ExecuteScalarAsync();
-                        return scalar == null || scalar == DBNull.Value ? 0 : Convert.ToInt32(scalar);
-                    }
-                }
-                finally
-                {
-                    _context.Database.CloseConnection();
-                }
+                return await ExecuteFullTextCountAsync(sectionId, BuildFullTextQuery(words, requireAllTokens: false));
             }
             catch (Exception ex)
             {
@@ -2683,40 +3064,36 @@ SELECT CASE WHEN EXISTS (
         private async Task<List<SubSectionSearchMatchRow>> TrySearchSubSectionsFullTextAsync(
             long? sectionId,
             string[] words,
-            int top)
+            int top,
+            string? trailingPrefix = null)
         {
             if (!IsSearchNormalizedFullTextAvailable())
                 return new List<SubSectionSearchMatchRow>();
 
             try
             {
-                var fullTextQuery = string.Join(" OR ", words.Select(w => $"\"{w}*\""));
-                var sectionFilter = sectionId.HasValue ? " AND s.SectionID = @SectionId" : string.Empty;
+                var candidateTop = SuggestionCandidateTop(top);
+                var matches = await ExecuteFullTextMatchQueryAsync(
+                    sectionId,
+                    BuildFullTextQuery(words, requireAllTokens: true),
+                    candidateTop);
 
-                var sql = $@"
-            SELECT TOP ({top})
-                s.SubSectionID AS SubSectionId,
-                s.SubSectionName AS SubSectionName,
-                s.ParentSubSectionID AS ParentSubSectionId,
-                ft.RANK AS Rank
-            FROM dbo.SubSectionMaster s
-            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
-                ON s.SubSectionID = ft.[KEY]
-            WHERE s.DeleteStatus = 0{sectionFilter}
-            ORDER BY ft.RANK DESC";
-
-                var parameters = new List<SqlParameter>
+                // Recall fallback only when AND is sparse or weak — avoids a slow second FTS on good queries.
+                if (!HasStrongAndCoverage(matches, words, top, trailingPrefix) && words.Length > 1)
                 {
-                    new SqlParameter("@SearchQuery", fullTextQuery)
-                };
-
-                if (sectionId.HasValue)
-                {
-                    parameters.Add(new SqlParameter("@SectionId", sectionId.Value));
+                    var orMatches = await ExecuteFullTextMatchQueryAsync(
+                        sectionId,
+                        BuildFullTextQuery(words, requireAllTokens: false),
+                        candidateTop);
+                    var seen = new HashSet<int>(matches.Select(m => m.SubSectionId));
+                    foreach (var row in orMatches)
+                    {
+                        if (seen.Add(row.SubSectionId))
+                            matches.Add(row);
+                    }
                 }
 
-                return await _context.Database.SqlQueryRaw<SubSectionSearchMatchRow>(sql, parameters.ToArray())
-                    .ToListAsync();
+                return RankAndTake(matches, words, top, trailingPrefix);
             }
             catch (Exception ex)
             {
@@ -2734,42 +3111,58 @@ SELECT CASE WHEN EXISTS (
             long? sectionId,
             string[] words,
             int offset,
-            int pageSize)
+            int pageSize,
+            string? trailingPrefix = null)
         {
             if (!IsSearchNormalizedFullTextAvailable())
                 return new List<SubSectionSearchMatchRow>();
 
             try
             {
-                var fullTextQuery = string.Join(" OR ", words.Select(w => $"\"{w}*\""));
-                var sectionFilter = sectionId.HasValue ? " AND s.SectionID = @SectionId" : string.Empty;
+                // Score a bounded AND window, then page in memory so page-1 is relevance-ordered.
+                var window = Math.Min(Math.Max(offset + pageSize * 2, 40), 120);
+                var matches = await ExecuteFullTextMatchQueryAsync(
+                    sectionId,
+                    BuildFullTextQuery(words, requireAllTokens: true),
+                    window);
 
-                // OFFSET/FETCH values must be inlined – EF Core 2.x FromSql does not bind @Offset/@PageSize correctly.
-                var sql = $@"
-            SELECT
-                s.SubSectionID AS SubSectionId,
-                s.SubSectionName AS SubSectionName,
-                s.ParentSubSectionID AS ParentSubSectionId,
-                ft.RANK AS Rank
-            FROM dbo.SubSectionMaster s
-            INNER JOIN CONTAINSTABLE(dbo.SubSectionMaster, SearchNormalized, @SearchQuery) ft
-                ON s.SubSectionID = ft.[KEY]
-            WHERE s.DeleteStatus = 0{sectionFilter}
-            ORDER BY ft.RANK DESC
-            OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
-
-                var parameters = new List<SqlParameter>
+                if (!HasStrongAndCoverage(matches, words, pageSize, trailingPrefix) && words.Length > 1)
                 {
-                    new SqlParameter("@SearchQuery", fullTextQuery)
-                };
-
-                if (sectionId.HasValue)
-                {
-                    parameters.Add(new SqlParameter("@SectionId", sectionId.Value));
+                    var orMatches = await ExecuteFullTextMatchQueryAsync(
+                        sectionId,
+                        BuildFullTextQuery(words, requireAllTokens: false),
+                        window);
+                    var seen = new HashSet<int>(matches.Select(m => m.SubSectionId));
+                    foreach (var row in orMatches)
+                    {
+                        if (seen.Add(row.SubSectionId))
+                            matches.Add(row);
+                    }
                 }
 
-                return await _context.Database.SqlQueryRaw<SubSectionSearchMatchRow>(sql, parameters.ToArray())
-                    .ToListAsync();
+                if (matches.Count == 0)
+                {
+                    // Last resort: SQL OFFSET page with AND (may be empty).
+                    matches = await ExecuteFullTextMatchPagedQueryAsync(
+                        sectionId,
+                        BuildFullTextQuery(words, requireAllTokens: true),
+                        offset,
+                        pageSize);
+                    return RankAndTake(matches, words, matches.Count, trailingPrefix);
+                }
+
+                ApplyRelevanceScores(matches, words, trailingPrefix);
+                return matches
+                    .OrderByDescending(m => m.Score)
+                    .ThenByDescending(m => m.MatchedTokenCount)
+                    .ThenBy(m => (m.SubSectionName ?? string.Empty).Length)
+                    .ThenByDescending(m => m.Rank)
+                    .ThenBy(m => m.SubSectionName)
+                    .GroupBy(m => m.SubSectionId)
+                    .Select(g => g.First())
+                    .Skip(offset)
+                    .Take(pageSize)
+                    .ToList();
             }
             catch (Exception ex)
             {

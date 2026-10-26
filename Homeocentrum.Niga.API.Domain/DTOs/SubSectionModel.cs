@@ -224,6 +224,12 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public long? ParentSubSectionId { get; set; }
         public int ChildCount { get; set; }
         public List<SubSectionLevelModel> Ancestors { get; set; } = new List<SubSectionLevelModel>();
+        /// <summary>Composite relevance (token coverage + path order + FTS). Higher is better.</summary>
+        public int Score { get; set; }
+        /// <summary>How many query tokens matched the rubric path/name.</summary>
+        public int MatchedTokenCount { get; set; }
+        /// <summary>Human-readable path for suggestion UI (› separators).</summary>
+        public string DisplayPath { get; set; }
     }
 #nullable restore
 
@@ -234,6 +240,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string SubSectionName { get; set; }
         public int? ParentSubSectionId { get; set; }
         public int Rank { get; set; }
+        public int Score { get; set; }
+        public int MatchedTokenCount { get; set; }
     }
 
     public class SubSectionSearchResponse
