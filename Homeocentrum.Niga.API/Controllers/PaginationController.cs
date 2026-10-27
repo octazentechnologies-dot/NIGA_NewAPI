@@ -723,12 +723,23 @@ namespace Homeocentrum.Niga.API.Controllers
         [ProducesResponseType(typeof(string), 404)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 500)]
-        public IActionResult GetRepertorizarionRemedyForAccordion(int remedyID, string RequiredType, [FromQuery] NigaParameters nigaParameters)
+        public IActionResult GetRepertorizarionRemedyForAccordion(
+            int remedyID,
+            string RequiredType,
+            [FromQuery] NigaParameters nigaParameters,
+            [FromQuery] int[] sectionIds = null,
+            [FromQuery] int? gradeNo = null)
         {
             ErrorResponseModel errorResponseModel = null;
             try
             {
-                var subSctionList = _paginationService.GetRepertorizarionRemedyForAccordion(remedyID, RequiredType, nigaParameters, ref errorResponseModel);
+                var subSctionList = _paginationService.GetRepertorizarionRemedyForAccordion(
+                    remedyID,
+                    RequiredType,
+                    nigaParameters,
+                    ref errorResponseModel,
+                    sectionIds,
+                    gradeNo);
 
                 if (subSctionList != null)
                 {

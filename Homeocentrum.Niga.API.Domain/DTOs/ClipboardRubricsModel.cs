@@ -78,6 +78,7 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
 
         public int? RubricRemedyId { get; set; } = 0;
         public int? SectionId { get; set; } = 0;
+        public string SectionName { get; set; } = string.Empty;
         public int? SubSectionId { get; set; } = 0;
         public string SubSectionName { get; set; } = string.Empty;
         public int? RemedyID { get; set; } = 0;
@@ -87,6 +88,7 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string Modalities { get; set; } = string.Empty;
         public string Particulars { get; set; } = string.Empty;
         public int? GradeId { get; set; } = 0;
+        public int? GradeNo { get; set; } = 0;
         public string FontName { get; set; } = string.Empty;
         public string FontColor { get; set; } = string.Empty;
         public string FontStyle { get; set; } = string.Empty;

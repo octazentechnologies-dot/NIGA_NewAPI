@@ -45,6 +45,12 @@ namespace Homeocentrum.Niga.API.Domain.Business.Interface
         PaginationResult GetAllNewsDetails(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
         PaginationResult GetAllBlogDetail(string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
         PaginationResult GetSubSectionForRubric(int SectionId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
-        PaginationResult GetRepertorizarionRemedyForAccordion(int SectionId, string queryString, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel);
+        PaginationResult GetRepertorizarionRemedyForAccordion(
+            int remedyID,
+            string RequiredType,
+            NigaParameters nigaParameters,
+            ref ErrorResponseModel errorResponseModel,
+            int[] sectionIds = null,
+            int? gradeNo = null);
     }
 }

@@ -1228,51 +1228,82 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
 
         }
 
-        public PaginationResult GetRepertorizarionRemedyForAccordion(int remedyID, string RequiredType, NigaParameters nigaParameters, ref ErrorResponseModel errorResponseModel)
+        public PaginationResult GetRepertorizarionRemedyForAccordion(
+            int remedyID,
+            string RequiredType,
+            NigaParameters nigaParameters,
+            ref ErrorResponseModel errorResponseModel,
+            int[] sectionIds = null,
+            int? gradeNo = null)
         {
             errorResponseModel = new ErrorResponseModel();
 
             var pageNumber = (nigaParameters.PageNumber <= 0) ? 1 : nigaParameters.PageNumber;
             var pageSize = nigaParameters.PageSize;
-            var totalRecords = 0.0;
-            var totalPages = 0.0;
-            var skip = 0;
+            if (pageSize <= 0)
+            {
+                pageSize = 20;
+            }
 
-
-            errorResponseModel = new ErrorResponseModel();
             var repertorizarionRemedyList = (from remedyDetails in context.RubricRemedyDetails
                                              join remedy in context.RemedyMasters on remedyDetails.RemedyId equals remedy.RemedyId
                                              join subSection in context.SubSectionMasters on remedyDetails.SubSectionId equals subSection.SubSectionId
+                                             join section in context.SectionMasters on subSection.SectionId equals section.SectionId
                                              join gradeMaster in context.RemedyGradeMaster on remedyDetails.GradeId equals gradeMaster.GradeId
-                                             where remedyDetails.RemedyId == remedyID && remedyDetails.DeletedStatus == false && (RequiredType == "SmallRubric" ? remedyDetails.IsSmallRubric == true : remedyDetails.IsConfirmationRubric == true)
+                                             where remedyDetails.RemedyId == remedyID
+                                                   && remedyDetails.DeletedStatus == false
+                                                   && (RequiredType == "SmallRubric"
+                                                        ? remedyDetails.IsSmallRubric == true
+                                                        : remedyDetails.IsConfirmationRubric == true)
                                              select new RepertorizarionRemedyModel
                                              {
                                                  RubricRemedyId = remedyDetails.RubricRemedyId,
                                                  SectionId = subSection.SectionId,
+                                                 SectionName = section.SectionName,
                                                  SubSectionId = subSection.SubSectionId,
                                                  SubSectionName = subSection.SubSectionName,
                                                  GradeId = gradeMaster.GradeId,
+                                                 GradeNo = gradeMaster.GradeNo,
                                                  FontName = gradeMaster.FontName,
                                                  FontColor = gradeMaster.FontColor,
                                                  FontStyle = gradeMaster.FontStyle,
 
-                                             }).OrderBy(x => x.SectionId).ToList();
+                                             }).OrderBy(x => x.SectionId).ThenBy(x => x.SubSectionName).ToList();
 
-            if (repertorizarionRemedyList.Count == 0)
+            IEnumerable<RepertorizarionRemedyModel> filtered = repertorizarionRemedyList;
+
+            if (sectionIds != null && sectionIds.Length > 0)
+            {
+                var sectionIdSet = new HashSet<int>(sectionIds.Where(id => id > 0));
+                if (sectionIdSet.Count > 0)
+                {
+                    filtered = filtered.Where(x =>
+                        x.SectionId.HasValue && sectionIdSet.Contains(x.SectionId.Value));
+                }
+            }
+
+            if (gradeNo.HasValue && gradeNo.Value > 0)
+            {
+                var normalizedGradeNo = gradeNo.Value;
+                filtered = filtered.Where(x => x.GradeNo == normalizedGradeNo);
+            }
+
+            var filteredList = filtered.ToList();
+
+            if (filteredList.Count == 0)
             {
                 errorResponseModel.StatusCode = HttpStatusCode.NotFound;
                 errorResponseModel.Message = "Remedy Not Found";
             }
 
-            totalRecords = repertorizarionRemedyList.Count;
-            totalPages = Math.Ceiling(totalRecords / pageSize);
-            skip = (pageNumber - 1) * pageSize;
-
+            var totalRecords = (double)filteredList.Count;
+            var totalPages = pageSize > 0 ? Math.Ceiling(totalRecords / pageSize) : 0;
+            var skip = (pageNumber - 1) * pageSize;
 
             var result = new PaginationResult();
             result.TotalPageCount = totalPages;
             result.TotalCount = totalRecords;
-            result.ResultObject = repertorizarionRemedyList.Skip(skip).Take(pageSize);
+            result.ResultObject = filteredList.Skip(skip).Take(pageSize);
             return result;
         }
 

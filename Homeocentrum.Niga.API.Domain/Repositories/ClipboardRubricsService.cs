@@ -574,6 +574,8 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                     on remedyDetails.RemedyId equals remedy.RemedyId
                 join subSection in context.SubSectionMasters
                     on remedyDetails.SubSectionId equals subSection.SubSectionId
+                join section in context.SectionMasters
+                    on subSection.SectionId equals section.SectionId
                 join gradeMaster in context.RemedyGradeMaster
                     on remedyDetails.GradeId equals gradeMaster.GradeId
                 where
@@ -588,9 +590,11 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 {
                     RubricRemedyId = remedyDetails.RubricRemedyId,
                     SectionId = subSection.SectionId,
+                    SectionName = section.SectionName,
                     SubSectionId = subSection.SubSectionId,
                     SubSectionName = subSection.SubSectionName,
                     GradeId = gradeMaster.GradeId,
+                    GradeNo = gradeMaster.GradeNo,
                     FontName = gradeMaster.FontName,
                     FontColor = gradeMaster.FontColor,
                     FontStyle = gradeMaster.FontStyle,
