@@ -5,13 +5,14 @@ using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.Extensions;
 using Homeocentrum.Niga.API.Domain.Master;
 using Homeocentrum.Niga.API.Domain.Security;
+using Homeocentrum.Niga.API.Domain.Services;
 
 namespace Homeocentrum.Niga.API.Controllers;
 
 /// <summary>
 /// Doctor discovery (Find a Doctor / public book) visibility toggle.
-/// Separate from Online (<c>/api/Tele/Availability</c> / <c>/api/Availability/Me</c>).
-/// Same endpoints for web and doctor mobile so both stay in sync on <c>Doctor.DirectoryVisible</c>.
+/// Separate from Online (tele). Active clinic leave hides the doctor from public
+/// discovery without clearing their saved DirectoryVisible preference; Online remains allowed.
 /// </summary>
 [ApiController]
 [Authorize]
@@ -31,7 +32,8 @@ public class DoctorDirectoryVisibilityController : ControllerBase
         var doctor = await ResolveDoctorAsync();
         if (doctor == null)
             return NotFound(new { success = false, message = "Doctor not found." });
-        return Ok(Payload(doctor));
+        var onLeave = await DoctorTimeOffLookup.IsOnLeaveAsync(_context, doctor.DoctorId);
+        return Ok(Payload(doctor, onLeave));
     }
 
     /// <summary>PUT toggle discovery visibility. Body: { "directoryVisible": true|false }.</summary>
@@ -54,6 +56,10 @@ public class DoctorDirectoryVisibilityController : ControllerBase
         if (doctor == null)
             return NotFound(new { success = false, message = "Doctor not found." });
 
+        var onLeave = await DoctorTimeOffLookup.IsOnLeaveAsync(_context, doctor.DoctorId);
+
+        // Only verification blocks publishing — clinic leave defaults Hidden, but a verified
+        // doctor may turn Public Visibility back on for tele consultation during leave.
         if (directoryVisible && !IsVerified(doctor.VerificationStatus))
         {
             return Conflict(new
@@ -67,12 +73,14 @@ public class DoctorDirectoryVisibilityController : ControllerBase
         doctor.DirectoryVisible = directoryVisible;
         doctor.ChangedDate = DateTime.UtcNow;
         await _context.SaveChangesAsync();
-        return Ok(Payload(doctor));
+        return Ok(Payload(doctor, onLeave));
     }
 
-    private object Payload(Doctor doctor)
+    private object Payload(Doctor doctor, bool onLeave)
     {
         var verified = IsVerified(doctor.VerificationStatus);
+        // Patients see Verified + DirectoryVisible (leave only hides by default until doctor opts back in).
+        var visibleToPatients = verified && doctor.DirectoryVisible;
         return new
         {
             success = true,
@@ -80,10 +88,12 @@ public class DoctorDirectoryVisibilityController : ControllerBase
             {
                 doctorId = doctor.DoctorId,
                 directoryVisible = doctor.DirectoryVisible,
+                isOnTimeOff = onLeave,
+                effectiveDirectoryVisible = visibleToPatients,
                 verificationStatus = doctor.VerificationStatus,
+                // Ability to publish preference — not blocked by leave (leave is a separate default).
                 canPublish = verified,
-                // Patients see you only when Verified + DirectoryVisible.
-                visibleToPatients = verified && doctor.DirectoryVisible
+                visibleToPatients
             }
         };
     }

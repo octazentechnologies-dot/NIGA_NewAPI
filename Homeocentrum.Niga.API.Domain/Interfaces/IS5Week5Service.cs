@@ -37,6 +37,8 @@ public interface IS5Week5Service
     Task<S4ActionResult> ListRemindersAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> SaveReminderAsync(int? reminderId, DoctorReminderWrite request, S4Caller caller);
     Task<S4ActionResult> DeleteReminderAsync(int reminderId, S4Caller caller);
+    /// <summary>fire | snooze | done — web reminder interrupt lifecycle.</summary>
+    Task<S4ActionResult> ActOnReminderAsync(int reminderId, DoctorReminderActionWrite request, S4Caller caller);
     Task<S4ActionResult> PracticeReportAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> FollowUpReportAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> UpdateFollowUpTaskAsync(int taskId, FollowUpTaskWrite request, S4Caller caller);
@@ -104,6 +106,14 @@ public class DoctorReminderWrite
     public string? Description { get; set; }
     public string? ContactNumber { get; set; }
     public bool IsDone { get; set; }
+}
+
+public class DoctorReminderActionWrite
+{
+    /// <summary>fire | snooze | done</summary>
+    public string? Action { get; set; }
+    /// <summary>Minutes for snooze (default 10, max 240).</summary>
+    public int? SnoozeMinutes { get; set; }
 }
 
 public class SmsTemplateWrite

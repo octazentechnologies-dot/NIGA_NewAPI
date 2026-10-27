@@ -41,6 +41,11 @@ public class DoctorRemindersController : ControllerBase
     [HttpDelete("/api/Doctor/Reminders/{id:int}")]
     public Task<IActionResult> DeleteReminder(int id) => Done(_s5.DeleteReminderAsync(id, Caller()));
 
+    /// <summary>Web fire lifecycle: fire | snooze | done.</summary>
+    [HttpPost("/api/Doctor/Reminders/{id:int}/actions")]
+    public Task<IActionResult> ReminderAction(int id, [FromBody] DoctorReminderActionWrite request)
+        => Done(_s5.ActOnReminderAsync(id, request, Caller()));
+
     private Task<IActionResult> Done(Task<S4ActionResult> work) => this.Respond(work, _logger);
     private S4Caller Caller() => this.S4Caller(_context);
 }

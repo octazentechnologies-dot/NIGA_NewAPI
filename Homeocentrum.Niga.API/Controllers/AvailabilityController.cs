@@ -30,6 +30,9 @@ namespace Homeocentrum.Niga.API.Controllers
             if (doctor == null)
                 return NotFound(new { success = false, message = "Doctor not found." });
 
+            // Leave is reported only — Online may stay on if the doctor opted into tele during clinic leave.
+            var onLeave = await HasActiveTimeOffAsync(doctor.DoctorId);
+
             var today = DateTime.Today;
             var until = today.AddDays(13);
             var week = await _context.DoctorDailySchedules.AsNoTracking()
@@ -58,6 +61,7 @@ namespace Homeocentrum.Niga.API.Controllers
                 {
                     DoctorId = doctor.DoctorId,
                     IsOnline = doctor.IsOnline,
+                    IsOnTimeOff = onLeave,
                     WorkingHoursNote = doctor.WorkingHoursNote,
                     TodaySchedule = todayRow == null ? null : MapRow(todayRow),
                     WeekSchedules = week.Select(MapRow).ToList(),
@@ -78,7 +82,12 @@ namespace Homeocentrum.Niga.API.Controllers
             if (doctor == null)
                 return NotFound(new { success = false, message = "Doctor not found." });
 
-            doctor.IsOnline = request?.IsOnline ?? false;
+            var onLeave = await HasActiveTimeOffAsync(doctor.DoctorId);
+            var isHoursFormSave = request?.Days != null || request?.UpdateBookingRules == true;
+            // Hours Update sends isOnline from consultation-mode checkboxes — do not overwrite a
+            // manual tele Online choice while the doctor is on clinic leave.
+            if (!(isHoursFormSave && onLeave))
+                doctor.IsOnline = request?.IsOnline ?? false;
             if (request?.WorkingHoursNote != null)
                 doctor.WorkingHoursNote = request.WorkingHoursNote.Trim();
             doctor.ChangedDate = DateTime.UtcNow;
@@ -94,9 +103,49 @@ namespace Homeocentrum.Niga.API.Controllers
             await ClearScheduleDatesAsync(doctor.DoctorId, request?.ClearScheduleDates);
 
             await _context.SaveChangesAsync();
-            if (request?.GapMinutes != null || request?.BookingHorizonDays != null)
-                await SaveBookingRuleAsync(doctor.DoctorId, request.GapMinutes, request.BookingHorizonDays);
+            // Hours form always sends Days (even []). Write exact gap/horizon including clears (null).
+            // Online-only toggles omit Days and must not wipe booking rules.
+            if (request?.Days != null || request?.UpdateBookingRules == true)
+                await SaveBookingRuleAsync(doctor.DoctorId, request.GapMinutes, request.BookingHorizonDays, replaceExact: true);
+            else if (request?.GapMinutes != null || request?.BookingHorizonDays != null)
+                await SaveBookingRuleAsync(doctor.DoctorId, request.GapMinutes, request.BookingHorizonDays, replaceExact: false);
             return await Me();
+        }
+
+        private async Task<bool> HasActiveTimeOffAsync(int doctorId)
+        {
+            await EnsureDoctorTimeOffTableAsync();
+            var now = DateTime.Now;
+            var hit = await _context.Database.SqlQuery<TimeOffHitRow>($@"
+                SELECT TOP 1 DoctorTimeOffId AS Id
+                FROM dbo.DoctorTimeOff
+                WHERE DoctorId = {doctorId}
+                  AND StartsAt <= {now}
+                  AND EndsAt >= {now}").FirstOrDefaultAsync();
+            return hit != null;
+        }
+
+        private static int _doctorTimeOffReady;
+
+        private async Task EnsureDoctorTimeOffTableAsync()
+        {
+            if (System.Threading.Volatile.Read(ref _doctorTimeOffReady) == 1) return;
+            await _context.Database.ExecuteSqlRawAsync("""
+                IF OBJECT_ID(N'dbo.DoctorTimeOff', N'U') IS NULL
+                CREATE TABLE dbo.DoctorTimeOff (
+                    DoctorTimeOffId int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                    DoctorId int NOT NULL,
+                    StartsAt datetime2(0) NOT NULL,
+                    EndsAt datetime2(0) NOT NULL,
+                    Reason nvarchar(500) NULL
+                );
+                """);
+            System.Threading.Volatile.Write(ref _doctorTimeOffReady, 1);
+        }
+
+        private sealed class TimeOffHitRow
+        {
+            public int Id { get; set; }
         }
 
         private async Task<IActionResult?> UpsertTodayHoursAsync(Doctor doctor, AvailabilityUpdateRequest? request)
@@ -292,24 +341,42 @@ namespace Homeocentrum.Niga.API.Controllers
             return (row?.GapMinutes, row?.BookingHorizonDays);
         }
 
-        private async Task SaveBookingRuleAsync(int doctorId, int? gapMinutes, int? horizonDays)
+        /// <param name="replaceExact">
+        /// When true (Hours Update), null clears the column. When false, null keeps the existing value.
+        /// </param>
+        private async Task SaveBookingRuleAsync(int doctorId, int? gapMinutes, int? horizonDays, bool replaceExact)
         {
             if (gapMinutes is < 0 or > 240)
                 gapMinutes = null;
             if (horizonDays is < 1 or > 90)
                 horizonDays = null;
-            if (gapMinutes == null && horizonDays == null)
-                return;
 
             await EnsureBookingRuleTableAsync();
             var existing = await _context.Database.SqlQuery<BookingRuleRow>($@"
                 SELECT GapMinutes, BookingHorizonDays
                 FROM dbo.DoctorBookingRule
                 WHERE DoctorId = {doctorId}").FirstOrDefaultAsync();
-            var nextGap = gapMinutes ?? existing?.GapMinutes;
-            var nextHorizon = horizonDays ?? existing?.BookingHorizonDays;
+
+            int? nextGap;
+            int? nextHorizon;
+            if (replaceExact)
+            {
+                nextGap = gapMinutes;
+                nextHorizon = horizonDays;
+            }
+            else
+            {
+                if (gapMinutes == null && horizonDays == null)
+                    return;
+                nextGap = gapMinutes ?? existing?.GapMinutes;
+                nextHorizon = horizonDays ?? existing?.BookingHorizonDays;
+            }
+
             if (existing == null)
             {
+                // No row yet and both cleared — nothing to store.
+                if (nextGap == null && nextHorizon == null)
+                    return;
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
                     INSERT INTO dbo.DoctorBookingRule (DoctorId, GapMinutes, BookingHorizonDays)
                     VALUES ({doctorId}, {nextGap}, {nextHorizon})");

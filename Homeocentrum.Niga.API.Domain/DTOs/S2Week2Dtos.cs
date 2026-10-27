@@ -324,6 +324,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
     {
         public int DoctorId { get; set; }
         public bool IsOnline { get; set; }
+        /// <summary>True when an active DoctorTimeOff row covers now (forces Offline).</summary>
+        public bool IsOnTimeOff { get; set; }
         public string? WorkingHoursNote { get; set; }
         public DoctorDailyScheduleModel? TodaySchedule { get; set; }
         public List<DoctorDailyScheduleModel> WeekSchedules { get; set; } = new();
@@ -354,6 +356,11 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public int? SlotIntervalMinutes { get; set; }
         public int? GapMinutes { get; set; }
         public int? BookingHorizonDays { get; set; }
+        /// <summary>
+        /// When true, GapMinutes / BookingHorizonDays are written exactly (null clears).
+        /// Hours UI sets this so empty fields persist.
+        /// </summary>
+        public bool? UpdateBookingRules { get; set; }
         public List<AvailabilityDayHours>? Days { get; set; }
         /// <summary>Dates to remove from DoctorDailySchedule (day marked unavailable in the Hours UI).</summary>
         public List<DateTime>? ClearScheduleDates { get; set; }

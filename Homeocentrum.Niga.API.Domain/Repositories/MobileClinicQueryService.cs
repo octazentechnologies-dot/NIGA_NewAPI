@@ -728,9 +728,33 @@ public class MobileClinicQueryService
         if (!caller.DoctorId.HasValue) return Fail(403, "FORBIDDEN", "Doctor context is required.");
         if (request?.StartsAt == null || request.EndsAt == null || request.EndsAt <= request.StartsAt)
             return Fail(400, "VALIDATION", "startsAt and a later endsAt are required.");
+        var doctorId = caller.DoctorId.Value;
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.DoctorTimeOff (DoctorId, StartsAt, EndsAt, Reason)
-            VALUES ({caller.DoctorId.Value}, {request.StartsAt.Value}, {request.EndsAt.Value}, {Trim(request.Reason)})");
+            VALUES ({doctorId}, {request.StartsAt.Value}, {request.EndsAt.Value}, {Trim(request.Reason)})");
+
+        // Active leave covering now → default Offline + hide from public directory (clinic closed).
+        // Doctor may manually turn Online / Public Visibility back on for tele consultation.
+        var now = DateTime.Now;
+        if (request.StartsAt.Value <= now && request.EndsAt.Value >= now)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.Doctor
+                SET IsOnline = 0, DirectoryVisible = 0, ChangedDate = {DateTime.UtcNow}
+                WHERE DoctorId = {doctorId} AND DeleteStatus = 0");
+            try
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    IF OBJECT_ID(N'dbo.TeleAvailability', N'U') IS NOT NULL
+                    UPDATE dbo.TeleAvailability SET IsOnline = 0, LastHeartbeat = {now}
+                    WHERE DoctorId = {doctorId}");
+            }
+            catch
+            {
+                /* TeleAvailability is optional on some environments */
+            }
+        }
+
         return await ListTimeOffAsync(caller);
     }
 

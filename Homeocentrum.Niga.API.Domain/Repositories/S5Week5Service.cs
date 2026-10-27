@@ -785,6 +785,7 @@ public partial class S5Week5Service : IS5Week5Service
     {
         if (!caller.DoctorId.HasValue)
             return S4ActionResult.Fail(403, "FORBIDDEN", "Reminders are for a doctor account.");
+        await EnsureDoctorReminderFireColumnsAsync();
         var doctorId = caller.DoctorId.Value;
         var start = (from ?? DateTime.Today).Date;
         var end = (to ?? start).Date;
@@ -793,7 +794,8 @@ public partial class S5Week5Service : IS5Week5Service
         if ((end - start).TotalDays > 62)
             end = start.AddDays(62);
         var rows = await _context.Database.SqlQuery<ReminderRow>($@"
-            SELECT DoctorReminderId, ReminderDate, ReminderTime, Title, Description, ContactNumber, IsDone, CreatedAt
+            SELECT DoctorReminderId, ReminderDate, ReminderTime, Title, Description, ContactNumber, IsDone, CreatedAt,
+                   FiredAt, SnoozedUntil, LastNotifiedAt
             FROM dbo.DoctorReminder
             WHERE DoctorId = {doctorId} AND IsDeleted = 0
               AND ReminderDate >= {start} AND ReminderDate <= {end}
@@ -829,10 +831,13 @@ public partial class S5Week5Service : IS5Week5Service
 
         if (reminderId.HasValue)
         {
+            await EnsureDoctorReminderFireColumnsAsync();
+            // Any edit resets the fire cycle so a changed time can notify again.
             var updated = await _context.Database.ExecuteSqlInterpolatedAsync($@"
                 UPDATE dbo.DoctorReminder
                 SET ReminderDate = {date}, ReminderTime = {time}, Title = {title}, Description = {description},
-                    ContactNumber = {contact}, IsDone = {request.IsDone}, UpdatedAt = {now}
+                    ContactNumber = {contact}, IsDone = {request.IsDone}, UpdatedAt = {now},
+                    FiredAt = NULL, LastNotifiedAt = NULL, SnoozedUntil = NULL
                 WHERE DoctorReminderId = {reminderId.Value} AND DoctorId = {doctorId} AND IsDeleted = 0");
             if (updated == 0)
                 return S4ActionResult.Fail(404, "NOT_FOUND", "Reminder not found.");
@@ -860,6 +865,181 @@ public partial class S5Week5Service : IS5Week5Service
             return S4ActionResult.Fail(404, "NOT_FOUND", "Reminder not found.");
         return S4ActionResult.Ok(new { success = true, doctorReminderId = reminderId });
     });
+
+    public Task<S4ActionResult> ActOnReminderAsync(int reminderId, DoctorReminderActionWrite request, S4Caller caller) => Guard(async () =>
+    {
+        if (!caller.DoctorId.HasValue)
+            return S4ActionResult.Fail(403, "FORBIDDEN", "Reminders are for a doctor account.");
+        await EnsureDoctorReminderFireColumnsAsync();
+        await EnsureNotificationNavColumnsAsync();
+
+        var action = (request?.Action ?? "").Trim().ToLowerInvariant();
+        if (action is not ("fire" or "snooze" or "done"))
+            return S4ActionResult.Fail(400, "VALIDATION", "Action must be fire, snooze, or done.");
+
+        var doctorId = caller.DoctorId.Value;
+        var rows = await _context.Database.SqlQuery<ReminderActionRow>($@"
+            SELECT DoctorReminderId, UserId, ReminderDate, ReminderTime, Title, Description, ContactNumber,
+                   IsDone, FiredAt, SnoozedUntil, LastNotifiedAt
+            FROM dbo.DoctorReminder
+            WHERE DoctorReminderId = {reminderId} AND DoctorId = {doctorId} AND IsDeleted = 0").ToListAsync();
+        var row = rows.FirstOrDefault();
+        if (row == null)
+            return S4ActionResult.Fail(404, "NOT_FOUND", "Reminder not found.");
+
+        var now = DateTime.Now;
+        var dueAt = row.ReminderDate.Date + (row.ReminderTime ?? TimeSpan.Zero);
+
+        if (action == "done")
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.DoctorReminder
+                SET IsDone = 1, SnoozedUntil = NULL, UpdatedAt = {now}
+                WHERE DoctorReminderId = {reminderId} AND DoctorId = {doctorId} AND IsDeleted = 0");
+            return S4ActionResult.Ok(new { success = true, action, doctorReminderId = reminderId, isDone = true });
+        }
+
+        if (action == "snooze")
+        {
+            if (row.IsDone)
+                return S4ActionResult.Fail(400, "VALIDATION", "Completed reminders cannot be snoozed.");
+            var minutes = request?.SnoozeMinutes ?? 10;
+            if (minutes < 1) minutes = 1;
+            if (minutes > 240) minutes = 240;
+            var until = now.AddMinutes(minutes);
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.DoctorReminder
+                SET SnoozedUntil = {until}, UpdatedAt = {now}
+                WHERE DoctorReminderId = {reminderId} AND DoctorId = {doctorId} AND IsDeleted = 0");
+            return S4ActionResult.Ok(new
+            {
+                success = true,
+                action,
+                doctorReminderId = reminderId,
+                snoozedUntil = until,
+                snoozeMinutes = minutes
+            });
+        }
+
+        // fire
+        if (row.IsDone)
+            return S4ActionResult.Ok(new { success = true, action, doctorReminderId = reminderId, notified = false, reason = "done" });
+        if (dueAt > now)
+            return S4ActionResult.Ok(new { success = true, action, doctorReminderId = reminderId, notified = false, reason = "not_due" });
+        if (row.SnoozedUntil.HasValue && row.SnoozedUntil.Value > now)
+            return S4ActionResult.Ok(new
+            {
+                success = true,
+                action,
+                doctorReminderId = reminderId,
+                notified = false,
+                reason = "snoozed",
+                snoozedUntil = row.SnoozedUntil
+            });
+
+        var needsNotify = !row.LastNotifiedAt.HasValue
+            || (row.SnoozedUntil.HasValue && row.LastNotifiedAt.Value < row.SnoozedUntil.Value);
+        if (!needsNotify)
+            return S4ActionResult.Ok(new
+            {
+                success = true,
+                action,
+                doctorReminderId = reminderId,
+                notified = false,
+                reason = "already_notified",
+                lastNotifiedAt = row.LastNotifiedAt,
+                title = row.Title,
+                description = row.Description,
+                reminderDate = row.ReminderDate.Date,
+                reminderTime = row.ReminderTime.HasValue
+                    ? $"{row.ReminderTime.Value.Hours:D2}:{row.ReminderTime.Value.Minutes:D2}"
+                    : null,
+                deepLink = DoctorReminderDeepLink(reminderId, row.ReminderDate)
+            });
+
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.DoctorReminder
+            SET FiredAt = COALESCE(FiredAt, {now}),
+                LastNotifiedAt = {now},
+                SnoozedUntil = NULL,
+                UpdatedAt = {now}
+            WHERE DoctorReminderId = {reminderId} AND DoctorId = {doctorId} AND IsDeleted = 0");
+
+        var deepLink = DoctorReminderDeepLink(reminderId, row.ReminderDate);
+        var body = BuildReminderNotifyBody(row);
+        var inboxUserId = row.UserId ?? caller.UserId;
+        if (inboxUserId > 0)
+        {
+            var title = Truncate($"Reminder: {row.Title}", 200);
+            var inboxBody = Truncate(body, 500);
+            try
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.AppNotification (UserId, Title, Body, IsRead, PushStatus, CreatedAt, Type, DeepLink)
+                    VALUES ({inboxUserId}, {title}, {inboxBody}, 0, N'INBOX', {now}, N'SYSTEM', {deepLink})");
+            }
+            catch
+            {
+                /* Inbox write is best-effort; fire state is already persisted. */
+            }
+        }
+
+        return S4ActionResult.Ok(new
+        {
+            success = true,
+            action,
+            doctorReminderId = reminderId,
+            notified = true,
+            title = row.Title,
+            description = row.Description,
+            contactNumber = row.ContactNumber,
+            reminderDate = row.ReminderDate.Date,
+            reminderTime = row.ReminderTime.HasValue
+                ? $"{row.ReminderTime.Value.Hours:D2}:{row.ReminderTime.Value.Minutes:D2}"
+                : null,
+            deepLink,
+            lastNotifiedAt = now
+        });
+    });
+
+    private static string DoctorReminderDeepLink(int reminderId, DateTime reminderDate)
+        => $"/doctordashboard?reminderDate={reminderDate:yyyy-MM-dd}&reminderId={reminderId}";
+
+    private static string BuildReminderNotifyBody(ReminderActionRow row)
+    {
+        var parts = new List<string>();
+        if (row.ReminderTime.HasValue)
+            parts.Add($"Due {row.ReminderTime.Value.Hours:D2}:{row.ReminderTime.Value.Minutes:D2}");
+        else
+            parts.Add("Due today");
+        if (!string.IsNullOrWhiteSpace(row.Description))
+            parts.Add(row.Description.Trim());
+        if (!string.IsNullOrWhiteSpace(row.ContactNumber))
+            parts.Add($"Contact {row.ContactNumber.Trim()}");
+        return string.Join(" · ", parts);
+    }
+
+    private static string Truncate(string value, int max)
+        => value.Length <= max ? value : value[..max];
+
+    private static int _doctorReminderFireReady;
+
+    private async Task EnsureDoctorReminderFireColumnsAsync()
+    {
+        if (Volatile.Read(ref _doctorReminderFireReady) == 1) return;
+        await _context.Database.ExecuteSqlRawAsync("""
+            IF OBJECT_ID(N'dbo.DoctorReminder', N'U') IS NOT NULL
+            BEGIN
+                IF COL_LENGTH(N'dbo.DoctorReminder', N'FiredAt') IS NULL
+                    ALTER TABLE dbo.DoctorReminder ADD FiredAt DATETIME2(0) NULL;
+                IF COL_LENGTH(N'dbo.DoctorReminder', N'SnoozedUntil') IS NULL
+                    ALTER TABLE dbo.DoctorReminder ADD SnoozedUntil DATETIME2(0) NULL;
+                IF COL_LENGTH(N'dbo.DoctorReminder', N'LastNotifiedAt') IS NULL
+                    ALTER TABLE dbo.DoctorReminder ADD LastNotifiedAt DATETIME2(0) NULL;
+            END
+            """);
+        Volatile.Write(ref _doctorReminderFireReady, 1);
+    }
 
     private static string Csv(IEnumerable<string> lines) => string.Join("\n", lines);
 
@@ -1100,6 +1280,24 @@ public partial class S5Week5Service : IS5Week5Service
         public string? ContactNumber { get; set; }
         public bool IsDone { get; set; }
         public DateTime CreatedAt { get; set; }
+        public DateTime? FiredAt { get; set; }
+        public DateTime? SnoozedUntil { get; set; }
+        public DateTime? LastNotifiedAt { get; set; }
+    }
+
+    private sealed class ReminderActionRow
+    {
+        public int DoctorReminderId { get; set; }
+        public long? UserId { get; set; }
+        public DateTime ReminderDate { get; set; }
+        public TimeSpan? ReminderTime { get; set; }
+        public string Title { get; set; } = "";
+        public string? Description { get; set; }
+        public string? ContactNumber { get; set; }
+        public bool IsDone { get; set; }
+        public DateTime? FiredAt { get; set; }
+        public DateTime? SnoozedUntil { get; set; }
+        public DateTime? LastNotifiedAt { get; set; }
     }
     private sealed class BulkRow
     {

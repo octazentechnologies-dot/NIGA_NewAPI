@@ -67,6 +67,8 @@ namespace Homeocentrum.Niga.API.Controllers
                     careDoctorIds = mapped.Select(m => m.Id).ToHashSet();
             }
 
+            // Leave defaults DirectoryVisible=0; if the doctor opts Public Visibility back on
+            // during clinic leave (tele), they remain discoverable here.
             var q = from d in _context.Doctors.AsNoTracking()
                     join qual in _context.QualificationMasters.AsNoTracking()
                         on d.QualificationId equals qual.QualificationId into qj
