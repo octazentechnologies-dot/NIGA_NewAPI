@@ -220,6 +220,8 @@ namespace Homeocentrum.Niga.API.Controllers
                 AverageRating = card.AverageRating,
                 ReviewCount = card.ReviewCount,
                 WorkingHoursNote = row.d.WorkingHoursNote,
+                FollowUpFeeInClinic = row.d.FollowUpFeeInClinic,
+                FollowUpFeeTele = row.d.FollowUpFeeTele,
                 VerificationStatus = row.d.VerificationStatus,
                 RankingReasons = card.RankingReasons
             };

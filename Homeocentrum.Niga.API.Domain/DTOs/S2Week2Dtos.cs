@@ -62,6 +62,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
     public class PublicDoctorProfileDto : PublicDoctorCardDto
     {
         public string? WorkingHoursNote { get; set; }
+        public decimal? FollowUpFeeInClinic { get; set; }
+        public decimal? FollowUpFeeTele { get; set; }
         public string VerificationStatus { get; set; } = string.Empty;
         public new List<string> RankingReasons { get; set; } = new();
     }
