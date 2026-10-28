@@ -48,6 +48,14 @@ public class PaymentsController : ControllerBase
     public Task<IActionResult> UpdateBookingPayment([FromBody] UpdateBookingPaymentRequest request)
         => Done(_s4.UpdateBookingPaymentAsync(request, Caller()));
 
+    /// <summary>
+    /// Admin/Account — reconcile PENDING consult PaymentOrders that Razorpay already captured
+    /// (missed UpdatePayment / webhook). Prefer dryRun=true first.
+    /// </summary>
+    [HttpPost("/api/Payments/ReconcilePending")]
+    public Task<IActionResult> ReconcilePending([FromBody] ReconcilePendingPaymentsRequest? request)
+        => Done(_s4.ReconcilePendingPaymentsAsync(request ?? new ReconcilePendingPaymentsRequest(), Caller()));
+
     /// <summary>PAT-18.02 / PAT-19 — poll appointment payment state for checkout UI.</summary>
     [HttpGet("/api/Payments/Appointments/{patientAppId:int}")]
     public Task<IActionResult> AppointmentPayment(int patientAppId) => Done(_s4.AppointmentPaymentAsync(patientAppId, Caller()));

@@ -21,8 +21,13 @@ public sealed class RazorpayPaymentDetails
     public string? CardLast4 { get; init; }
     public string RawJson { get; init; } = "";
 
+    /// <summary>
+    /// Auto-capture checkouts report captured; authorized is treated as paid for ledger
+    /// (funds are held / soon captured — matches Checkout SUCCESS for consult).
+    /// </summary>
     public bool IsCaptured =>
-        string.Equals(Status, "captured", StringComparison.OrdinalIgnoreCase);
+        string.Equals(Status, "captured", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Status, "authorized", StringComparison.OrdinalIgnoreCase);
 }
 
 public interface IRazorpayPaymentVerifier
@@ -33,6 +38,8 @@ public interface IRazorpayPaymentVerifier
     Task<long?> AmountPaidPaiseAsync(string orderId, CancellationToken cancellationToken = default);
     /// <summary>GET /v1/payments/{paymentId} — method, status, amount, and related receipt fields.</summary>
     Task<RazorpayPaymentDetails?> GetPaymentAsync(string paymentId, CancellationToken cancellationToken = default);
+    /// <summary>GET /v1/orders/{orderId}/payments — payments for a Razorpay order (reconcile).</summary>
+    Task<IReadOnlyList<RazorpayPaymentDetails>> ListPaymentsForOrderAsync(string orderId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Server-side check of a Razorpay checkout: signature = HMAC-SHA256(order_id|payment_id, key secret).</summary>
@@ -121,5 +128,73 @@ public sealed class RazorpayPaymentVerifier : IRazorpayPaymentVerifier
             CardLast4 = cardLast4,
             RawJson = raw
         };
+    }
+
+    public async Task<IReadOnlyList<RazorpayPaymentDetails>> ListPaymentsForOrderAsync(
+        string orderId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Configured || string.IsNullOrWhiteSpace(orderId))
+            return Array.Empty<RazorpayPaymentDetails>();
+
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"https://api.razorpay.com/v1/orders/{Uri.EscapeDataString(orderId.Trim())}/payments");
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "Basic",
+            Convert.ToBase64String(Encoding.ASCII.GetBytes($"{KeyId}:{KeySecret}")));
+        using var response = await client.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            return Array.Empty<RazorpayPaymentDetails>();
+
+        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var document = JsonDocument.Parse(raw);
+        if (!document.RootElement.TryGetProperty("items", out var items)
+            || items.ValueKind != JsonValueKind.Array)
+            return Array.Empty<RazorpayPaymentDetails>();
+
+        var list = new List<RazorpayPaymentDetails>();
+        foreach (var root in items.EnumerateArray())
+        {
+            string? cardNetwork = null;
+            string? cardLast4 = null;
+            if (root.TryGetProperty("card", out var card) && card.ValueKind == JsonValueKind.Object)
+            {
+                cardNetwork = card.TryGetProperty("network", out var n) ? n.GetString() : null;
+                cardLast4 = card.TryGetProperty("last4", out var l) ? l.GetString() : null;
+            }
+
+            long amount = 0;
+            if (root.TryGetProperty("amount", out var amountNode))
+            {
+                if (amountNode.ValueKind == JsonValueKind.Number)
+                    amountNode.TryGetInt64(out amount);
+                else
+                    long.TryParse(amountNode.GetString(), out amount);
+            }
+
+            var id = root.TryGetProperty("id", out var idNode) ? idNode.GetString() ?? "" : "";
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+
+            list.Add(new RazorpayPaymentDetails
+            {
+                Id = id,
+                OrderId = root.TryGetProperty("order_id", out var oid) ? oid.GetString() : orderId.Trim(),
+                Status = root.TryGetProperty("status", out var st) ? st.GetString() ?? "" : "",
+                Method = root.TryGetProperty("method", out var m) ? m.GetString() : null,
+                AmountPaise = amount,
+                Currency = root.TryGetProperty("currency", out var cur) ? cur.GetString() : null,
+                Bank = root.TryGetProperty("bank", out var bank) ? bank.GetString() : null,
+                Wallet = root.TryGetProperty("wallet", out var wallet) ? wallet.GetString() : null,
+                Vpa = root.TryGetProperty("vpa", out var vpa) ? vpa.GetString() : null,
+                CardNetwork = cardNetwork,
+                CardLast4 = cardLast4,
+                RawJson = root.GetRawText()
+            });
+        }
+
+        return list;
     }
 }

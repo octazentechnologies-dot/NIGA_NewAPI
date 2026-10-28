@@ -573,14 +573,25 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         {
             var appointmentDate = request.AppointmentDate.Date;
 
-            var appointments = await _context.PatientAppointments
+            // Prefer DoctorId (same clinic day as web dashboard / Queue). Fall back to UserId for legacy rows.
+            var doctorId = await _context.Doctors.AsNoTracking()
+                .Where(d => d.UserId == request.UserId && !d.DeleteStatus)
+                .Select(d => (int?)d.DoctorId)
+                .FirstOrDefaultAsync();
+
+            var query = _context.PatientAppointments
                 .AsNoTracking()
                 .Include(x => x.Patient)
                 .Where(x =>
-                    x.UserId == request.UserId &&
                     x.DeleteStatus == false &&
                     x.AppointmentDate.HasValue &&
-                    x.AppointmentDate.Value.Date == appointmentDate)
+                    x.AppointmentDate.Value.Date == appointmentDate);
+
+            query = doctorId.HasValue
+                ? query.Where(x => x.DoctorId == doctorId.Value)
+                : query.Where(x => x.UserId == request.UserId);
+
+            var appointments = await query
                 .OrderBy(x => x.AppointmentTime)
                 .ThenBy(x => x.PatientAppId)
                 .ToListAsync();
@@ -588,16 +599,34 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             var teleByApp = new Dictionary<int, int>();
             if (appointments.Count > 0)
             {
-                var sessions = await _context.Database.SqlQuery<TeleSessionIdRow>($@"
-                    SELECT s.PatientAppId, MAX(s.TeleSessionId) AS TeleSessionId
-                    FROM dbo.TeleSession s
-                    INNER JOIN dbo.PatientAppointment a ON a.PatientAppId = s.PatientAppId
-                    WHERE a.UserId = {request.UserId}
-                      AND a.DeleteStatus = 0
-                      AND a.AppointmentDate IS NOT NULL
-                      AND CONVERT(date, a.AppointmentDate) = {appointmentDate}
-                      AND s.Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED')
-                    GROUP BY s.PatientAppId").ToListAsync();
+                List<TeleSessionIdRow> sessions;
+                if (doctorId.HasValue)
+                {
+                    var did = doctorId.Value;
+                    sessions = await _context.Database.SqlQuery<TeleSessionIdRow>($@"
+                        SELECT s.PatientAppId, MAX(s.TeleSessionId) AS TeleSessionId
+                        FROM dbo.TeleSession s
+                        INNER JOIN dbo.PatientAppointment a ON a.PatientAppId = s.PatientAppId
+                        WHERE a.DoctorId = {did}
+                          AND a.DeleteStatus = 0
+                          AND a.AppointmentDate IS NOT NULL
+                          AND CONVERT(date, a.AppointmentDate) = {appointmentDate}
+                          AND s.Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED')
+                        GROUP BY s.PatientAppId").ToListAsync();
+                }
+                else
+                {
+                    sessions = await _context.Database.SqlQuery<TeleSessionIdRow>($@"
+                        SELECT s.PatientAppId, MAX(s.TeleSessionId) AS TeleSessionId
+                        FROM dbo.TeleSession s
+                        INNER JOIN dbo.PatientAppointment a ON a.PatientAppId = s.PatientAppId
+                        WHERE a.UserId = {request.UserId}
+                          AND a.DeleteStatus = 0
+                          AND a.AppointmentDate IS NOT NULL
+                          AND CONVERT(date, a.AppointmentDate) = {appointmentDate}
+                          AND s.Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED')
+                        GROUP BY s.PatientAppId").ToListAsync();
+                }
                 foreach (var s in sessions)
                     teleByApp[s.PatientAppId] = s.TeleSessionId;
             }

@@ -1484,33 +1484,112 @@ public partial class S4Week4Service
         int pageNumber = 1,
         int pageSize = 20)
     {
-        var owned = await ResolvePatientAsync(patientId, caller, write: false);
-        if (owned.Error != null) return owned.Error;
-        var id = owned.PatientId;
+        await EnsureBookedByUserIdColumnAsync();
+
+        // Patient My Appointments: default list = self + family/caregiver + BookedByUserId.
+        // Explicit patientId still scopes to one accessible patient.
+        int? singlePatientId = null;
+        int selfPatientId = 0;
+        long listUserId = 0;
+        var householdList = false;
+
+        if (caller.IsPatient)
+        {
+            if (caller.PatientId is null)
+                return Fail(403, "FORBIDDEN", "A patient profile is required.");
+            selfPatientId = caller.PatientId.Value;
+            listUserId = caller.UserId;
+
+            if (patientId.HasValue && patientId.Value > 0)
+            {
+                var owned = await ResolvePatientAsync(patientId, caller, write: false);
+                if (owned.Error != null) return owned.Error;
+                singlePatientId = owned.PatientId;
+            }
+            else
+            {
+                householdList = true;
+            }
+        }
+        else
+        {
+            var owned = await ResolvePatientAsync(patientId, caller, write: false);
+            if (owned.Error != null) return owned.Error;
+            singlePatientId = owned.PatientId;
+        }
+
         var page = pageNumber < 1 ? 1 : pageNumber;
         var size = pageSize is < 1 or > 100 ? 20 : pageSize;
         var statusFilter = string.IsNullOrWhiteSpace(status) ? null : status.Trim();
         var from = fromDate?.Date;
         var to = toDate?.Date;
 
-        // BE-008 — ensure open tele visits have a TeleSession before listing.
-        await EnsureOpenTeleSessionsForPatientAsync(id);
+        if (householdList)
+        {
+            var memberIds = await ListAccessiblePatientIdsForVisitsAsync(listUserId, selfPatientId);
+            foreach (var pid in memberIds)
+                await EnsureOpenTeleSessionsForPatientAsync(pid);
+        }
+        else if (singlePatientId.HasValue)
+        {
+            await EnsureOpenTeleSessionsForPatientAsync(singlePatientId.Value);
+        }
 
-        var all = await _context.Database.SqlQuery<PatientVisitRow>($@"
-            SELECT a.PatientAppId, a.AppointmentDate,
-                   CONVERT(nvarchar(5), a.AppointmentTime, 108) AS AppointmentTime,
-                   a.Status, a.ConsultMode, CAST(ISNULL(a.IsTele, 0) AS bit) AS IsTele, a.DoctorId,
-                   LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
-                   ts.TeleSessionId, ts.Status AS SessionStatus,
-                   (SELECT COUNT(1) FROM dbo.TeleChatMessage m WHERE m.PatientAppId = a.PatientAppId) AS ChatCount,
-                   CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.ConsultationSummary cs WHERE cs.PatientAppId = a.PatientAppId)
-                        THEN 1 ELSE 0 END AS bit) AS HasSummary
-            FROM dbo.PatientAppointment a
-            LEFT JOIN dbo.Doctor d ON d.DoctorID = a.DoctorId
-            OUTER APPLY (SELECT TOP 1 t.TeleSessionId, t.Status FROM dbo.TeleSession t
-                         WHERE t.PatientAppId = a.PatientAppId ORDER BY t.TeleSessionId DESC) ts
-            WHERE a.PatientId = {id} AND ISNULL(a.DeleteStatus, 0) = 0
-            ORDER BY a.AppointmentDate DESC, a.AppointmentTime DESC").ToListAsync();
+        List<PatientVisitRow> all;
+        if (householdList)
+        {
+            // Self map / family / caregiver / anything this login booked for a member.
+            all = await _context.Database.SqlQuery<PatientVisitRow>($@"
+                SELECT a.PatientAppId, a.PatientId, pa.PatientName, a.AppointmentDate,
+                       CONVERT(nvarchar(5), a.AppointmentTime, 108) AS AppointmentTime,
+                       a.Status, a.ConsultMode, CAST(ISNULL(a.IsTele, 0) AS bit) AS IsTele, a.DoctorId,
+                       LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
+                       ts.TeleSessionId, ts.Status AS SessionStatus,
+                       (SELECT COUNT(1) FROM dbo.TeleChatMessage m WHERE m.PatientAppId = a.PatientAppId) AS ChatCount,
+                       CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.ConsultationSummary cs WHERE cs.PatientAppId = a.PatientAppId)
+                            THEN 1 ELSE 0 END AS bit) AS HasSummary
+                FROM dbo.PatientAppointment a
+                LEFT JOIN dbo.Patient pa ON pa.PatientId = a.PatientId
+                LEFT JOIN dbo.Doctor d ON d.DoctorID = a.DoctorId
+                OUTER APPLY (SELECT TOP 1 t.TeleSessionId, t.Status FROM dbo.TeleSession t
+                             WHERE t.PatientAppId = a.PatientAppId ORDER BY t.TeleSessionId DESC) ts
+                WHERE ISNULL(a.DeleteStatus, 0) = 0
+                  AND (
+                        a.PatientId = {selfPatientId}
+                     OR a.BookedByUserId = {listUserId}
+                     OR EXISTS (
+                            SELECT 1 FROM dbo.PatientUserMap m
+                            WHERE m.UserId = {listUserId} AND m.PatientId = a.PatientId AND ISNULL(m.DeleteStatus, 0) = 0)
+                     OR EXISTS (
+                            SELECT 1 FROM dbo.PatientFamilyMember f
+                            WHERE f.OwnerUserId = {listUserId} AND f.MemberPatientId = a.PatientId AND ISNULL(f.DeleteStatus, 0) = 0)
+                     OR EXISTS (
+                            SELECT 1 FROM dbo.CaregiverAuthorization c
+                            WHERE c.CaregiverUserId = {listUserId} AND c.PatientId = a.PatientId
+                              AND ISNULL(c.DeleteStatus, 0) = 0 AND c.RevokedAt IS NULL)
+                  )
+                ORDER BY a.AppointmentDate DESC, a.AppointmentTime DESC").ToListAsync();
+        }
+        else
+        {
+            var id = singlePatientId!.Value;
+            all = await _context.Database.SqlQuery<PatientVisitRow>($@"
+                SELECT a.PatientAppId, a.PatientId, pa.PatientName, a.AppointmentDate,
+                       CONVERT(nvarchar(5), a.AppointmentTime, 108) AS AppointmentTime,
+                       a.Status, a.ConsultMode, CAST(ISNULL(a.IsTele, 0) AS bit) AS IsTele, a.DoctorId,
+                       LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
+                       ts.TeleSessionId, ts.Status AS SessionStatus,
+                       (SELECT COUNT(1) FROM dbo.TeleChatMessage m WHERE m.PatientAppId = a.PatientAppId) AS ChatCount,
+                       CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.ConsultationSummary cs WHERE cs.PatientAppId = a.PatientAppId)
+                            THEN 1 ELSE 0 END AS bit) AS HasSummary
+                FROM dbo.PatientAppointment a
+                LEFT JOIN dbo.Patient pa ON pa.PatientId = a.PatientId
+                LEFT JOIN dbo.Doctor d ON d.DoctorID = a.DoctorId
+                OUTER APPLY (SELECT TOP 1 t.TeleSessionId, t.Status FROM dbo.TeleSession t
+                             WHERE t.PatientAppId = a.PatientAppId ORDER BY t.TeleSessionId DESC) ts
+                WHERE a.PatientId = {id} AND ISNULL(a.DeleteStatus, 0) = 0
+                ORDER BY a.AppointmentDate DESC, a.AppointmentTime DESC").ToListAsync();
+        }
 
         IEnumerable<PatientVisitRow> filtered = all;
         if (statusFilter != null)
@@ -1538,6 +1617,8 @@ public partial class S4Week4Service
             return new
             {
                 r.PatientAppId,
+                r.PatientId,
+                r.PatientName,
                 r.AppointmentDate,
                 r.AppointmentTime,
                 r.Status,
@@ -1645,7 +1726,7 @@ public partial class S4Week4Service
         }
 
         var visit = await _context.Database.SqlQuery<PatientVisitRow>($@"
-            SELECT a.PatientAppId, a.AppointmentDate,
+            SELECT a.PatientAppId, a.PatientId, pa.PatientName, a.AppointmentDate,
                    CONVERT(nvarchar(5), a.AppointmentTime, 108) AS AppointmentTime,
                    a.Status, a.ConsultMode, CAST(ISNULL(a.IsTele, 0) AS bit) AS IsTele, a.DoctorId,
                    LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
@@ -1654,6 +1735,7 @@ public partial class S4Week4Service
                    CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.ConsultationSummary cs WHERE cs.PatientAppId = a.PatientAppId)
                         THEN 1 ELSE 0 END AS bit) AS HasSummary
             FROM dbo.PatientAppointment a
+            LEFT JOIN dbo.Patient pa ON pa.PatientId = a.PatientId
             LEFT JOIN dbo.Doctor d ON d.DoctorID = a.DoctorId
             OUTER APPLY (SELECT TOP 1 t.TeleSessionId, t.Status FROM dbo.TeleSession t
                          WHERE t.PatientAppId = a.PatientAppId ORDER BY t.TeleSessionId DESC) ts
@@ -2298,8 +2380,15 @@ public partial class S4Week4Service
         if (caller.IsPatient)
         {
             if (caller.PatientId is null) return (0, Fail(403, "FORBIDDEN", "A patient profile is required."));
-            if (patientId.HasValue && patientId.Value != caller.PatientId)
-                return (0, Fail(403, "FORBIDDEN", "You can read only your own record."));
+            if (patientId.HasValue && patientId.Value > 0 && patientId.Value != caller.PatientId)
+            {
+                // Read: family / caregiver / mapped patient. Write stays self-only.
+                if (write)
+                    return (0, Fail(403, "FORBIDDEN", "You can write only your own record."));
+                if (!await UserCanAccessAppointmentPatientAsync(caller.UserId, patientId.Value))
+                    return (0, Fail(403, "FORBIDDEN", "You can read only your own record or family members you manage."));
+                return (patientId.Value, null);
+            }
             return (caller.PatientId.Value, null);
         }
         if (patientId is null or <= 0)
@@ -2314,6 +2403,37 @@ public partial class S4Week4Service
             return (patientId.Value, null);
         }
         return (0, Fail(403, "FORBIDDEN", "You cannot read this patient record."));
+    }
+
+    /// <summary>
+    /// Patient ids the login may list on My Appointments: self map + family members + caregiver patients.
+    /// </summary>
+    private async Task<List<int>> ListAccessiblePatientIdsForVisitsAsync(long userId, int selfPatientId)
+    {
+        var ids = new HashSet<int> { selfPatientId };
+
+        var mapped = await _context.PatientUserMaps.AsNoTracking()
+            .Where(m => m.UserId == userId && !m.DeleteStatus)
+            .Select(m => m.PatientId)
+            .ToListAsync();
+        foreach (var id in mapped)
+            ids.Add(id);
+
+        var family = await _context.PatientFamilyMembers.AsNoTracking()
+            .Where(f => f.OwnerUserId == userId && !f.DeleteStatus)
+            .Select(f => f.MemberPatientId)
+            .ToListAsync();
+        foreach (var id in family)
+            ids.Add(id);
+
+        var caregiver = await _context.CaregiverAuthorizations.AsNoTracking()
+            .Where(c => c.CaregiverUserId == userId && !c.DeleteStatus && c.RevokedAt == null)
+            .Select(c => c.PatientId)
+            .ToListAsync();
+        foreach (var id in caregiver)
+            ids.Add(id);
+
+        return ids.Where(id => id > 0).ToList();
     }
 
     private async Task<MedicineRow?> LoadMedicineAsync(int id)

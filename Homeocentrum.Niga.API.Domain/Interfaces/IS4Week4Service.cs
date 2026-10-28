@@ -15,6 +15,8 @@ public interface IS4Week4Service
     Task<S4ActionResult> VerifyPaymentAsync(VerifyPaymentRequest request, S4Caller caller);
     /// <summary>Upsert Razorpay ids on a booking, fetch payment method from Razorpay, mark PAID when captured.</summary>
     Task<S4ActionResult> UpdateBookingPaymentAsync(UpdateBookingPaymentRequest request, S4Caller caller);
+    /// <summary>Admin/Account — mark PENDING consult PaymentOrders PAID when Razorpay already captured.</summary>
+    Task<S4ActionResult> ReconcilePendingPaymentsAsync(ReconcilePendingPaymentsRequest request, S4Caller caller);
     Task<S4ActionResult> AppointmentPaymentAsync(int patientAppId, S4Caller caller);
     Task<S4ActionResult> HandleWebhookAsync(string rawBody, string? signature, string? eventId);
     Task<S4ActionResult> CollectAtReceptionAsync(CollectAtReceptionRequest request, S4Caller caller);

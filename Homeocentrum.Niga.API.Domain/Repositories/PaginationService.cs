@@ -1219,10 +1219,39 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
             totalPages = Math.Ceiling(totalRecords / pageSize);
             skip = (pageNumber - 1) * pageSize;
 
+            var pageRows = subSectionList.Skip(skip).Take(pageSize).ToList();
+            var pageIds = pageRows.Select(x => x.SubSectionId).ToList();
+            if (pageIds.Count > 0)
+            {
+                // Same rule as GetRemedyCounts: DeletedStatus = 0, active remedy + grade, distinct RemedyId.
+                var counts = context.RubricRemedyDetails.AsNoTracking()
+                    .Where(x =>
+                        x.SubSectionId != null
+                        && pageIds.Contains(x.SubSectionId.Value)
+                        && x.DeletedStatus == false
+                        && x.RemedyId != null
+                        && x.Remedy != null
+                        && x.Remedy.DeleteStatus == false
+                        && x.Grade != null)
+                    .GroupBy(x => x.SubSectionId!.Value)
+                    .Select(g => new
+                    {
+                        SubSectionId = g.Key,
+                        Count = g.Select(r => r.RemedyId!.Value).Distinct().Count()
+                    })
+                    .ToList()
+                    .ToDictionary(x => x.SubSectionId, x => x.Count);
+
+                foreach (var row in pageRows)
+                {
+                    row.RemedyCount = counts.TryGetValue(row.SubSectionId, out var c) ? c : 0;
+                }
+            }
+
             var result = new PaginationResult();
             result.TotalPageCount = totalPages;
             result.TotalCount = totalRecords;
-            result.ResultObject = subSectionList.Skip(skip).Take(pageSize);
+            result.ResultObject = pageRows;
 
             return result;
 

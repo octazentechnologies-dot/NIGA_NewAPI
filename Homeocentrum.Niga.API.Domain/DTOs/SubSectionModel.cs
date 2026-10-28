@@ -91,6 +91,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
     {
         public int SubSectionId { get; set; }
         public string SubSectionName { get; set; }
+        /// <summary>Distinct active remedies on this subsection (DeletedStatus = 0).</summary>
+        public int RemedyCount { get; set; }
     }
 
     /// <summary>

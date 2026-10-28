@@ -299,12 +299,27 @@ public class MobileClinicQueryService
         if (to.Date < from.Date) return Fail(400, "VALIDATION", "to must be on or after from.");
         if ((to.Date - from.Date).TotalDays > 62) return Fail(400, "VALIDATION", "Date range cannot exceed 62 days.");
         var end = to.Date.AddDays(1);
-        var rows = await _context.PatientAppointments.AsNoTracking()
-            .Where(a => a.UserId == caller.UserId
-                        && a.DeleteStatus != true
+
+        // Prefer DoctorId (web dashboard / Queue parity). Fall back to UserId for legacy.
+        var doctorId = caller.DoctorId;
+        if (!doctorId.HasValue || doctorId.Value <= 0)
+        {
+            doctorId = await _context.Doctors.AsNoTracking()
+                .Where(d => d.UserId == caller.UserId && !d.DeleteStatus)
+                .Select(d => (int?)d.DoctorId)
+                .FirstOrDefaultAsync();
+        }
+
+        var query = _context.PatientAppointments.AsNoTracking()
+            .Where(a => a.DeleteStatus != true
                         && a.AppointmentDate.HasValue
                         && a.AppointmentDate.Value >= from.Date
-                        && a.AppointmentDate.Value < end)
+                        && a.AppointmentDate.Value < end);
+        query = doctorId.HasValue
+            ? query.Where(a => a.DoctorId == doctorId.Value)
+            : query.Where(a => a.UserId == caller.UserId);
+
+        var rows = await query
             .OrderBy(a => a.AppointmentDate)
             .ThenBy(a => a.AppointmentTime)
             .Select(a => new
@@ -331,15 +346,32 @@ public class MobileClinicQueryService
         var teleByApp = new Dictionary<int, int>();
         if (rows.Count > 0)
         {
-            var sessions = await _context.Database.SqlQuery<SessionMapRow>($@"
-                SELECT s.PatientAppId, MAX(s.TeleSessionId) AS TeleSessionId
-                FROM dbo.TeleSession s
-                INNER JOIN dbo.PatientAppointment a ON a.PatientAppId = s.PatientAppId
-                WHERE a.UserId = {caller.UserId}
-                  AND ISNULL(a.DeleteStatus, 0) = 0
-                  AND a.AppointmentDate >= {from.Date} AND a.AppointmentDate < {end}
-                  AND s.Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED')
-                GROUP BY s.PatientAppId").ToListAsync();
+            List<SessionMapRow> sessions;
+            if (doctorId.HasValue)
+            {
+                var did = doctorId.Value;
+                sessions = await _context.Database.SqlQuery<SessionMapRow>($@"
+                    SELECT s.PatientAppId, MAX(s.TeleSessionId) AS TeleSessionId
+                    FROM dbo.TeleSession s
+                    INNER JOIN dbo.PatientAppointment a ON a.PatientAppId = s.PatientAppId
+                    WHERE a.DoctorId = {did}
+                      AND ISNULL(a.DeleteStatus, 0) = 0
+                      AND a.AppointmentDate >= {from.Date} AND a.AppointmentDate < {end}
+                      AND s.Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED')
+                    GROUP BY s.PatientAppId").ToListAsync();
+            }
+            else
+            {
+                sessions = await _context.Database.SqlQuery<SessionMapRow>($@"
+                    SELECT s.PatientAppId, MAX(s.TeleSessionId) AS TeleSessionId
+                    FROM dbo.TeleSession s
+                    INNER JOIN dbo.PatientAppointment a ON a.PatientAppId = s.PatientAppId
+                    WHERE a.UserId = {caller.UserId}
+                      AND ISNULL(a.DeleteStatus, 0) = 0
+                      AND a.AppointmentDate >= {from.Date} AND a.AppointmentDate < {end}
+                      AND s.Status NOT IN (N'Ended', N'ENDED', N'Closed', N'CLOSED')
+                    GROUP BY s.PatientAppId").ToListAsync();
+            }
             foreach (var s in sessions)
                 teleByApp[s.PatientAppId] = s.TeleSessionId;
         }

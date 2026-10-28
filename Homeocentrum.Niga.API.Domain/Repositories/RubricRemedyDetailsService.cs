@@ -209,8 +209,17 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                     FontName = gradeMaster.FontName,
                     FontColor = gradeMaster.FontColor,
                     FontStyle = gradeMaster.FontStyle,
+                    // Match GetRemedyCounts: DeletedStatus = 0, active remedy + grade, distinct RemedyId.
                     RemedyCount = context
-                        .RubricRemedyDetails.Where(x => x.SubSectionId == subSection.SubSectionId)
+                        .RubricRemedyDetails.Where(x =>
+                            x.SubSectionId == subSection.SubSectionId
+                            && x.DeletedStatus == false
+                            && x.RemedyId != null
+                            && x.Remedy != null
+                            && x.Remedy.DeleteStatus == false
+                            && x.Grade != null)
+                        .Select(x => x.RemedyId!.Value)
+                        .Distinct()
                         .Count(),
                     IsSmallRubric = remedyDetails.IsSmallRubric,
                     IsConformationRubric = remedyDetails.IsConfirmationRubric,
@@ -299,8 +308,13 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                 .RubricRemedyDetails.AsNoTracking()
                 .Where(x =>
                     x.SubSectionId != null
+                    && x.DeletedStatus == false
                     && x.SubSection.DeleteStatus == false
                     && x.SubSection.SectionId == SectionId
+                    && x.RemedyId != null
+                    && x.Remedy != null
+                    && x.Remedy.DeleteStatus == false
+                    && x.Grade != null
                 )
                 .GroupBy(x => new { SubSectionId = x.SubSectionId!.Value, x.SubSection.SubSectionName })
                 .Select(g => new
@@ -309,6 +323,7 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                     g.Key.SubSectionName,
                     GradeId = g.Min(item => item.GradeId),
                     RubricRemedyId = g.Max(item => item.RubricRemedyId),
+                    RemedyCount = g.Select(item => item.RemedyId!.Value).Distinct().Count(),
                 })
                 .OrderBy(g => g.SubSectionName)
                 .ThenBy(g => g.SubSectionId)
@@ -330,6 +345,7 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                     SectionId = SectionId,
                     SectionName = sectionName,
                     SubSectionName = x.SubSectionName,
+                    RemedyCount = x.RemedyCount,
                 })
                 .ToList();
         }

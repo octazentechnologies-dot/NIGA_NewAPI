@@ -128,6 +128,7 @@ public static class ApiAudienceCatalog
         ("GET", "api/Reviews/Doctor/{doctorId}", W | P | D, "PAT-12.02 reviews"),
         ("POST", "api/Payments/ConsultOrders", W | P, "PAT-18.02 checkout"),
         ("POST", "api/Payments/Verify", P, "PAT-19.02 payment status (gateway verify)"),
+        ("POST", "api/Payments/ReconcilePending", W, "Admin/Account reconcile Razorpay-captured PENDING orders"),
         ("GET", "api/Payments/Appointments/{patientAppId}", P, "PAT-19.02 payment status"),
         ("GET", "api/Patient/Visits", W | P, "My appointments"),
         ("GET", "api/PatientAppointment/ChangeLog/{patientAppId}", W | P, "PAT-20.02 appointment detail"),

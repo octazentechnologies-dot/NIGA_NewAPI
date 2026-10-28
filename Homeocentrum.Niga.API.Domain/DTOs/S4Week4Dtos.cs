@@ -73,6 +73,32 @@ public class VerifyPaymentRequest
     public string? RazorpaySignature { get; set; }
 }
 
+/// <summary>
+/// Admin/Account — pull captured Razorpay payments onto PENDING PaymentOrder rows
+/// (missed webhook / UpdatePayment). Uses the same ApplyCaptured path as Verify.
+/// </summary>
+public class ReconcilePendingPaymentsRequest
+{
+    /// <summary>When true, only report what would be captured — no DB writes.</summary>
+    public bool DryRun { get; set; }
+
+    /// <summary>Optional explicit PaymentOrderIds. When empty, scan by date / doctor filters.</summary>
+    public List<long>? PaymentOrderIds { get; set; }
+
+    /// <summary>Optional clinic filter (PaymentOrder.DoctorId).</summary>
+    public int? DoctorId { get; set; }
+
+    /// <summary>Inclusive start (CreatedAt). Default: last 14 days.</summary>
+    public DateTime? From { get; set; }
+
+    /// <summary>Exclusive end (CreatedAt). Default: now + 1 day.</summary>
+    public DateTime? To { get; set; }
+
+    /// <summary>Max rows to process (1–200). Default 50.</summary>
+    [Range(1, 200)]
+    public int? Limit { get; set; }
+}
+
 /// <summary>PAT — pay anytime / pay later after hold or pay-at-clinic. Mobile sends Razorpay Checkout ids.</summary>
 public class UpdateBookingPaymentRequest
 {
