@@ -10,6 +10,18 @@ namespace Homeocentrum.Niga.API.Domain.Interfaces
         Task<string> CreateToken(UserMaster user, int expiryMin = 0, string roleName = null, int? doctorId = null);
 
         /// <summary>
+        /// Short portal session opened from the Doctor app. Cannot be extended by RefreshToken.
+        /// Returns the signed token and its jti.
+        /// </summary>
+        Task<(string Token, string Jti)> CreateWebHandoffToken(
+            UserMaster user,
+            string roleName,
+            int doctorId,
+            Guid sid,
+            DateTime expiresUtc,
+            DateTime absoluteExpiresUtc);
+
+        /// <summary>
         /// Reception staff JWT — Role "Reception" (+ RoleId when known), DoctorID retained (align Old-API).
         /// </summary>
         Task<string> CreateReceptionStaffToken(

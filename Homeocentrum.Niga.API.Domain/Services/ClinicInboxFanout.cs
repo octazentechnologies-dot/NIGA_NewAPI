@@ -25,7 +25,7 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
         string title,
         string body,
         string action,
-        string? doctorDeepLink = "/index",
+        string? doctorDeepLink = "/doctordashboard",
         string? receptionDeepLink = "/reception/appointments",
         CancellationToken cancellationToken = default)
     {
@@ -39,7 +39,9 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
                 title,
                 body,
                 action,
-                string.IsNullOrWhiteSpace(doctorDeepLink) ? "/index" : doctorDeepLink,
+                string.IsNullOrWhiteSpace(doctorDeepLink)
+                    ? AppNotificationInbox.DoctorHomeLink()
+                    : doctorDeepLink,
                 cancellationToken);
 
             var staffIds = await _context.DoctorReceptionStaffs.AsNoTracking()
@@ -120,7 +122,9 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
                 body,
                 action,
                 AppNotificationInbox.MapType(action, null, title, body),
-                string.IsNullOrWhiteSpace(deepLink) ? "/index" : deepLink,
+                string.IsNullOrWhiteSpace(deepLink)
+                    ? AppNotificationInbox.DoctorHomeLink()
+                    : deepLink,
                 cancellationToken);
         }
         catch (Exception ex)

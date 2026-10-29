@@ -85,6 +85,52 @@ namespace Homeocentrum.Niga.API.Domain.Services
             return written;
         }
 
+        public async Task<(string Token, string Jti)> CreateWebHandoffToken(
+            UserMaster user,
+            string roleName,
+            int doctorId,
+            Guid sid,
+            DateTime expiresUtc,
+            DateTime absoluteExpiresUtc)
+        {
+            var jti = Guid.NewGuid().ToString("N");
+            var expires = DateTime.SpecifyKind(expiresUtc, DateTimeKind.Utc);
+            var absolute = DateTime.SpecifyKind(absoluteExpiresUtc, DateTimeKind.Utc);
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
+                new Claim(JwtRegisteredClaimNames.NameId, user.UserId.ToString()),
+                new Claim(JwtRegisteredClaimNames.UniqueName, user.UserName ?? string.Empty),
+                new Claim("RoleId", user.RoleId?.ToString() ?? string.Empty),
+                new Claim("FirmIds", user.FirmIds ?? string.Empty),
+                new Claim(JwtRegisteredClaimNames.Jti, jti),
+                new Claim("RoleName", roleName),
+                new Claim(ClaimTypes.Role, roleName),
+                new Claim("DoctorID", doctorId.ToString()),
+                new Claim(WebHandoffPolicy.TokenUseClaim, WebHandoffPolicy.TokenUseValue),
+                new Claim(WebHandoffPolicy.SidClaim, sid.ToString("D")),
+                new Claim(WebHandoffPolicy.AbsoluteExpClaim, new DateTimeOffset(absolute).ToUnixTimeSeconds().ToString()),
+            };
+
+            var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha512Signature);
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = expires,
+                NotBefore = DateTime.UtcNow.AddSeconds(-30),
+                IssuedAt = DateTime.UtcNow,
+                SigningCredentials = creds,
+                Issuer = _issuer,
+                Audience = _audience,
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+            var written = tokenHandler.WriteToken(token);
+            await AuditIssuedAsync(user.UserId, roleName, tokenDescriptor, claims);
+            return (written, jti);
+        }
+
         public async Task<string> CreateReceptionStaffToken(
             int receptionStaffId,
             string userId,

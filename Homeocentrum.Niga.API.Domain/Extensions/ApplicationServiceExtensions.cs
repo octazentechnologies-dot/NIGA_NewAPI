@@ -55,6 +55,9 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddHttpContextAccessor();
             services.AddScoped<ITokenService, TokenService>();
             services.AddSingleton<IJwtDenylistService, JwtDenylistService>();
+            services.AddScoped<WebHandoffService>();
+            services.AddScoped<IWebHandoffService>(sp => sp.GetRequiredService<WebHandoffService>());
+            services.AddScoped<IWebHandoffGuard>(sp => sp.GetRequiredService<WebHandoffService>());
             services.AddScoped<IAuditEventWriter, AuditEventWriter>();
             services.AddSingleton<Security.Audit.SecurityAuditLog>();
             services.AddSingleton<Security.Audit.ISecurityAuditLog>(sp => sp.GetRequiredService<Security.Audit.SecurityAuditLog>());

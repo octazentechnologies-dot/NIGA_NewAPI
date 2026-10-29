@@ -130,6 +130,10 @@ namespace Homeocentrum.Niga.API.Domain.Data
 
     public virtual DbSet<DoctorPatientBoardBackup> DoctorPatientBoardBackups { get; set; }
 
+    public virtual DbSet<WebHandoffSession> WebHandoffSessions { get; set; }
+
+    public virtual DbSet<WebHandoffJti> WebHandoffJtis { get; set; }
+
     public virtual DbSet<DoctorDailySchedule> DoctorDailySchedules { get; set; }
 
     public virtual DbSet<DoctorPayeeKyc> DoctorPayeeKycs { get; set; }
@@ -1178,6 +1182,44 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.Property(e => e.DeleteStatus).HasDefaultValue(false);
             entity.Property(e => e.SchemaVersion).HasDefaultValue(1);
             entity.Property(e => e.PatientCount).HasDefaultValue(0);
+        });
+
+        modelBuilder.Entity<WebHandoffSession>(entity =>
+        {
+            entity.HasKey(e => e.WebHandoffSessionId).HasName("PK_WebHandoffSession");
+            entity.ToTable("WebHandoffSession");
+            entity.HasIndex(e => e.Sid, "UX_WebHandoffSession_Sid").IsUnique();
+            entity.HasIndex(e => e.CodeHash, "UX_WebHandoffSession_CodeHash").IsUnique();
+            entity.HasIndex(e => new { e.DoctorUserId, e.EnteredDate }, "IX_WebHandoffSession_Doctor_Entered");
+            entity.Property(e => e.Sid).HasColumnType("uniqueidentifier");
+            entity.Property(e => e.CodeHash).HasMaxLength(64).IsUnicode(false);
+            entity.Property(e => e.DoctorUserId).HasColumnName("DoctorUserId");
+            entity.Property(e => e.Purpose).HasMaxLength(40);
+            entity.Property(e => e.AppointmentDate).HasMaxLength(40);
+            entity.Property(e => e.VisitType).HasMaxLength(40);
+            entity.Property(e => e.ConsultMode).HasMaxLength(40);
+            entity.Property(e => e.ReturnUrl).HasMaxLength(300);
+            entity.Property(e => e.CurrentJti).HasMaxLength(64);
+            entity.Property(e => e.RevokeReason).HasMaxLength(40);
+            entity.Property(e => e.CreatedFromIp).HasMaxLength(64);
+            entity.Property(e => e.IsTele).HasDefaultValue(false);
+            entity.Property(e => e.CodeExpiresAtUtc).HasColumnType("datetime2");
+            entity.Property(e => e.ConsumedAtUtc).HasColumnType("datetime2");
+            entity.Property(e => e.AbsoluteExpiresAtUtc).HasColumnType("datetime2");
+            entity.Property(e => e.LastActivityAtUtc).HasColumnType("datetime2");
+            entity.Property(e => e.RevokedAtUtc).HasColumnType("datetime2");
+            entity.Property(e => e.EnteredDate).HasColumnType("datetime2");
+        });
+
+        modelBuilder.Entity<WebHandoffJti>(entity =>
+        {
+            entity.HasKey(e => e.Jti).HasName("PK_WebHandoffJti");
+            entity.ToTable("WebHandoffJti");
+            entity.HasIndex(e => e.Sid, "IX_WebHandoffJti_Sid");
+            entity.Property(e => e.Jti).HasMaxLength(64);
+            entity.Property(e => e.Sid).HasColumnType("uniqueidentifier");
+            entity.Property(e => e.ExpiresAtUtc).HasColumnType("datetime2");
+            entity.Property(e => e.ReplacedAtUtc).HasColumnType("datetime2");
         });
 
         modelBuilder.Entity<AudioCaseSession>(entity =>

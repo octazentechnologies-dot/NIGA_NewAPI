@@ -188,7 +188,10 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                             patientAppEntity.DoctorId,
                             "New appointment",
                             $"{patientLabel} booked for {when}.",
-                            "appointment_confirm")
+                            "appointment_confirm",
+                            AppNotificationInbox.DoctorAppointmentLink(
+                                patientAppEntity.AppointmentDate,
+                                patientAppEntity.PatientAppId))
                         .GetAwaiter().GetResult();
                 }
                 catch
@@ -1172,7 +1175,10 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     appointment.DoctorId,
                     "Appointment rescheduled",
                     $"{patientLabel} moved from {oldWhen} to {newWhen}.",
-                    "appointment_reschedule");
+                    "appointment_reschedule",
+                    AppNotificationInbox.DoctorAppointmentLink(
+                        appointment.AppointmentDate,
+                        appointment.PatientAppId));
             }
             catch (Exception ex)
             {
@@ -1287,7 +1293,10 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     appointment.DoctorId,
                     "Appointment cancelled",
                     $"{patientLabel} cancelled the visit at {slotLabel}.",
-                    "appointment_cancel");
+                    "appointment_cancel",
+                    AppNotificationInbox.DoctorAppointmentLink(
+                        appointment.AppointmentDate,
+                        appointment.PatientAppId));
             }
             catch (Exception ex)
             {

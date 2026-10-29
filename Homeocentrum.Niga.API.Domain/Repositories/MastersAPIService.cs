@@ -441,6 +441,66 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
             return subsectionEntityList;
         }
 
+        /// <summary>
+        /// Fast DDL page for admin rubrics: SQL Skip/Take only, no parent-name fill.
+        /// </summary>
+        public PaginationResult GetSubsectionBySectionPaged(
+            long sectionId,
+            string? queryString,
+            NigaParameters nigaParameters,
+            ref ErrorResponseModel errorResponseModel
+        )
+        {
+            errorResponseModel = new ErrorResponseModel();
+            Homeocentrum.Niga.API.Domain.Data.OldApiCommandTimeout.Apply(context);
+
+            if (nigaParameters == null)
+                nigaParameters = new NigaParameters();
+            var pageNumber = nigaParameters.PageNumber <= 0 ? 1 : nigaParameters.PageNumber;
+            var pageSize = nigaParameters.PageSize <= 0 || nigaParameters.PageSize == int.MaxValue
+                ? 20
+                : nigaParameters.PageSize;
+
+            var query = context.SubSectionMasters.AsNoTracking()
+                .Where(ss => ss.SectionId == sectionId && ss.DeleteStatus == false);
+
+            if (!string.IsNullOrWhiteSpace(queryString))
+            {
+                var term = queryString.Trim();
+                query = query.Where(ss => ss.SubSectionName != null && ss.SubSectionName.Contains(term));
+            }
+
+            var totalRecords = query.Count();
+            // Prefer Id sort when browsing full section (avoids nvarchar(max) memory grants on MIND).
+            // Name sort when the user is searching a filtered set.
+            var ordered = string.IsNullOrWhiteSpace(queryString)
+                ? query.OrderBy(ss => ss.SubSectionId)
+                : query.OrderBy(ss => ss.SubSectionName);
+            var rows = ordered
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(ss => new SubSectionDDLModel
+                {
+                    SubSectionId = ss.SubSectionId,
+                    SubSectionName = ss.SubSectionName,
+                    MainParentSubsection = ss.MainParentSubsection,
+                })
+                .ToList();
+
+            if (rows.Count == 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "SubSection not found";
+            }
+
+            return new PaginationResult
+            {
+                TotalCount = totalRecords,
+                TotalPageCount = pageSize > 0 ? Math.Ceiling(totalRecords / (double)pageSize) : 0,
+                ResultObject = rows,
+            };
+        }
+
         public List<RemedyModel> GetRemedies(
             RubricRemedyDetailsModel rubricRemedyDetailsModel,
             ref ErrorResponseModel errorResponseModel

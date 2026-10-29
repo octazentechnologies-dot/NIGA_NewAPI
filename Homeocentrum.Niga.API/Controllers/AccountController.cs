@@ -30,6 +30,7 @@ namespace Homeocentrum.Niga.API.Controllers
         private readonly ISubscriptionStatusService _subscriptionStatusService;
         private readonly IAuditEventWriter _auditEventWriter;
         private readonly IJwtDenylistService _jwtDenylist;
+        private readonly IWebHandoffService _webHandoff;
         private readonly IPushNotificationSender _push;
         private readonly IOptions<SmtpSettingsModel> _mailSettings;
         private readonly IConfiguration _configuration;
@@ -43,6 +44,7 @@ namespace Homeocentrum.Niga.API.Controllers
             ISubscriptionStatusService subscriptionStatusService,
             IAuditEventWriter auditEventWriter,
             IJwtDenylistService jwtDenylist,
+            IWebHandoffService webHandoff,
             IPushNotificationSender push,
             IOptions<SmtpSettingsModel> mailSettings,
             IConfiguration configuration,
@@ -54,6 +56,7 @@ namespace Homeocentrum.Niga.API.Controllers
             _subscriptionStatusService = subscriptionStatusService;
             _auditEventWriter = auditEventWriter;
             _jwtDenylist = jwtDenylist;
+            _webHandoff = webHandoff;
             _push = push;
             _mailSettings = mailSettings;
             _configuration = configuration;
@@ -274,6 +277,15 @@ namespace Homeocentrum.Niga.API.Controllers
 
                     try
                     {
+                        await _webHandoff.RevokeAllForUserAsync(userId, "logout");
+                    }
+                    catch
+                    {
+                        // Portal revoke is best-effort; logout must still succeed.
+                    }
+
+                    try
+                    {
                         // Clear all FCM tokens for this login so the next sign-in registers a fresh one.
                         await _push.ClearUserTokensAsync(userId);
                     }
@@ -341,6 +353,15 @@ namespace Homeocentrum.Niga.API.Controllers
             var oldJti = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
             if (_jwtDenylist.IsDenied(oldJti))
                 return Unauthorized(new { success = false, code = "SIGNED_OUT", message = "This session was signed out. Sign in again." });
+
+            var tokenUse = principal.FindFirst(WebHandoffPolicy.TokenUseClaim)?.Value;
+            if (string.Equals(tokenUse, WebHandoffPolicy.TokenUseValue, StringComparison.Ordinal))
+                return Unauthorized(new
+                {
+                    success = false,
+                    code = "HANDOFF_NO_REFRESH",
+                    message = "This portal session cannot be extended this way. Stay in the portal while you are working, or open it again from the Doctor app."
+                });
 
             var role = principal.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
                 ?? principal.FindFirst("RoleName")?.Value

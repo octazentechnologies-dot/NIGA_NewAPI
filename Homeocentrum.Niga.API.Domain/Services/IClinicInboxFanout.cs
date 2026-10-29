@@ -12,7 +12,7 @@ public interface IClinicInboxFanout
         string title,
         string body,
         string action,
-        string? doctorDeepLink = "/index",
+        string? doctorDeepLink = "/doctordashboard",
         string? receptionDeepLink = "/reception/appointments",
         CancellationToken cancellationToken = default);
 

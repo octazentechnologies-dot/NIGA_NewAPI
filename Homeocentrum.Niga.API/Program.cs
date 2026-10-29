@@ -227,14 +227,27 @@ builder.Services.AddAuthentication(options =>
             }
             return Task.CompletedTask;
         },
-        OnTokenValidated = ctx =>
+        OnTokenValidated = async ctx =>
         {
             var jti = ctx.Principal?.FindFirst("jti")?.Value;
             var denylist = ctx.HttpContext.RequestServices
                 .GetRequiredService<Homeocentrum.Niga.API.Domain.Services.IJwtDenylistService>();
             if (denylist.IsDenied(jti))
+            {
                 ctx.Fail("This session was signed out.");
-            return Task.CompletedTask;
+                return;
+            }
+
+            var tokenUse = ctx.Principal?.FindFirst(WebHandoffPolicy.TokenUseClaim)?.Value;
+            if (!string.Equals(tokenUse, WebHandoffPolicy.TokenUseValue, StringComparison.Ordinal))
+                return;
+
+            var guard = ctx.HttpContext.RequestServices
+                .GetRequiredService<Homeocentrum.Niga.API.Domain.Services.IWebHandoffGuard>();
+            var sid = ctx.Principal?.FindFirst(WebHandoffPolicy.SidClaim)?.Value;
+            var problem = await guard.CheckAsync(sid, jti);
+            if (problem != null)
+                ctx.Fail(problem);
         }
     };
 });

@@ -1345,7 +1345,8 @@ public partial class S4Week4Service : IS4Week4Service
                 row.DoctorId,
                 "New appointment",
                 $"{patientLabel} booked for {day} {time}.".Trim(),
-                "appointment_confirm");
+                "appointment_confirm",
+                AppNotificationInbox.DoctorAppointmentLink(row.AppointmentDate, patientAppId));
         }
         catch (Exception ex)
         {

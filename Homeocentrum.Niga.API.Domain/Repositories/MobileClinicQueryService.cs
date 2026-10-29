@@ -1082,7 +1082,8 @@ public class MobileClinicQueryService
                 row.DoctorId,
                 "New appointment",
                 $"{patientLabel} booked for {row.ProposedDate.Value:dd MMM yyyy} {NotificationClock.Format12Hour(time)}.",
-                "appointment_confirm");
+                "appointment_confirm",
+                AppNotificationInbox.DoctorAppointmentLink(row.ProposedDate, appt.PatientAppId));
         }
         catch { /* booking already saved */ }
         try { await PublishAppointmentRequestAsync(row.DoctorId, "patient_responded", id, "ACCEPTED"); }
@@ -1157,7 +1158,8 @@ public class MobileClinicQueryService
                 caller.DoctorId.Value,
                 "New appointment",
                 $"{patientLabel} booked for {row.RequestedDate:dd MMM yyyy} {NotificationClock.Format12Hour(time)}.",
-                "appointment_confirm");
+                "appointment_confirm",
+                AppNotificationInbox.DoctorAppointmentLink(row.RequestedDate, appt.PatientAppId));
         }
         catch { /* booking already saved */ }
         try { await PublishAppointmentRequestAsync(caller.DoctorId.Value, "accepted", id, "ACCEPTED", row); }

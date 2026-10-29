@@ -87,6 +87,15 @@ namespace Homeocentrum.Niga.API.Domain.Business.Interface
         List<SubSectionModel> GetSubsectionBySection (long sectionId, ref ErrorResponseModel errorResponseModel);
 
         /// <summary>
+        /// Paged subsections for a section (dropdown / infinite scroll). No parent-name fill.
+        /// </summary>
+        PaginationResult GetSubsectionBySectionPaged(
+            long sectionId,
+            string? queryString,
+            NigaParameters nigaParameters,
+            ref ErrorResponseModel errorResponseModel);
+
+        /// <summary>
         /// Method is used for get all the Remedies
         /// </summary>
         /// <param name=""></param>

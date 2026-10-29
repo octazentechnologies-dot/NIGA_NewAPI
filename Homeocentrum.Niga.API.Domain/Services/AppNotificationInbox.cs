@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace Homeocentrum.Niga.API.Domain.Services;
 
 /// <summary>
@@ -5,6 +8,25 @@ namespace Homeocentrum.Niga.API.Domain.Services;
 /// </summary>
 public static class AppNotificationInbox
 {
+    /// <summary>Doctor / clinic web home (never patientdashboard).</summary>
+    public static string DoctorHomeLink() => "/doctordashboard";
+
+    /// <summary>
+    /// Deep link for clinic "new / changed appointment" inbox rows on the web portal.
+    /// </summary>
+    public static string DoctorAppointmentLink(DateTime? appointmentDate = null, long? patientAppId = null)
+    {
+        var path = appointmentDate.HasValue ? "/doctor/schedule" : DoctorHomeLink();
+        var parts = new List<string>();
+        if (appointmentDate.HasValue)
+            parts.Add($"date={appointmentDate.Value:yyyy-MM-dd}");
+        if (patientAppId is > 0)
+            parts.Add($"patientAppId={patientAppId.Value}");
+        return parts.Count == 0 ? path : $"{path}?{string.Join("&", parts)}";
+    }
+
+    public static string DoctorFollowUpsLink() => "/doctor/follow-ups";
+
     public static string MapType(string? action, IReadOnlyDictionary<string, string>? data, string? title, string? body)
     {
         if (TryGet(data, "type", out var explicitType))

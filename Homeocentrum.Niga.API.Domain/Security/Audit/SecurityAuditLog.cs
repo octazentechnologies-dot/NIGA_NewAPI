@@ -30,6 +30,11 @@ public static class SecurityAuditEvents
     public const string UploadMalware = "UPLOAD_MALWARE";
     public const string ConsentNoticePublished = "CONSENT_NOTICE_PUBLISHED";
     public const string GuardianConsent = "GUARDIAN_CONSENT";
+    public const string WebHandoffIssued = "WEB_HANDOFF_ISSUED";
+    public const string WebHandoffExchanged = "WEB_HANDOFF_EXCHANGED";
+    public const string WebHandoffRenewed = "WEB_HANDOFF_RENEWED";
+    public const string WebHandoffRevoked = "WEB_HANDOFF_REVOKED";
+    public const string WebHandoffRejected = "WEB_HANDOFF_REJECTED";
 }
 
 public interface ISecurityAuditLog

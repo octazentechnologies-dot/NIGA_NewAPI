@@ -13,7 +13,8 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         }
        
         public int SubSectionId { get; set; }
-        public string SubSectionName { get; set; }
+        /// <summary>Optional display name; save uses SubSectionId only.</summary>
+        public string? SubSectionName { get; set; }
         public int SectionId { get; set; }
         public int GradeId { get; set; }
 

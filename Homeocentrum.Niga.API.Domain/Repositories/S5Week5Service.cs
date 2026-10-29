@@ -315,20 +315,13 @@ public partial class S5Week5Service : IS5Week5Service
             FROM dbo.AppNotification
             WHERE UserId = {caller.UserId}
             ORDER BY AppNotificationId DESC").ToListAsync();
+        var mapped = rows.Select(MapNoteRow)
+            .Where(n => IsVisibleForCaller(caller, n.Type, n.Title, n.Body))
+            .Select(ToNoteDto);
         return S4ActionResult.Ok(new
         {
             success = true,
-            data = rows.Select(r => new
-            {
-                r.AppNotificationId,
-                r.Title,
-                r.Body,
-                r.IsRead,
-                r.PushStatus,
-                r.CreatedAt,
-                type = NormalizeNotificationType(r.Type) ?? InferNotificationType(r.Title, r.Body),
-                deepLink = string.IsNullOrWhiteSpace(r.DeepLink) ? null : r.DeepLink
-            })
+            data = mapped
         });
     });
 
@@ -1117,6 +1110,12 @@ public partial class S5Week5Service : IS5Week5Service
     private static string InferNotificationType(string? title, string? body)
     {
         var text = ((title ?? "") + " " + (body ?? "")).ToLowerInvariant();
+        if (text.Contains("support ticket") || text.Contains("help desk") || text.Contains("assistance request"))
+            return "SUPPORT";
+        if (text.Contains("verif") || text.Contains("credential") || text.Contains("trust queue"))
+            return "VERIFICATION";
+        if (text.Contains("onboard") || text.Contains("registration pending") || text.Contains("pharmacy partner"))
+            return "ONBOARDING";
         if (text.Contains("prescription") || text.Contains("erx") || text.Contains("e-rx")) return "PRESCRIPTION";
         if (text.Contains("pharmacy") || text.Contains("medicine") || text.Contains("refill") || text.Contains("order")) return "MEDICINE";
         if (text.Contains("payout") || text.Contains("payment") || text.Contains("refund") || text.Contains("receipt")) return "PAYMENT";
@@ -1127,6 +1126,22 @@ public partial class S5Week5Service : IS5Week5Service
 
     public Task<S4ActionResult> UnreadNotificationCountAsync(S4Caller caller) => Guard(async () =>
     {
+        // Admin portal: load unread rows then filter clinical noise (same rules as list).
+        if (IsAdminPortalCaller(caller))
+        {
+            var unreadRows = await _context.Database.SqlQuery<NoteRow>($@"
+                SELECT AppNotificationId, Title, Body, IsRead, PushStatus, CreatedAt, Type, DeepLink
+                FROM dbo.AppNotification
+                WHERE UserId = {caller.UserId} AND IsRead = 0
+                ORDER BY AppNotificationId DESC").ToListAsync();
+            var unread = unreadRows.Count(r =>
+            {
+                var type = NormalizeNotificationType(r.Type) ?? InferNotificationType(r.Title, r.Body);
+                return IsVisibleForCaller(caller, type, r.Title, r.Body);
+            });
+            return S4ActionResult.Ok(new { success = true, data = new { unread } });
+        }
+
         var count = await _context.Database.SqlQuery<IdCountRow>($@"
             SELECT COUNT(1) AS Id FROM dbo.AppNotification
             WHERE UserId = {caller.UserId} AND IsRead = 0").FirstAsync();
@@ -1138,7 +1153,34 @@ public partial class S5Week5Service : IS5Week5Service
         await EnsureNotificationNavColumnsAsync();
         var page = pageNumber < 1 ? 1 : pageNumber;
         var size = pageSize is < 1 or > 100 ? 20 : pageSize;
-        var total = await _context.Database.SqlQuery<IdCountRow>($@"
+
+        // Admin portal: filter clinical types in memory so Type inference still applies.
+        if (IsAdminPortalCaller(caller))
+        {
+            var all = await _context.Database.SqlQuery<NoteRow>($@"
+                SELECT TOP 500 AppNotificationId, Title, Body, IsRead, PushStatus, CreatedAt, Type, DeepLink
+                FROM dbo.AppNotification
+                WHERE UserId = {caller.UserId}
+                ORDER BY AppNotificationId DESC").ToListAsync();
+            var filtered = all.Select(MapNoteRow)
+                .Where(n => IsVisibleForCaller(caller, n.Type, n.Title, n.Body))
+                .ToList();
+            var total = filtered.Count;
+            var pageRows = filtered.Skip((page - 1) * size).Take(size).Select(ToNoteDto);
+            return S4ActionResult.Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    totalRecords = total,
+                    pageNumber = page,
+                    pageSize = size,
+                    data = pageRows
+                }
+            });
+        }
+
+        var totalAll = await _context.Database.SqlQuery<IdCountRow>($@"
             SELECT COUNT(1) AS Id FROM dbo.AppNotification WHERE UserId = {caller.UserId}").FirstAsync();
         var skip = (page - 1) * size;
         var rows = await _context.Database.SqlQuery<NoteRow>($@"
@@ -1152,23 +1194,78 @@ public partial class S5Week5Service : IS5Week5Service
             success = true,
             data = new
             {
-                totalRecords = total.Id,
+                totalRecords = totalAll.Id,
                 pageNumber = page,
                 pageSize = size,
-                data = rows.Select(r => new
-                {
-                    r.AppNotificationId,
-                    r.Title,
-                    r.Body,
-                    r.IsRead,
-                    r.PushStatus,
-                    r.CreatedAt,
-                    type = NormalizeNotificationType(r.Type) ?? InferNotificationType(r.Title, r.Body),
-                    deepLink = string.IsNullOrWhiteSpace(r.DeepLink) ? null : r.DeepLink
-                })
+                data = rows.Select(MapNoteRow).Select(ToNoteDto)
             }
         });
     });
+
+    private static bool IsAdminPortalCaller(S4Caller caller)
+        => caller.IsAdmin || caller.Eq("Management") || caller.Eq("Account");
+
+    /// <summary>
+    /// Admin/Management/Account inbox should not surface doctor/patient clinical noise
+    /// (appointments, prescriptions, medicines, marketing).
+    /// </summary>
+    private static bool IsVisibleForCaller(S4Caller caller, string? type, string? title, string? body)
+    {
+        if (!IsAdminPortalCaller(caller))
+            return true;
+
+        var resolved = NormalizeNotificationType(type) ?? InferNotificationType(title, body);
+        if (resolved is "APPOINTMENT" or "PRESCRIPTION" or "MEDICINE" or "MARKETING")
+            return false;
+
+        var text = ((title ?? "") + " " + (body ?? "")).ToLowerInvariant();
+        if (text.Contains("new appointment")
+            || text.Contains("booked for")
+            || text.Contains("follow-up")
+            || text.Contains("follow up")
+            || text.Contains("rescheduled")
+            || text.Contains("cancelled the visit")
+            || text.Contains("carelink"))
+            return false;
+
+        return true;
+    }
+
+    private sealed class MappedNote
+    {
+        public long AppNotificationId { get; set; }
+        public string Title { get; set; } = "";
+        public string Body { get; set; } = "";
+        public bool IsRead { get; set; }
+        public string PushStatus { get; set; } = "";
+        public DateTime CreatedAt { get; set; }
+        public string Type { get; set; } = "SYSTEM";
+        public string? DeepLink { get; set; }
+    }
+
+    private static MappedNote MapNoteRow(NoteRow r) => new()
+    {
+        AppNotificationId = r.AppNotificationId,
+        Title = r.Title,
+        Body = r.Body,
+        IsRead = r.IsRead,
+        PushStatus = r.PushStatus,
+        CreatedAt = r.CreatedAt,
+        Type = NormalizeNotificationType(r.Type) ?? InferNotificationType(r.Title, r.Body),
+        DeepLink = string.IsNullOrWhiteSpace(r.DeepLink) ? null : r.DeepLink
+    };
+
+    private static object ToNoteDto(MappedNote n) => new
+    {
+        n.AppNotificationId,
+        n.Title,
+        n.Body,
+        n.IsRead,
+        n.PushStatus,
+        n.CreatedAt,
+        type = n.Type,
+        deepLink = n.DeepLink
+    };
 
     private static string? NormalizeNotificationType(string? type)
     {
@@ -1176,10 +1273,14 @@ public partial class S5Week5Service : IS5Week5Service
         var t = type.Trim().ToUpperInvariant();
         return t switch
         {
-            "APPOINTMENT" or "PRESCRIPTION" or "MEDICINE" or "PAYMENT" or "SYSTEM" or "MARKETING" => t,
+            "APPOINTMENT" or "PRESCRIPTION" or "MEDICINE" or "PAYMENT" or "SYSTEM" or "MARKETING"
+                or "SUPPORT" or "ONBOARDING" or "VERIFICATION" => t,
             "CARELINK" => "APPOINTMENT",
             "PHARMACY" or "REFILL" => "MEDICINE",
             "MONEY" => "PAYMENT",
+            "TICKET" or "HELP" => "SUPPORT",
+            "TRUST" or "CREDENTIAL" or "CREDENTIALS" => "VERIFICATION",
+            "ONBOARD" or "REGISTER" => "ONBOARDING",
             _ => t
         };
     }

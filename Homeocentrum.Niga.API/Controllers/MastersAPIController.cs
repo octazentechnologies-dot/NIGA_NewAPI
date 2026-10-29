@@ -362,6 +362,40 @@ namespace Homeocentrum.Niga.API.Controllers
         }
 
         /// <summary>
+        /// Paged subsections for dropdowns (first page fast; scroll / search for more).
+        /// </summary>
+        [HttpGet("GetSubsectionBySectionPaged/{sectionId}")]
+        [ProducesResponseType(typeof(PaginationResult), 200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        public IActionResult GetSubsectionBySectionPaged(
+            long sectionId,
+            string? queryString,
+            [FromQuery] NigaParameters nigaParameters)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                var result = _mastersAPIService.GetSubsectionBySectionPaged(
+                    sectionId,
+                    queryString,
+                    nigaParameters,
+                    ref errorResponseModel);
+
+                if (result != null)
+                {
+                    return Ok(result);
+                }
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
         /// To get all remedies
         /// </summary>
         /// <param name="rubricRemedyDetailsModel"></param>

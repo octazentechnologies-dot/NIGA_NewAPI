@@ -52,4 +52,21 @@ public class AppNotificationInboxTests
         var data = new Dictionary<string, string> { ["deepLink"] = "/book/pay/abc" };
         Assert.Equal("/book/pay/abc", AppNotificationInbox.MapDeepLink("pay_link", data));
     }
+
+    [Fact]
+    public void Doctor_home_link_is_clinic_dashboard()
+        => Assert.Equal("/doctordashboard", AppNotificationInbox.DoctorHomeLink());
+
+    [Fact]
+    public void Doctor_appointment_link_includes_date_and_patient_app_id()
+    {
+        var link = AppNotificationInbox.DoctorAppointmentLink(
+            new DateTime(2026, 10, 27),
+            12345);
+        Assert.Equal("/doctor/schedule?date=2026-10-27&patientAppId=12345", link);
+    }
+
+    [Fact]
+    public void Doctor_appointment_link_without_date_uses_dashboard()
+        => Assert.Equal("/doctordashboard", AppNotificationInbox.DoctorAppointmentLink());
 }
