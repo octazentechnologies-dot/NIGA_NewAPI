@@ -7,4 +7,10 @@ namespace Homeocentrum.Niga.API.Domain.Realtime;
 public interface IClinicRealtimeNotifier
 {
     Task AppointmentRequestChangedAsync(int doctorId, object payload, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Book / reschedule / cancel / confirm and other appointment calendar changes.
+    /// Doctor dashboard and schedule clients refresh from this event.
+    /// </summary>
+    Task AppointmentChangedAsync(int doctorId, object payload, CancellationToken cancellationToken = default);
 }

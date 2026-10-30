@@ -180,7 +180,9 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     if (string.IsNullOrWhiteSpace(doctorLabel)) doctorLabel = "your doctor";
                     var dateLabel = patientAppEntity.AppointmentDate?.ToString("dd MMM yyyy") ?? "";
                     var timeLabel = NotificationClock.Format12Hour(patientAppEntity.AppointmentTime);
-                    _rescheduleNotifier.NotifyConfirmAsync(patient?.MobileNo, false, doctorLabel, dateLabel, timeLabel)
+                    // SMS/WhatsApp only here — inbox/push/realtime owned by NotifyPatientAsync (avoids duplicate AppNotification).
+                    _rescheduleNotifier.NotifyConfirmAsync(
+                            patient?.MobileNo, false, doctorLabel, dateLabel, timeLabel, null, skipPush: true)
                         .GetAwaiter().GetResult();
                     var patientLabel = string.IsNullOrWhiteSpace(patient?.PatientName) ? "A patient" : patient.PatientName.Trim();
                     var when = $"{dateLabel} {timeLabel}".Trim();
@@ -193,6 +195,16 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                                 patientAppEntity.AppointmentDate,
                                 patientAppEntity.PatientAppId))
                         .GetAwaiter().GetResult();
+                    if (patientAppEntity.PatientId > 0)
+                    {
+                        _clinicInbox.NotifyPatientAsync(
+                                patientAppEntity.PatientId,
+                                "Appointment confirmed",
+                                $"Your visit with {doctorLabel} is booked for {when}.",
+                                "appointment_confirm",
+                                "/patientdashboard")
+                            .GetAwaiter().GetResult();
+                    }
                 }
                 catch
                 {
@@ -1281,14 +1293,25 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 var slotLabel = appointment.AppointmentDate.HasValue
                     ? NotificationClock.FormatVisit(appointment.AppointmentDate.Value, appointment.AppointmentTime)
                     : NotificationClock.Format12Hour(appointment.AppointmentTime);
+                // SMS/WhatsApp only — patient inbox/push/realtime via NotifyPatientAsync (same pattern as book).
                 result.Notification = await _rescheduleNotifier.NotifyCancelAsync(
                     appointment.Patient?.MobileNo,
                     appointment.Patient?.IsWhatsAppOptIn == true,
                     slotLabel,
-                    request.ReasonCode);
+                    request.ReasonCode,
+                    skipPush: true);
                 var patientLabel = string.IsNullOrWhiteSpace(appointment.Patient?.PatientName)
                     ? "A patient"
                     : appointment.Patient.PatientName.Trim();
+                if (appointment.PatientId > 0)
+                {
+                    await _clinicInbox.NotifyPatientAsync(
+                        appointment.PatientId,
+                        "Appointment cancelled",
+                        $"Your visit at {slotLabel} was cancelled.",
+                        "appointment_cancel",
+                        "/patientdashboard");
+                }
                 await _clinicInbox.NotifyDoctorAndReceptionAsync(
                     appointment.DoctorId,
                     "Appointment cancelled",

@@ -439,6 +439,8 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
 app.MapControllers();
 app.MapHub<Homeocentrum.Niga.API.Domain.Realtime.ClinicRealtimeHub>(
     Homeocentrum.Niga.API.Domain.Realtime.ClinicRealtimeHub.HubPath);
+app.MapHub<Homeocentrum.Niga.API.Domain.Realtime.PatientRealtimeHub>(
+    Homeocentrum.Niga.API.Domain.Realtime.PatientRealtimeHub.HubPath);
 
 
 

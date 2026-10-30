@@ -65,11 +65,20 @@ namespace Homeocentrum.Niga.API.Domain.Services
                 }, cancellationToken);
         }
 
+        public Task<AppointmentNotificationResult> NotifyCancelAsync(
+            string? mobile,
+            bool whatsAppOptIn,
+            string slotLabel,
+            string reasonCode,
+            CancellationToken cancellationToken = default)
+            => NotifyCancelAsync(mobile, whatsAppOptIn, slotLabel, reasonCode, skipPush: false, cancellationToken);
+
         public async Task<AppointmentNotificationResult> NotifyCancelAsync(
             string? mobile,
             bool whatsAppOptIn,
             string slotLabel,
             string reasonCode,
+            bool skipPush,
             CancellationToken cancellationToken = default)
         {
             var reason = string.IsNullOrWhiteSpace(reasonCode) ? "." : $" ({reasonCode.Trim()}).";
@@ -85,7 +94,9 @@ namespace Homeocentrum.Niga.API.Domain.Services
                     ["action"] = "appointment_cancel",
                     ["type"] = "APPOINTMENT",
                     ["deepLink"] = "/patientdashboard"
-                }, cancellationToken);
+                },
+                skipPush,
+                cancellationToken);
         }
 
         public async Task<AppointmentNotificationResult> NotifyWaitlistOfferAsync(
@@ -140,7 +151,17 @@ namespace Homeocentrum.Niga.API.Domain.Services
             string slotDate,
             string slotTime,
             CancellationToken cancellationToken = default)
-            => NotifyConfirmAsync(mobile, whatsAppOptIn, doctorName, slotDate, slotTime, null, cancellationToken);
+            => NotifyConfirmAsync(mobile, whatsAppOptIn, doctorName, slotDate, slotTime, null, skipPush: false, cancellationToken);
+
+        public Task<AppointmentNotificationResult> NotifyConfirmAsync(
+            string? mobile,
+            bool whatsAppOptIn,
+            string doctorName,
+            string slotDate,
+            string slotTime,
+            long? recipientUserId,
+            CancellationToken cancellationToken = default)
+            => NotifyConfirmAsync(mobile, whatsAppOptIn, doctorName, slotDate, slotTime, recipientUserId, skipPush: false, cancellationToken);
 
         public async Task<AppointmentNotificationResult> NotifyConfirmAsync(
             string? mobile,
@@ -149,6 +170,7 @@ namespace Homeocentrum.Niga.API.Domain.Services
             string slotDate,
             string slotTime,
             long? recipientUserId,
+            bool skipPush,
             CancellationToken cancellationToken = default)
         {
             var doctor = string.IsNullOrWhiteSpace(doctorName) ? "your doctor" : doctorName.Trim();
@@ -167,7 +189,9 @@ namespace Homeocentrum.Niga.API.Domain.Services
                     ["date"] = slotDate ?? "",
                     ["time"] = slotTime ?? "",
                     ["deepLink"] = "/patientdashboard"
-                }, cancellationToken);
+                },
+                skipPush,
+                cancellationToken);
         }
 
         public async Task<AppointmentNotificationResult> NotifyReminderAsync(
@@ -204,7 +228,7 @@ namespace Homeocentrum.Niga.API.Domain.Services
             bool whatsAppOptIn,
             string message,
             CancellationToken cancellationToken = default)
-            => NotifyChannelsAsync(mobile, whatsAppOptIn, message, null, null, "general", null, cancellationToken);
+            => NotifyChannelsAsync(mobile, whatsAppOptIn, message, null, null, "general", null, skipPush: false, cancellationToken);
 
         public Task<AppointmentNotificationResult> NotifyChannelsAsync(
             string? mobile,
@@ -213,7 +237,18 @@ namespace Homeocentrum.Niga.API.Domain.Services
             long? recipientUserId,
             string? pushTitle,
             CancellationToken cancellationToken = default)
-            => NotifyChannelsAsync(mobile, whatsAppOptIn, message, recipientUserId, pushTitle, "general", null, cancellationToken);
+            => NotifyChannelsAsync(mobile, whatsAppOptIn, message, recipientUserId, pushTitle, "general", null, skipPush: false, cancellationToken);
+
+        public Task<AppointmentNotificationResult> NotifyChannelsAsync(
+            string? mobile,
+            bool whatsAppOptIn,
+            string message,
+            long? recipientUserId,
+            string? pushTitle,
+            string? pushAction,
+            IReadOnlyDictionary<string, string>? pushData,
+            CancellationToken cancellationToken = default)
+            => NotifyChannelsAsync(mobile, whatsAppOptIn, message, recipientUserId, pushTitle, pushAction, pushData, skipPush: false, cancellationToken);
 
         public async Task<AppointmentNotificationResult> NotifyChannelsAsync(
             string? mobile,
@@ -223,6 +258,7 @@ namespace Homeocentrum.Niga.API.Domain.Services
             string? pushTitle,
             string? pushAction,
             IReadOnlyDictionary<string, string>? pushData,
+            bool skipPush,
             CancellationToken cancellationToken = default)
         {
             var notice = new AppointmentNotificationResult
@@ -235,7 +271,8 @@ namespace Homeocentrum.Niga.API.Domain.Services
             {
                 notice.Sms = "skipped";
                 notice.WhatsApp = "skipped";
-                await SendPushPartAsync(notice, recipientUserId, mobile, pushTitle, message, pushAction, pushData, cancellationToken);
+                if (!skipPush)
+                    await SendPushPartAsync(notice, recipientUserId, mobile, pushTitle, message, pushAction, pushData, cancellationToken);
                 notice.Detail = DescribeNotice(notice);
                 return notice;
             }
@@ -313,7 +350,8 @@ namespace Homeocentrum.Niga.API.Domain.Services
                 }
             }
 
-            await SendPushPartAsync(notice, recipientUserId, mobile, pushTitle, message, pushAction, pushData, cancellationToken);
+            if (!skipPush)
+                await SendPushPartAsync(notice, recipientUserId, mobile, pushTitle, message, pushAction, pushData, cancellationToken);
             notice.Detail = DescribeNotice(notice);
             return notice;
         }

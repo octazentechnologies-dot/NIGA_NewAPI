@@ -79,7 +79,9 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSingleton<ISmsSender, ConfigurableSmsSender>();
             services.AddSingleton<ISmsTemplateRenderer, SmsTemplateRenderer>();
             services.AddSingleton<ISmsOtpVerifyService, SmsOtpVerifyService>();
-            services.AddScoped<IPushNotificationSender, FirebasePushNotificationSender>();
+            services.AddScoped<FirebasePushNotificationSender>();
+            services.AddScoped<IPushNotificationSender>(sp => sp.GetRequiredService<FirebasePushNotificationSender>());
+            services.AddScoped<IPushOutboxProcessor>(sp => sp.GetRequiredService<FirebasePushNotificationSender>());
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.StubTeleVideoVendor>();
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Services.Tele.AgoraTeleVideoVendor>();
             services.AddHttpClient(Homeocentrum.Niga.API.Domain.Services.Tele.HundredMsTeleVideoVendor.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
@@ -113,6 +115,8 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSignalR();
             services.AddSingleton<Homeocentrum.Niga.API.Domain.Realtime.IClinicRealtimeNotifier,
                 Homeocentrum.Niga.API.Domain.Realtime.ClinicRealtimeNotifier>();
+            services.AddSingleton<Homeocentrum.Niga.API.Domain.Realtime.IPatientRealtimeNotifier,
+                Homeocentrum.Niga.API.Domain.Realtime.PatientRealtimeNotifier>();
             services.AddScoped<IPatientLabOrderServices, PatientLabOrderServices>();
             services.AddScoped<IPatientLabEntryServices, PatientLabEntryServices>();
             services.AddScoped<ILabTestMasterServices, LabTestMasterServices>();
@@ -356,6 +360,7 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddSingleton<SmsStartupGate>();
             services.AddHostedService<SmsTemplateSeeder>();
             services.AddHostedService<SmsOutboxWorker>();
+            services.AddHostedService<PushNotificationOutboxWorker>();
             services.AddHostedService<AppointmentReminderWorker>();
             services.AddHostedService<FollowUpMissedNotificationWorker>();
             services.AddHostedService<DailyIssueMatrixEmailService>();

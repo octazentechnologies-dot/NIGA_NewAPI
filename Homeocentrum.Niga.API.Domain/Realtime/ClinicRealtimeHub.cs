@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 
@@ -10,32 +9,28 @@ public sealed class ClinicRealtimeHub : Hub
 {
     public const string HubPath = "/hubs/clinic";
     public const string ClientMethod = "appointmentRequestChanged";
+    public const string AppointmentChangedMethod = "appointmentChanged";
 
     public static string DoctorGroup(int doctorId) => "doctor:" + doctorId;
 
     public override async Task OnConnectedAsync()
     {
-        var doctorId = ReadDoctorId(Context.User);
-        if (doctorId > 0)
-            await Groups.AddToGroupAsync(Context.ConnectionId, DoctorGroup(doctorId));
+        var doctorId = RealtimeGroupResolver.ResolveClinicDoctorId(Context.User);
+        if (doctorId <= 0)
+            throw new HubException("Doctor or reception clinic context is required.");
+        await Groups.AddToGroupAsync(Context.ConnectionId, DoctorGroup(doctorId));
         await base.OnConnectedAsync();
     }
 
-    /// <summary>Explicit re-join after reconnect (idempotent).</summary>
-    public async Task JoinDoctorInbox()
+    /// <summary>
+    /// Explicit re-join after reconnect (idempotent).
+    /// Optional <paramref name="requestedDoctorId"/> is accepted for API compatibility but ignored.
+    /// </summary>
+    public async Task JoinDoctorInbox(int? requestedDoctorId = null)
     {
-        var doctorId = ReadDoctorId(Context.User);
+        var doctorId = RealtimeGroupResolver.ResolveClinicDoctorId(Context.User, requestedDoctorId);
         if (doctorId <= 0)
             throw new HubException("Doctor context is required.");
         await Groups.AddToGroupAsync(Context.ConnectionId, DoctorGroup(doctorId));
-    }
-
-    private static int ReadDoctorId(ClaimsPrincipal? user)
-    {
-        if (user == null) return 0;
-        var raw = user.FindFirst("DoctorID")?.Value
-            ?? user.FindFirst("DoctorId")?.Value
-            ?? user.FindFirst("doctorId")?.Value;
-        return int.TryParse(raw, out var id) && id > 0 ? id : 0;
     }
 }

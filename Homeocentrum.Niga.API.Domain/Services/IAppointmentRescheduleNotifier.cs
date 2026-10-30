@@ -21,6 +21,17 @@ namespace Homeocentrum.Niga.API.Domain.Services
             string reasonCode,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Cancel SMS/WhatsApp. Use <paramref name="skipPush"/> when inbox/push/realtime is owned by fanout.
+        /// </summary>
+        Task<AppointmentNotificationResult> NotifyCancelAsync(
+            string? mobile,
+            bool whatsAppOptIn,
+            string slotLabel,
+            string reasonCode,
+            bool skipPush,
+            CancellationToken cancellationToken = default);
+
         Task<AppointmentNotificationResult> NotifyWaitlistOfferAsync(
             string? mobile,
             string? contactName,
@@ -50,6 +61,20 @@ namespace Homeocentrum.Niga.API.Domain.Services
             string slotDate,
             string slotTime,
             long? recipientUserId,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Confirm notice with optional push suppression.
+        /// Use <paramref name="skipPush"/> when inbox/push/realtime is owned by <c>IClinicInboxFanout.NotifyPatientAsync</c>.
+        /// </summary>
+        Task<AppointmentNotificationResult> NotifyConfirmAsync(
+            string? mobile,
+            bool whatsAppOptIn,
+            string doctorName,
+            string slotDate,
+            string slotTime,
+            long? recipientUserId,
+            bool skipPush,
             CancellationToken cancellationToken = default);
 
         Task<AppointmentNotificationResult> NotifyReminderAsync(

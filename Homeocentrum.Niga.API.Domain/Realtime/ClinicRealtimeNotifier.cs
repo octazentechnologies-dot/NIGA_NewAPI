@@ -33,4 +33,22 @@ public sealed class ClinicRealtimeNotifier : IClinicRealtimeNotifier
             _logger.LogWarning(ex, "Clinic realtime push failed for doctor {DoctorId}", doctorId);
         }
     }
+
+    public async Task AppointmentChangedAsync(
+        int doctorId,
+        object payload,
+        CancellationToken cancellationToken = default)
+    {
+        if (doctorId <= 0 || payload == null) return;
+        try
+        {
+            await _hub.Clients
+                .Group(ClinicRealtimeHub.DoctorGroup(doctorId))
+                .SendAsync(ClinicRealtimeHub.AppointmentChangedMethod, payload, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Appointment realtime push failed for doctor {DoctorId}", doctorId);
+        }
+    }
 }

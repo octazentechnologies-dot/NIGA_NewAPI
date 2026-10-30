@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
 using Google.Apis.Auth.OAuth2;
@@ -13,11 +14,13 @@ using Homeocentrum.Niga.API.Domain.Security;
 namespace Homeocentrum.Niga.API.Domain.Services;
 
 /// <summary>
-/// Sends FCM via Firebase Admin SDK to every active token in dbo.DevicePushToken for a user.
-/// Does nothing when Firebase:Enabled is false or credentials are missing (tokens still save).
+/// Queues FCM via dbo.PushNotificationOutbox and writes AppNotification inbox immediately.
+/// <see cref="IPushOutboxProcessor"/> drains the outbox off the HTTP thread.
+/// Does not claim the user saw the message — provider acceptance ≠ read receipt.
 /// </summary>
-public sealed class FirebasePushNotificationSender : IPushNotificationSender
+public sealed class FirebasePushNotificationSender : IPushNotificationSender, IPushOutboxProcessor
 {
+    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static int _schemaReady;
     private readonly NIGACentrumContext _context;
     private readonly FirebaseOptions _options;
@@ -106,6 +109,46 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
                 IF COL_LENGTH(N'dbo.AppNotification', N'DeepLink') IS NULL
                     ALTER TABLE dbo.AppNotification ADD DeepLink nvarchar(300) NULL;
             END
+
+            IF OBJECT_ID(N'dbo.PushNotificationOutbox', N'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.PushNotificationOutbox (
+                    PushNotificationOutboxId bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_PushNotificationOutbox PRIMARY KEY,
+                    DeliveryId uniqueidentifier NOT NULL,
+                    UserId bigint NOT NULL,
+                    Action nvarchar(80) NOT NULL,
+                    NotificationType nvarchar(40) NULL,
+                    Title nvarchar(200) NOT NULL,
+                    Body nvarchar(2000) NOT NULL,
+                    DataJson nvarchar(max) NULL,
+                    Status nvarchar(20) NOT NULL CONSTRAINT DF_PushOutbox_Status DEFAULT (N'PENDING'),
+                    AttemptCount int NOT NULL CONSTRAINT DF_PushOutbox_Attempt DEFAULT (0),
+                    NextAttemptAt datetime2 NOT NULL CONSTRAINT DF_PushOutbox_NextAttempt DEFAULT (SYSUTCDATETIME()),
+                    LockedAt datetime2 NULL,
+                    LockedBy nvarchar(100) NULL,
+                    LastError nvarchar(1000) NULL,
+                    ProviderAcceptedCount int NOT NULL CONSTRAINT DF_PushOutbox_Accepted DEFAULT (0),
+                    TokenCount int NOT NULL CONSTRAINT DF_PushOutbox_TokenCount DEFAULT (0),
+                    CreatedAt datetime2 NOT NULL CONSTRAINT DF_PushOutbox_CreatedAt DEFAULT (SYSUTCDATETIME()),
+                    UpdatedAt datetime2 NOT NULL CONSTRAINT DF_PushOutbox_UpdatedAt DEFAULT (SYSUTCDATETIME()),
+                    CONSTRAINT UQ_PushNotificationOutbox_DeliveryId UNIQUE (DeliveryId)
+                );
+                CREATE INDEX IX_PushNotificationOutbox_Drain
+                    ON dbo.PushNotificationOutbox (Status, NextAttemptAt) INCLUDE (UserId, AttemptCount);
+                CREATE INDEX IX_PushNotificationOutbox_User_Created
+                    ON dbo.PushNotificationOutbox (UserId, CreatedAt DESC);
+            END
+            """, cancellationToken);
+        // Align runtime ensure with 07_PushNotificationOutbox.sql when table already existed
+        // without the secondary index (idempotent).
+        await _context.Database.ExecuteSqlRawAsync("""
+            IF OBJECT_ID(N'dbo.PushNotificationOutbox', N'U') IS NOT NULL
+               AND NOT EXISTS (
+                    SELECT 1 FROM sys.indexes
+                    WHERE name = N'IX_PushNotificationOutbox_User_Created'
+                      AND object_id = OBJECT_ID(N'dbo.PushNotificationOutbox'))
+                CREATE INDEX IX_PushNotificationOutbox_User_Created
+                    ON dbo.PushNotificationOutbox (UserId, CreatedAt DESC);
             """, cancellationToken);
         Volatile.Write(ref _schemaReady, 1);
     }
@@ -132,122 +175,74 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
             return result;
         }
 
-        var tokens = await _context.DevicePushTokens.AsNoTracking()
-            .Where(d => d.UserId == userId && !d.DeleteStatus && d.Token != null && d.Token != "")
-            .Select(d => new { d.DevicePushTokenId, d.Token, d.DeviceType })
-            .ToListAsync(cancellationToken);
-
-        result.TokenCount = tokens.Count;
-        if (tokens.Count == 0)
+        var type = AppNotificationInbox.MapType(actionKey, data, title, body);
+        if (!await IsCategoryPushAllowedAsync(userId, type, cancellationToken))
         {
             result.Status = "skipped";
-            result.Detail = "No device token registered.";
+            result.Detail = $"User opted out of {type} push.";
             await WriteLogAsync(userId, actionKey, title, body, result, cancellationToken);
             await WriteInboxAsync(userId, actionKey, title, body, data, result, cancellationToken);
             return result;
         }
 
-        if (!_options.Enabled || !_options.IsConfigured() || !EnsureApp())
-        {
-            result.Status = "logged";
-            result.Detail = "Firebase push is off or not configured. Tokens are saved; message was not sent.";
-            _logger.LogInformation(
-                "Push logged (not sent). UserId={UserId} Tokens={Count} Action={Action} Title={Title}",
-                userId, tokens.Count, actionKey, title);
-            await WriteLogAsync(userId, actionKey, title, body, result, cancellationToken);
-            await WriteInboxAsync(userId, actionKey, title, body, data, result, cancellationToken);
-            return result;
-        }
+        var tokenCount = await _context.DevicePushTokens.AsNoTracking()
+            .CountAsync(d => d.UserId == userId && !d.DeleteStatus && d.Token != null && d.Token != "", cancellationToken);
+        result.TokenCount = tokenCount;
 
-        var payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (data != null)
-        {
-            foreach (var kv in data)
-                payload[kv.Key] = kv.Value ?? string.Empty;
-        }
-        if (!payload.ContainsKey("action"))
-            payload["action"] = actionKey;
+        // Inbox is written immediately (read state ≠ push delivery). Push is queued.
+        result.Status = "queued";
+        result.Detail = tokenCount == 0
+            ? "Inbox saved; no device tokens — push outbox will skip send."
+            : "Inbox saved; push queued for background delivery.";
+        await WriteInboxAsync(userId, actionKey, title, body, data, result, cancellationToken);
 
-        var sent = 0;
-        var failed = 0;
-        foreach (var row in tokens)
-        {
-            try
-            {
-                var titleText = title ?? "Homeocentrum";
-                var bodyText = body ?? string.Empty;
-                var message = new Message
-                {
-                    Token = row.Token,
-                    Notification = new Notification
-                    {
-                        Title = titleText,
-                        Body = bodyText
-                    },
-                    Data = payload,
-                    Android = new AndroidConfig
-                    {
-                        Priority = Priority.High,
-                        Notification = new AndroidNotification
-                        {
-                            Title = titleText,
-                            Body = bodyText,
-                            Sound = "default",
-                            ChannelId = "homeocentrum"
-                        }
-                    },
-                    Apns = new ApnsConfig
-                    {
-                        Aps = new Aps
-                        {
-                            Sound = "default",
-                            ContentAvailable = true,
-                            Badge = 1
-                        }
-                    },
-                    Webpush = new WebpushConfig
-                    {
-                        Notification = new WebpushNotification
-                        {
-                            Title = titleText,
-                            Body = bodyText,
-                            Icon = "/favicon.ico"
-                        }
-                    }
-                };
-                await FirebaseMessaging.DefaultInstance.SendAsync(message, cancellationToken);
-                sent++;
-            }
-            catch (FirebaseMessagingException ex) when (
-                ex.MessagingErrorCode == MessagingErrorCode.Unregistered
-                || ex.MessagingErrorCode == MessagingErrorCode.InvalidArgument)
-            {
-                failed++;
-                _logger.LogWarning(ex, "FCM token invalid; clearing DevicePushTokenId={Id}", row.DevicePushTokenId);
-                await SoftDeleteTokenAsync(row.DevicePushTokenId, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                failed++;
-                _logger.LogWarning(ex, "FCM send failed for DevicePushTokenId={Id}", row.DevicePushTokenId);
-            }
-        }
+        var deliveryId = ResolveDeliveryId(data);
+        var dataJson = SerializeData(data, actionKey);
+        var enqueued = await TryEnqueueAsync(
+            deliveryId,
+            userId,
+            actionKey,
+            type,
+            title ?? "Homeocentrum",
+            body ?? "",
+            dataJson,
+            tokenCount,
+            cancellationToken);
 
-        result.SentCount = sent;
-        if (sent > 0)
+        if (!enqueued)
         {
-            result.Status = "sent";
-            result.Detail = $"Push sent to {sent} device(s).";
-        }
-        else
-        {
-            result.Status = "failed";
-            result.Detail = failed > 0 ? "Push failed for all devices." : "Push was not sent.";
+            result.Status = "queued";
+            result.Detail = "Duplicate DeliveryId — existing outbox row retained (idempotent).";
         }
 
         await WriteLogAsync(userId, actionKey, title, body, result, cancellationToken);
-        await WriteInboxAsync(userId, actionKey, title, body, data, result, cancellationToken);
         return result;
+    }
+
+    public async Task<int> ProcessPendingAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureSchemaAsync(cancellationToken);
+        var workerId = Truncate($"{Environment.MachineName}:{Guid.NewGuid():N}", 100);
+        var claimed = await ClaimBatchAsync(workerId, cancellationToken);
+        if (claimed.Count == 0)
+            return 0;
+
+        var handled = 0;
+        foreach (var row in claimed)
+        {
+            handled++;
+            try
+            {
+                await ProcessOneAsync(row, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Push outbox row {Id} failed unexpectedly", row.PushNotificationOutboxId);
+                await ScheduleRetryAsync(row, "Unexpected worker error.", cancellationToken);
+            }
+        }
+
+        return handled;
     }
 
     public async Task<long?> ResolveUserIdByMobileAsync(string? mobile, CancellationToken cancellationToken = default)
@@ -367,6 +362,363 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
 
         if (rows.Count > 0)
             await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Honors dbo.UserNotificationPreference category flags. Missing row = all enabled
+    /// except marketing (defaults match table DF_Unp_*). QuietHoursEnabled alone has no
+    /// start/end columns yet — it does not suppress push until a window is defined.
+    /// </summary>
+    private async Task<bool> IsCategoryPushAllowedAsync(
+        long userId,
+        string type,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pref = await _context.Database.SqlQuery<PreferenceFlagsRow>($@"
+                SELECT TOP 1
+                    CAST(Appointments AS bit) AS Appointments,
+                    CAST(Prescriptions AS bit) AS Prescriptions,
+                    CAST(Medicines AS bit) AS Medicines,
+                    CAST(Marketing AS bit) AS Marketing
+                FROM dbo.UserNotificationPreference
+                WHERE UserId = {userId}").FirstOrDefaultAsync(cancellationToken);
+
+            if (pref == null)
+                return !string.Equals(type, "MARKETING", StringComparison.OrdinalIgnoreCase);
+
+            return (type ?? "").Trim().ToUpperInvariant() switch
+            {
+                "APPOINTMENT" => pref.Appointments,
+                "PRESCRIPTION" => pref.Prescriptions,
+                "MEDICINE" => pref.Medicines,
+                "MARKETING" => pref.Marketing,
+                _ => true
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Notification preference lookup failed for UserId={UserId}; allowing push", userId);
+            return true;
+        }
+    }
+
+    private sealed class PreferenceFlagsRow
+    {
+        public bool Appointments { get; set; }
+        public bool Prescriptions { get; set; }
+        public bool Medicines { get; set; }
+        public bool Marketing { get; set; }
+    }
+
+    private sealed class OutboxClaimRow
+    {
+        public long PushNotificationOutboxId { get; set; }
+        public Guid DeliveryId { get; set; }
+        public long UserId { get; set; }
+        public string Action { get; set; } = "";
+        public string? NotificationType { get; set; }
+        public string Title { get; set; } = "";
+        public string Body { get; set; } = "";
+        public string? DataJson { get; set; }
+        public int AttemptCount { get; set; }
+    }
+
+    private static Guid ResolveDeliveryId(IReadOnlyDictionary<string, string>? data)
+    {
+        if (data != null)
+        {
+            foreach (var key in new[] { "deliveryId", "eventId", "DeliveryId", "EventId" })
+            {
+                if (data.TryGetValue(key, out var raw) && Guid.TryParse(raw, out var parsed) && parsed != Guid.Empty)
+                    return parsed;
+            }
+        }
+        return Guid.NewGuid();
+    }
+
+    private static string? SerializeData(IReadOnlyDictionary<string, string>? data, string actionKey)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (data != null)
+        {
+            foreach (var kv in data)
+                map[kv.Key] = kv.Value ?? "";
+        }
+        if (!map.ContainsKey("action"))
+            map["action"] = actionKey;
+        return JsonSerializer.Serialize(map, JsonOpts);
+    }
+
+    private async Task<bool> TryEnqueueAsync(
+        Guid deliveryId,
+        long userId,
+        string action,
+        string type,
+        string title,
+        string body,
+        string? dataJson,
+        int tokenCount,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var affected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                IF NOT EXISTS (SELECT 1 FROM dbo.PushNotificationOutbox WHERE DeliveryId = {deliveryId})
+                INSERT INTO dbo.PushNotificationOutbox
+                    (DeliveryId, UserId, Action, NotificationType, Title, Body, DataJson, Status, AttemptCount, NextAttemptAt, TokenCount, CreatedAt, UpdatedAt)
+                VALUES
+                    ({deliveryId}, {userId}, {Truncate(action, 80)}, {Truncate(type, 40)}, {Truncate(title, 200)}, {Truncate(body, 2000)},
+                     {dataJson}, N'PENDING', 0, SYSUTCDATETIME(), {tokenCount}, SYSUTCDATETIME(), SYSUTCDATETIME())",
+                cancellationToken);
+            return affected > 0;
+        }
+        catch (Exception ex)
+        {
+            // Unique DeliveryId race → idempotent success.
+            _logger.LogDebug(ex, "Push outbox enqueue race for DeliveryId={DeliveryId}", deliveryId);
+            return false;
+        }
+    }
+
+    private async Task<List<OutboxClaimRow>> ClaimBatchAsync(string workerId, CancellationToken cancellationToken)
+    {
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE o
+            SET Status = N'PROCESSING',
+                LockedAt = SYSUTCDATETIME(),
+                LockedBy = {workerId},
+                UpdatedAt = SYSUTCDATETIME()
+            FROM dbo.PushNotificationOutbox o
+            INNER JOIN (
+                SELECT TOP (20) PushNotificationOutboxId
+                FROM dbo.PushNotificationOutbox WITH (READPAST, UPDLOCK, ROWLOCK)
+                WHERE Status IN (N'PENDING', N'FAILED')
+                  AND NextAttemptAt <= SYSUTCDATETIME()
+                  AND (LockedAt IS NULL OR LockedAt < DATEADD(minute, -5, SYSUTCDATETIME()))
+                ORDER BY PushNotificationOutboxId
+            ) x ON x.PushNotificationOutboxId = o.PushNotificationOutboxId", cancellationToken);
+
+        return await _context.Database.SqlQuery<OutboxClaimRow>($@"
+            SELECT PushNotificationOutboxId, DeliveryId, UserId, Action, NotificationType, Title, Body, DataJson, AttemptCount
+            FROM dbo.PushNotificationOutbox
+            WHERE Status = N'PROCESSING' AND LockedBy = {workerId}
+            ORDER BY PushNotificationOutboxId").ToListAsync(cancellationToken);
+    }
+
+    private async Task ProcessOneAsync(OutboxClaimRow row, CancellationToken cancellationToken)
+    {
+        var type = string.IsNullOrWhiteSpace(row.NotificationType)
+            ? AppNotificationInbox.MapType(row.Action, null, row.Title, row.Body)
+            : row.NotificationType!;
+
+        // Preference changes after queue: re-check at send time.
+        if (!await IsCategoryPushAllowedAsync(row.UserId, type, cancellationToken))
+        {
+            await MarkOutboxAsync(row.PushNotificationOutboxId, "SKIPPED", 0, 0, "User opted out at send time.", clearLock: true, cancellationToken);
+            return;
+        }
+
+        var tokens = await _context.DevicePushTokens.AsNoTracking()
+            .Where(d => d.UserId == row.UserId && !d.DeleteStatus && d.Token != null && d.Token != "")
+            .Select(d => new { d.DevicePushTokenId, d.Token })
+            .ToListAsync(cancellationToken);
+
+        if (tokens.Count == 0)
+        {
+            await MarkOutboxAsync(row.PushNotificationOutboxId, "SKIPPED", 0, 0, "No device tokens.", clearLock: true, cancellationToken);
+            return;
+        }
+
+        if (!_options.Enabled)
+        {
+            await ScheduleRetryAsync(row, "Firebase:Enabled is false.", cancellationToken);
+            return;
+        }
+
+        if (!_options.IsConfigured())
+        {
+            await ScheduleRetryAsync(row, "Firebase ProjectId/CredentialsPath (or CredentialsJson) not set.", cancellationToken);
+            return;
+        }
+
+        if (!EnsureApp())
+        {
+            // File missing / invalid JSON — retry until fixed or DEAD (do not invent credentials).
+            await ScheduleRetryAsync(
+                row,
+                "Firebase credentials file missing or invalid (check CredentialsPath under ContentRoot).",
+                cancellationToken);
+            return;
+        }
+
+        var payload = DeserializeData(row.DataJson, row.Action);
+        var sent = 0;
+        var transientFail = 0;
+        foreach (var tokenRow in tokens)
+        {
+            try
+            {
+                var titleText = row.Title;
+                var bodyText = row.Body;
+                var message = new Message
+                {
+                    Token = tokenRow.Token,
+                    Notification = new Notification { Title = titleText, Body = bodyText },
+                    Data = payload,
+                    Android = new AndroidConfig
+                    {
+                        Priority = Priority.High,
+                        Notification = new AndroidNotification
+                        {
+                            Title = titleText,
+                            Body = bodyText,
+                            Sound = "default",
+                            ChannelId = "homeocentrum"
+                        }
+                    },
+                    Apns = new ApnsConfig
+                    {
+                        Aps = new Aps { Sound = "default", ContentAvailable = true, Badge = 1 }
+                    },
+                    Webpush = new WebpushConfig
+                    {
+                        Notification = new WebpushNotification
+                        {
+                            Title = titleText,
+                            Body = bodyText,
+                            Icon = "/favicon.ico"
+                        }
+                    }
+                };
+                await FirebaseMessaging.DefaultInstance.SendAsync(message, cancellationToken);
+                sent++;
+            }
+            catch (FirebaseMessagingException ex) when (
+                ex.MessagingErrorCode == MessagingErrorCode.Unregistered
+                || ex.MessagingErrorCode == MessagingErrorCode.InvalidArgument)
+            {
+                _logger.LogWarning(ex, "FCM token invalid; clearing DevicePushTokenId={Id}", tokenRow.DevicePushTokenId);
+                await SoftDeleteTokenAsync(tokenRow.DevicePushTokenId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                transientFail++;
+                _logger.LogWarning(ex, "FCM send failed for DevicePushTokenId={Id}", tokenRow.DevicePushTokenId);
+            }
+        }
+
+        if (sent > 0)
+        {
+            await MarkOutboxAsync(
+                row.PushNotificationOutboxId,
+                "SENT",
+                sent,
+                tokens.Count,
+                $"Provider accepted {sent} of {tokens.Count} token(s).",
+                clearLock: true,
+                cancellationToken);
+            return;
+        }
+
+        if (transientFail > 0)
+        {
+            await ScheduleRetryAsync(row, "Transient FCM failure for all tokens.", cancellationToken);
+            return;
+        }
+
+        // All tokens invalid / removed — permanent for this delivery.
+        await MarkOutboxAsync(
+            row.PushNotificationOutboxId,
+            "FAILED",
+            0,
+            tokens.Count,
+            "No valid tokens remaining after permanent FCM errors.",
+            clearLock: true,
+            cancellationToken);
+    }
+
+    private async Task ScheduleRetryAsync(OutboxClaimRow row, string error, CancellationToken cancellationToken)
+    {
+        var nextAttempt = row.AttemptCount + 1;
+        if (PushOutboxBackoff.IsDead(nextAttempt))
+        {
+            await MarkOutboxAsync(
+                row.PushNotificationOutboxId,
+                "DEAD",
+                0,
+                row.AttemptCount,
+                Truncate($"Dead-letter after {nextAttempt} attempts. {error}", 1000),
+                clearLock: true,
+                cancellationToken);
+            return;
+        }
+
+        var delay = PushOutboxBackoff.DelayAfterFailure(row.AttemptCount);
+        var nextAt = DateTime.UtcNow.Add(delay);
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.PushNotificationOutbox
+            SET Status = N'FAILED',
+                AttemptCount = {nextAttempt},
+                NextAttemptAt = {nextAt},
+                LockedAt = NULL,
+                LockedBy = NULL,
+                LastError = {Truncate(error, 1000)},
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE PushNotificationOutboxId = {row.PushNotificationOutboxId}", cancellationToken);
+    }
+
+    private Task MarkOutboxAsync(
+        long id,
+        string status,
+        int accepted,
+        int tokenCount,
+        string? error,
+        bool clearLock,
+        CancellationToken cancellationToken)
+    {
+        if (clearLock)
+        {
+            return _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.PushNotificationOutbox
+                SET Status = {status},
+                    ProviderAcceptedCount = {accepted},
+                    TokenCount = {tokenCount},
+                    LastError = {error},
+                    LockedAt = NULL,
+                    LockedBy = NULL,
+                    UpdatedAt = SYSUTCDATETIME()
+                WHERE PushNotificationOutboxId = {id}", cancellationToken);
+        }
+
+        return _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.PushNotificationOutbox
+            SET Status = {status},
+                ProviderAcceptedCount = {accepted},
+                TokenCount = {tokenCount},
+                LastError = {error},
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE PushNotificationOutboxId = {id}", cancellationToken);
+    }
+
+    private static Dictionary<string, string> DeserializeData(string? dataJson, string action)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["action"] = action };
+        if (string.IsNullOrWhiteSpace(dataJson))
+            return map;
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(dataJson, JsonOpts);
+            if (parsed == null) return map;
+            foreach (var kv in parsed)
+                map[kv.Key] = kv.Value ?? "";
+        }
+        catch
+        {
+            /* keep action only */
+        }
+        return map;
     }
 
     private async Task WriteInboxAsync(

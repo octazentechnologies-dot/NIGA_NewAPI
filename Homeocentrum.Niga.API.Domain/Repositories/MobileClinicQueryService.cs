@@ -1072,7 +1072,16 @@ public class MobileClinicQueryService
                 false,
                 row.DoctorName ?? "your doctor",
                 row.ProposedDate.Value.ToString("dd MMM yyyy"),
-                NotificationClock.Format12Hour(time));
+                NotificationClock.Format12Hour(time),
+                null,
+                skipPush: true);
+            var whenLabel = $"{row.ProposedDate.Value:dd MMM yyyy} {NotificationClock.Format12Hour(time)}".Trim();
+            await _clinicInbox.NotifyPatientAsync(
+                caller.PatientId.Value,
+                "Appointment confirmed",
+                $"Your visit with {row.DoctorName ?? "your doctor"} is booked for {whenLabel}.",
+                "appointment_confirm",
+                "/patientdashboard");
             var patientName = await _context.Patients.AsNoTracking()
                 .Where(p => p.PatientId == caller.PatientId.Value)
                 .Select(p => p.PatientName)
@@ -1081,7 +1090,7 @@ public class MobileClinicQueryService
             await _clinicInbox.NotifyDoctorAndReceptionAsync(
                 row.DoctorId,
                 "New appointment",
-                $"{patientLabel} booked for {row.ProposedDate.Value:dd MMM yyyy} {NotificationClock.Format12Hour(time)}.",
+                $"{patientLabel} booked for {whenLabel}.",
                 "appointment_confirm",
                 AppNotificationInbox.DoctorAppointmentLink(row.ProposedDate, appt.PatientAppId));
         }
@@ -1148,7 +1157,16 @@ public class MobileClinicQueryService
                 false,
                 doctorLabel,
                 row.RequestedDate.ToString("dd MMM yyyy"),
-                NotificationClock.Format12Hour(time));
+                NotificationClock.Format12Hour(time),
+                null,
+                skipPush: true);
+            var whenLabel = $"{row.RequestedDate:dd MMM yyyy} {NotificationClock.Format12Hour(time)}".Trim();
+            await _clinicInbox.NotifyPatientAsync(
+                row.PatientId,
+                "Appointment confirmed",
+                $"Your visit with {doctorLabel} is booked for {whenLabel}.",
+                "appointment_confirm",
+                "/patientdashboard");
             var patientName = await _context.Patients.AsNoTracking()
                 .Where(p => p.PatientId == row.PatientId)
                 .Select(p => p.PatientName)
@@ -1157,7 +1175,7 @@ public class MobileClinicQueryService
             await _clinicInbox.NotifyDoctorAndReceptionAsync(
                 caller.DoctorId.Value,
                 "New appointment",
-                $"{patientLabel} booked for {row.RequestedDate:dd MMM yyyy} {NotificationClock.Format12Hour(time)}.",
+                $"{patientLabel} booked for {whenLabel}.",
                 "appointment_confirm",
                 AppNotificationInbox.DoctorAppointmentLink(row.RequestedDate, appt.PatientAppId));
         }

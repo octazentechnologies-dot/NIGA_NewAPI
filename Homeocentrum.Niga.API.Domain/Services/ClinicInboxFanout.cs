@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Homeocentrum.Niga.API.Domain.Data;
+using Homeocentrum.Niga.API.Domain.Realtime;
 
 namespace Homeocentrum.Niga.API.Domain.Services;
 
@@ -8,15 +9,21 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
 {
     private readonly NIGACentrumContext _context;
     private readonly IPushNotificationSender _push;
+    private readonly IClinicRealtimeNotifier _realtime;
+    private readonly IPatientRealtimeNotifier _patientRealtime;
     private readonly ILogger<ClinicInboxFanout> _logger;
 
     public ClinicInboxFanout(
         NIGACentrumContext context,
         IPushNotificationSender push,
+        IClinicRealtimeNotifier realtime,
+        IPatientRealtimeNotifier patientRealtime,
         ILogger<ClinicInboxFanout> logger)
     {
         _context = context;
         _push = push;
+        _realtime = realtime;
+        _patientRealtime = patientRealtime;
         _logger = logger;
     }
 
@@ -126,6 +133,8 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
                     ? AppNotificationInbox.DoctorHomeLink()
                     : deepLink,
                 cancellationToken);
+
+            await PublishAppointmentRealtimeAsync(doctorId, action, title, body, deepLink, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -167,14 +176,9 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
             var link = string.IsNullOrWhiteSpace(deepLink)
                 ? AppNotificationInbox.MapDeepLink(action, null) ?? "/patientdashboard"
                 : deepLink;
-            await SendAsync(
-                userId,
-                title,
-                body,
-                action,
-                AppNotificationInbox.MapType(action, null, title, body),
-                link,
-                cancellationToken);
+            var type = AppNotificationInbox.MapType(action, null, title, body);
+            await SendAsync(userId, title, body, action, type, link, cancellationToken);
+            await PublishPatientRealtimeAsync(userId, action, title, body, link, type, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -206,6 +210,74 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
             },
             action,
             cancellationToken);
+    }
+
+    private async Task PublishAppointmentRealtimeAsync(
+        int doctorId,
+        string action,
+        string title,
+        string body,
+        string? deepLink,
+        CancellationToken cancellationToken)
+    {
+        var type = AppNotificationInbox.MapType(action, null, title, body);
+        if (!string.Equals(type, "APPOINTMENT", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            await _realtime.AppointmentChangedAsync(doctorId, new
+            {
+                eventId = Guid.NewGuid().ToString("N"),
+                schemaVersion = 1,
+                eventType = string.IsNullOrWhiteSpace(action) ? "appointment_changed" : action.Trim(),
+                doctorId,
+                title,
+                body,
+                deepLink = string.IsNullOrWhiteSpace(deepLink)
+                    ? AppNotificationInbox.DoctorHomeLink()
+                    : deepLink,
+                occurredAtUtc = DateTime.UtcNow
+            }, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Appointment realtime publish failed for DoctorId={DoctorId}", doctorId);
+        }
+    }
+
+    private async Task PublishPatientRealtimeAsync(
+        long userId,
+        string action,
+        string title,
+        string body,
+        string deepLink,
+        string type,
+        CancellationToken cancellationToken)
+    {
+        var eventId = Guid.NewGuid().ToString("N");
+        var payload = new
+        {
+            eventId,
+            schemaVersion = 1,
+            eventType = string.IsNullOrWhiteSpace(action) ? "inbox_changed" : action.Trim(),
+            title,
+            body,
+            deepLink,
+            type,
+            occurredAtUtc = DateTime.UtcNow
+        };
+
+        try
+        {
+            await _patientRealtime.InboxChangedAsync(userId, payload, cancellationToken);
+            if (string.Equals(type, "APPOINTMENT", StringComparison.OrdinalIgnoreCase))
+                await _patientRealtime.AppointmentChangedAsync(userId, payload, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Patient realtime publish failed for UserId={UserId}", userId);
+        }
     }
 
     private sealed class IdRow
