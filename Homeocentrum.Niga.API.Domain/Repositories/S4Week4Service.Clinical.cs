@@ -1470,7 +1470,7 @@ public partial class S4Week4Service
             .Select(a => new { kind = "appointment", at = a.AppointmentDate, refId = a.PatientAppId, title = a.Status })
             .ToListAsync();
         var erx = await _context.Database.SqlQuery<SnapshotRow>($@"
-            SELECT ErxSnapshotId, PatientAppId, PatientId, DoctorId, Status, SignedAt
+            SELECT ErxSnapshotId, PatientAppId, PatientId, DoctorId, Status, SignedAt, LabOrdersJson
             FROM dbo.ErxSnapshot WHERE PatientId = {id} AND Status = N'SIGNED'").ToListAsync();
         return Ok(new { success = true, data = new { appointments, prescriptions = erx } });
     }
