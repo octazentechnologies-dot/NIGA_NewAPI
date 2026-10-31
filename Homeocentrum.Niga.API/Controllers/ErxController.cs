@@ -54,12 +54,39 @@ public class ErxController : ControllerBase
     public Task<IActionResult> PatientErx(int id) => Done(_s4.GetErxByAppointmentAsync(id, Caller(), true));
 
     /// <summary>
-    /// Binary PDF by default. Pass <c>?format=json</c> for BE-012 share metadata
-    /// (<c>pdfUrl</c> points at this same route without format=json).
+    /// Binary PDF by default (Bearer JWT, or short-lived <c>?ticket=</c> for mobile browser open).
+    /// Pass <c>?format=json</c> (authenticated) for share metadata with a ticketed <c>pdfUrl</c> and <c>expiresAt</c>.
     /// </summary>
     [HttpGet("/api/Erx/{id:int}/Pdf")]
-    public Task<IActionResult> ErxPdf(int id, [FromQuery] string? format)
-        => Done(_s4.ErxPdfAsync(id, Caller(), string.Equals(format, "json", StringComparison.OrdinalIgnoreCase)));
+    [AllowAnonymous]
+    public Task<IActionResult> ErxPdf(int id, [FromQuery] string? format, [FromQuery] string? ticket)
+    {
+        var asMeta = string.Equals(format, "json", StringComparison.OrdinalIgnoreCase);
+        if (asMeta)
+        {
+            if (User?.Identity?.IsAuthenticated != true)
+                return Task.FromResult<IActionResult>(Unauthorized(new
+                {
+                    success = false,
+                    code = "UNAUTHORIZED",
+                    message = "Sign in to create a PDF link."
+                }));
+            return Done(_s4.ErxPdfAsync(id, Caller(), asMeta: true, ticket: null));
+        }
+
+        if (!string.IsNullOrWhiteSpace(ticket))
+            return Done(_s4.ErxPdfAsync(id, new S4Caller(), asMeta: false, ticket));
+
+        if (User?.Identity?.IsAuthenticated != true)
+            return Task.FromResult<IActionResult>(Unauthorized(new
+            {
+                success = false,
+                code = "UNAUTHORIZED",
+                message = "Sign in, or open a fresh PDF link from the app."
+            }));
+
+        return Done(_s4.ErxPdfAsync(id, Caller(), asMeta: false, ticket: null));
+    }
 
     private Task<IActionResult> Done(Task<S4ActionResult> work) => this.Respond(work, _logger);
     private S4Caller Caller() => this.S4Caller(_context);

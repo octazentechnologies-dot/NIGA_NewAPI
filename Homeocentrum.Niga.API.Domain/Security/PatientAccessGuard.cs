@@ -47,10 +47,7 @@ public sealed class PatientAccessGuard : IPatientAccessGuard
         long userId;
         try { userId = user.GetUserId(); }
         catch { return false; }
-        return await _context.PatientUserMaps.AsNoTracking().AnyAsync(m =>
-                   m.UserId == userId && m.PatientId == patientId && !m.DeleteStatus)
-               || await _context.PatientFamilyMembers.AsNoTracking().AnyAsync(f =>
-                   f.OwnerUserId == userId && f.MemberPatientId == patientId && !f.DeleteStatus);
+        return await PatientHouseholdAccess.UserCanAccessPatientAsync(_context, userId, patientId);
     }
 
     public async Task<HashSet<int>?> VisiblePatientIdsAsync(ClaimsPrincipal user)

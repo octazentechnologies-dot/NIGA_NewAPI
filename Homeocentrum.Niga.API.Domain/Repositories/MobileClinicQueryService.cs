@@ -3,6 +3,7 @@ using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Realtime;
+using Homeocentrum.Niga.API.Domain.Security;
 using Homeocentrum.Niga.API.Domain.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -406,7 +407,8 @@ public class MobileClinicQueryService
         var appt = await _context.PatientAppointments
             .FirstOrDefaultAsync(a => a.PatientAppId == patientAppId && a.DeleteStatus != true);
         if (appt == null) return Fail(404, "NOT_FOUND", "Appointment not found.");
-        if (appt.PatientId != caller.PatientId) return Fail(403, "FORBIDDEN", "This visit belongs to another patient.");
+        if (!await PatientMayActForVisitAsync(caller, appt.PatientId, appt.BookedByUserId))
+            return Fail(403, "FORBIDDEN", "This visit belongs to another patient.");
         if (appt.IsTele == true)
             return Fail(400, "VALIDATION", "Check-in is for a clinic visit.");
         if (IsCancelled(appt.Status) || IsCompleted(appt.Status))
@@ -455,7 +457,7 @@ public class MobileClinicQueryService
         var appt = await _context.PatientAppointments
             .FirstOrDefaultAsync(a => a.PatientAppId == patientAppId && a.DeleteStatus != true);
         if (appt == null) return Fail(404, "NOT_FOUND", "Appointment not found.");
-        if (!OwnsVisit(caller, appt))
+        if (!await OwnsVisitAsync(caller, appt))
             return Fail(403, "FORBIDDEN", "This visit belongs to another account.");
         if (IsCancelled(appt.Status) || IsCompleted(appt.Status))
             return Fail(400, "VALIDATION", "This visit can no longer change mode.");
@@ -495,7 +497,7 @@ public class MobileClinicQueryService
         if (session == null) return Fail(404, "NOT_FOUND", "Tele session not found.");
         var appt = await _context.PatientAppointments.AsNoTracking()
             .FirstOrDefaultAsync(a => a.PatientAppId == session.PatientAppId);
-        if (appt == null || !OwnsVisit(caller, appt))
+        if (appt == null || !await OwnsVisitAsync(caller, appt))
             return Fail(403, "FORBIDDEN", "This session belongs to another account.");
         var detail = minutes.HasValue && minutes.Value > 0 ? minutes.Value + " minutes" : null;
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
@@ -972,7 +974,8 @@ public class MobileClinicQueryService
             FROM dbo.AppointmentRequest
             WHERE AppointmentRequestId = {id}").FirstOrDefaultAsync();
         if (row == null) return Fail(404, "NOT_FOUND", "Request not found.");
-        if (row.PatientId != caller.PatientId.Value) return Fail(403, "FORBIDDEN", "This request belongs to another patient.");
+        if (!await PatientMayActForVisitAsync(caller, row.PatientId, bookedByUserId: null))
+            return Fail(403, "FORBIDDEN", "This request belongs to another patient.");
         if (!string.Equals(row.Status, "PENDING", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(row.Status, "PROPOSED", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "Only a pending or proposed request can be cancelled.");
@@ -995,6 +998,13 @@ public class MobileClinicQueryService
         else if (act is "DECLINE" or "DECLINE_PROPOSAL") act = "DECLINE_PROPOSAL";
         else
             return Fail(400, "VALIDATION", "action must be ACCEPT, DECLINE, ACCEPT_PROPOSAL, or DECLINE_PROPOSAL.");
+        var owned = await _context.Database.SqlQuery<AppointmentRequestOwnerRow>($@"
+            SELECT AppointmentRequestId, PatientId
+            FROM dbo.AppointmentRequest
+            WHERE AppointmentRequestId = {id}").FirstOrDefaultAsync();
+        if (owned == null) return Fail(404, "NOT_FOUND", "Request not found.");
+        if (!await PatientMayActForVisitAsync(caller, owned.PatientId, bookedByUserId: null))
+            return Fail(403, "FORBIDDEN", "This request belongs to another patient.");
         var row = await _context.Database.SqlQuery<PatientAppointmentRequestRow>($@"
             SELECT r.AppointmentRequestId, r.DoctorId,
                    LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
@@ -1003,7 +1013,7 @@ public class MobileClinicQueryService
                    r.PatientAppId, r.CreatedAt, r.CreatedAt AS UpdatedAt
             FROM dbo.AppointmentRequest r
             LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
-            WHERE r.AppointmentRequestId = {id} AND r.PatientId = {caller.PatientId.Value}").FirstOrDefaultAsync();
+            WHERE r.AppointmentRequestId = {id}").FirstOrDefaultAsync();
         if (row == null) return Fail(404, "NOT_FOUND", "Request not found.");
         if (string.Equals(row.Status, "ACCEPTED", StringComparison.OrdinalIgnoreCase)
             || string.Equals(row.Status, "DECLINED", StringComparison.OrdinalIgnoreCase))
@@ -1689,11 +1699,27 @@ public class MobileClinicQueryService
             || status.Equals("Closed", StringComparison.OrdinalIgnoreCase)
             || status.Equals("Done", StringComparison.OrdinalIgnoreCase));
 
-    private static bool OwnsVisit(S4Caller caller, Master.PatientAppointment appt)
-        => caller.IsAdmin
-           || (caller.DoctorId.HasValue && caller.DoctorId.Value == appt.DoctorId)
-           || appt.UserId == caller.UserId
-           || (caller.IsPatient && caller.PatientId.HasValue && caller.PatientId.Value == appt.PatientId);
+    /// <summary>Self, family/map/caregiver household, or original booker.</summary>
+    private async Task<bool> PatientMayActForVisitAsync(S4Caller caller, int patientId, long? bookedByUserId)
+    {
+        if (!caller.IsPatient || caller.UserId <= 0 || patientId <= 0)
+            return false;
+        if (caller.PatientId == patientId)
+            return true;
+        if (bookedByUserId is > 0 && bookedByUserId.Value == caller.UserId)
+            return true;
+        return await PatientHouseholdAccess.UserCanAccessPatientAsync(_context, caller.UserId, patientId);
+    }
+
+    private async Task<bool> OwnsVisitAsync(S4Caller caller, Master.PatientAppointment appt)
+    {
+        if (caller.IsAdmin) return true;
+        if (caller.DoctorId.HasValue && caller.DoctorId.Value == appt.DoctorId) return true;
+        if (appt.UserId == caller.UserId) return true;
+        if (caller.IsPatient)
+            return await PatientMayActForVisitAsync(caller, appt.PatientId, appt.BookedByUserId);
+        return false;
+    }
 
     private sealed class FollowUpListRow
     {
@@ -1813,6 +1839,12 @@ public class MobileClinicQueryService
         public string? ProposedTime { get; set; }
         public int? PatientAppId { get; set; }
         public DateTime CreatedAt { get; set; }
+    }
+
+    private sealed class AppointmentRequestOwnerRow
+    {
+        public int AppointmentRequestId { get; set; }
+        public int PatientId { get; set; }
     }
 
     private sealed class PatientAppointmentRequestRow

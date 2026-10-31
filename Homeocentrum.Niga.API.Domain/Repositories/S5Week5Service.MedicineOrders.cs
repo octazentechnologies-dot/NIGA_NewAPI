@@ -1,6 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.API.Domain.Interfaces;
+using Homeocentrum.Niga.API.Domain.Security;
 
 namespace Homeocentrum.Niga.API.Domain.Repositories;
 
@@ -9,8 +10,11 @@ public partial class S5Week5Service
 {
     public Task<S4ActionResult> PatientMedicineHistoryAsync(S4Caller caller) => Guard(async () =>
     {
-        if (caller.PatientId is null) return S4ActionResult.Fail(403, "FORBIDDEN", "A patient profile is required.");
+        if (caller.PatientId is null || caller.UserId <= 0)
+            return S4ActionResult.Fail(403, "FORBIDDEN", "A patient profile is required.");
         var patientId = caller.PatientId.Value;
+        var householdIds = await HouseholdPatientIdsAsync(caller.UserId, patientId);
+        var idList = string.Join(",", householdIds);
         var orders = await _context.Database.SqlQuery<PatientOrderRow>($@"
             SELECT o.MedicineOrderId, o.ErxSnapshotId, o.Status, o.QuoteAmount,
                    COALESCE(NULLIF(o.PayMode, N''), pay.Method) AS PayMode, o.CreatedAt,
@@ -26,21 +30,21 @@ public partial class S5Week5Service
             OUTER APPLY (SELECT TOP 1 NULLIF(po.Method, N'') AS Method FROM dbo.PaymentOrder po
                          WHERE po.MedicineOrderId = o.MedicineOrderId AND po.Stream = N'MEDICINE'
                          ORDER BY po.PaymentOrderId DESC) pay
-            WHERE o.PatientId = {patientId}
+            WHERE o.PatientId IN ({idList})
             ORDER BY o.MedicineOrderId DESC").ToListAsync();
         var items = await _context.Database.SqlQuery<PatientOrderItemRow>($@"
             SELECT i.MedicineOrderId, i.RemedyCode, i.RemedyName
             FROM dbo.MedicineOrderItem i
             JOIN dbo.MedicineOrder o ON o.MedicineOrderId = i.MedicineOrderId
-            WHERE o.PatientId = {patientId}
+            WHERE o.PatientId IN ({idList})
             ORDER BY i.MedicineOrderItemId").ToListAsync();
         var events = await _context.Database.SqlQuery<PatientOrderEventRow>($@"
             SELECT ev.MedicineOrderId, ev.Status, ev.Detail, ev.At
             FROM dbo.MedicineOrderEvent ev
             JOIN dbo.MedicineOrder o ON o.MedicineOrderId = ev.MedicineOrderId
-            WHERE o.PatientId = {patientId}
+            WHERE o.PatientId IN ({idList})
             ORDER BY ev.At").ToListAsync();
-        var reviews = await OrderReviewsAsync(patientId);
+        var reviews = await OrderReviewsAsync(householdIds);
 
         var itemsByOrder = items.ToLookup(i => i.MedicineOrderId);
         var eventsByOrder = events.ToLookup(e => e.MedicineOrderId);
@@ -78,7 +82,11 @@ public partial class S5Week5Service
         var order = await _context.Database.SqlQuery<OrderOwnerRow>($@"
             SELECT MedicineOrderId, PatientId, Status FROM dbo.MedicineOrder WHERE MedicineOrderId = {orderId}").FirstOrDefaultAsync();
         if (order == null) return S4ActionResult.Fail(404, "NOT_FOUND", "Medicine order not found.");
-        if (order.PatientId != caller.PatientId) return S4ActionResult.Fail(403, "FORBIDDEN", "This order belongs to another patient.");
+        var mayReview = order.PatientId == caller.PatientId
+            || (caller.UserId > 0
+                && await PatientHouseholdAccess.UserCanAccessPatientAsync(_context, caller.UserId, order.PatientId));
+        if (!mayReview)
+            return S4ActionResult.Fail(403, "FORBIDDEN", "This order belongs to another patient.");
         if (!string.Equals(order.Status, "DELIVERED", StringComparison.OrdinalIgnoreCase))
             return S4ActionResult.Fail(409, "CONFLICT", "You can review an order after it is delivered.");
         var existing = await CountAsync($@"
@@ -92,14 +100,40 @@ public partial class S5Week5Service
         return S4ActionResult.Ok(new { success = true, data = new { orderId, rating = request.Rating, comment, createdAt = now } });
     });
 
-    private async Task<Dictionary<int, PatientOrderReviewRow>> OrderReviewsAsync(int patientId)
+    private async Task<List<int>> HouseholdPatientIdsAsync(long userId, int selfPatientId)
+    {
+        var ids = new HashSet<int> { selfPatientId };
+        var mapped = await _context.PatientUserMaps.AsNoTracking()
+            .Where(m => m.UserId == userId && !m.DeleteStatus)
+            .Select(m => m.PatientId)
+            .ToListAsync();
+        foreach (var id in mapped) ids.Add(id);
+        var family = await _context.PatientFamilyMembers.AsNoTracking()
+            .Where(f => f.OwnerUserId == userId && !f.DeleteStatus)
+            .Select(f => f.MemberPatientId)
+            .ToListAsync();
+        foreach (var id in family) ids.Add(id);
+        var caregiver = await _context.CaregiverAuthorizations.AsNoTracking()
+            .Where(c => c.CaregiverUserId == userId && !c.DeleteStatus && c.RevokedAt == null)
+            .Select(c => c.PatientId)
+            .ToListAsync();
+        foreach (var id in caregiver) ids.Add(id);
+        return ids.Where(id => id > 0).ToList();
+    }
+
+    private async Task<Dictionary<int, PatientOrderReviewRow>> OrderReviewsAsync(IReadOnlyCollection<int> patientIds)
     {
         try
         {
+            if (patientIds == null || patientIds.Count == 0)
+                return new Dictionary<int, PatientOrderReviewRow>();
+            var idList = string.Join(",", patientIds.Where(id => id > 0).Distinct());
+            if (string.IsNullOrEmpty(idList))
+                return new Dictionary<int, PatientOrderReviewRow>();
             var rows = await _context.Database.SqlQuery<PatientOrderReviewRow>($@"
                 SELECT MedicineOrderId, CAST(Rating AS int) AS Rating, Comment, CreatedAt
-                FROM dbo.MedicineOrderReview WHERE PatientId = {patientId}").ToListAsync();
-            return rows.ToDictionary(r => r.MedicineOrderId);
+                FROM dbo.MedicineOrderReview WHERE PatientId IN ({idList})").ToListAsync();
+            return rows.GroupBy(r => r.MedicineOrderId).ToDictionary(g => g.Key, g => g.First());
         }
         catch (SqlException ex) when (ex.Number == 208)
         {

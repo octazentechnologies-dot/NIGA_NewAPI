@@ -226,8 +226,8 @@ public partial class S4Week4Service
             return Fail(400, "VALIDATION", "Review text cannot exceed 1000 characters.");
         var appointment = await LoadAppointmentAsync(request.PatientAppId);
         if (appointment == null) return Fail(404, "NOT_FOUND", "Appointment not found.");
-        if (appointment.PatientId != caller.PatientId)
-            return Fail(403, "FORBIDDEN", "You can review only your own visit.");
+        if (!await PatientMayActForAsync(caller, appointment.PatientId))
+            return Fail(403, "FORBIDDEN", "You can review only your own visit or a family member you manage.");
         if (S3AppointmentRulesCancelled(appointment.Status))
             return Fail(409, "CONFLICT", "A cancelled visit cannot be reviewed.");
         try
@@ -711,11 +711,29 @@ public partial class S4Week4Service
     public async Task<S4ActionResult> ErxHistoryAsync(int? patientId, int? patientAppId, S4Caller caller)
     {
         var doctorScope = 0;
+        string? patientInList = null;
         if (caller.IsPatient)
-            patientId = caller.PatientId;
+        {
+            if (caller.PatientId is null or <= 0 || caller.UserId <= 0)
+                return Fail(403, "FORBIDDEN", "A patient profile is required.");
+            // Explicit patientId must be self or household; otherwise list whole household.
+            if (patientId is > 0)
+            {
+                if (!await PatientMayActForAsync(caller, patientId.Value))
+                    return Fail(403, "FORBIDDEN", "You can read only your own prescriptions or family members you manage.");
+                patientInList = patientId.Value.ToString();
+            }
+            else
+            {
+                var household = await ListAccessiblePatientIdsForVisitsAsync(caller.UserId, caller.PatientId.Value);
+                if (household.Count == 0)
+                    household.Add(caller.PatientId.Value);
+                patientInList = string.Join(",", household);
+            }
+        }
         else if (caller.IsDoctor && !caller.IsAdmin)
             doctorScope = caller.DoctorId ?? -1;
-        if (patientId is null or <= 0 && patientAppId is null or <= 0 && doctorScope == 0)
+        if (patientInList == null && patientId is null or <= 0 && patientAppId is null or <= 0 && doctorScope == 0)
             return Fail(400, "VALIDATION", "Provide a patient or appointment id.");
         if (caller.IsDoctor && patientId.HasValue)
         {
@@ -724,7 +742,13 @@ public partial class S4Week4Service
             if (!owns && !caller.IsAdmin)
                 return Fail(403, "FORBIDDEN", "This patient is not on your list.");
         }
-        var rows = await _context.Database.SqlQuery<ErxHistoryRow>($@"
+
+        // patientInList is built only from int ids (self / household) — never from client strings.
+        var patientFilter = patientInList != null
+            ? $"s.PatientId IN ({patientInList})"
+            : $"({patientId ?? 0} = 0 OR s.PatientId = {patientId ?? 0})";
+        var appId = patientAppId ?? 0;
+        var sql = $@"
             SELECT TOP 100 s.ErxSnapshotId, s.PatientAppId, s.PatientId, s.DoctorId, s.Status, s.SignedAt,
                    p.PatientName,
                    LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName,
@@ -733,28 +757,30 @@ public partial class S4Week4Service
             LEFT JOIN dbo.Patient p ON p.PatientId = s.PatientId
             LEFT JOIN dbo.Doctor d ON d.DoctorID = s.DoctorId
             WHERE s.Status = N'SIGNED'
-              AND ({patientId ?? 0} = 0 OR s.PatientId = {patientId ?? 0})
-              AND ({patientAppId ?? 0} = 0 OR s.PatientAppId = {patientAppId ?? 0})
+              AND ({patientFilter})
+              AND ({appId} = 0 OR s.PatientAppId = {appId})
               AND ({doctorScope} = 0 OR s.DoctorId = {doctorScope})
-            ORDER BY s.SignedAt DESC").ToListAsync();
+            ORDER BY s.SignedAt DESC";
+        var rows = await _context.Database.SqlQueryRaw<ErxHistoryRow>(sql).ToListAsync();
         return Ok(new { success = true, data = rows });
     }
 
-    public async Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller, bool asMeta = false)
+    public async Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller, bool asMeta = false, string? ticket = null)
     {
         var snapshot = await LoadSnapshotAsync(erxId);
         if (snapshot == null) return Fail(404, "NOT_FOUND", "Prescription not found.");
-        var access = await EnsureSnapshotAccessAsync(snapshot, caller, caller.IsPatient);
-        if (access != null) return access;
-        if (snapshot.Status != "SIGNED")
-            return Fail(409, "CONFLICT", "Only a signed prescription can be printed.");
 
+        // Meta always requires a signed-in caller (mints a fresh ticket; does not redeem).
+        // Binary PDF may use Bearer auth or a one-time short-lived ticket for mobile browser open.
         if (asMeta)
         {
-            var request = _http.HttpContext?.Request;
-            var pdfUrl = request == null
-                ? $"/api/Erx/{snapshot.ErxSnapshotId}/Pdf"
-                : PublicApiUrl.For(request, $"/api/Erx/{snapshot.ErxSnapshotId}/Pdf");
+            if (caller.UserId <= 0)
+                return Fail(401, "UNAUTHORIZED", "Sign in to create a PDF link.");
+            var metaAccess = await EnsureSnapshotAccessAsync(snapshot, caller, caller.IsPatient);
+            if (metaAccess != null) return metaAccess;
+            if (snapshot.Status != "SIGNED")
+                return Fail(409, "CONFLICT", "Only a signed prescription can be printed.");
+            var (pdfUrl, expiresAt) = BuildTicketedErxPdfUrl(snapshot.ErxSnapshotId, caller.UserId, caller.IsPatient);
             return Ok(new
             {
                 success = true,
@@ -762,10 +788,28 @@ public partial class S4Week4Service
                 {
                     erxSnapshotId = snapshot.ErxSnapshotId,
                     pdfUrl,
-                    expiresAt = (DateTime?)null
+                    expiresAt
                 }
             });
         }
+
+        if (!string.IsNullOrWhiteSpace(ticket))
+        {
+            if (!_erxPdfTickets.TryRedeem(ticket, erxId, out var ticketUserId, out var patientView, out var ticketError))
+                return Fail(401, "UNAUTHORIZED", string.IsNullOrWhiteSpace(ticketError) ? "Invalid or expired PDF link." : ticketError);
+            caller = await BuildCallerFromTicketAsync(ticketUserId, patientView);
+            if (caller.UserId <= 0)
+                return Fail(401, "UNAUTHORIZED", "PDF link user is no longer valid.");
+        }
+        else if (caller.UserId <= 0)
+        {
+            return Fail(401, "UNAUTHORIZED", "Sign in, or open a fresh PDF link from the app.");
+        }
+
+        var access = await EnsureSnapshotAccessAsync(snapshot, caller, caller.IsPatient);
+        if (access != null) return access;
+        if (snapshot.Status != "SIGNED")
+            return Fail(409, "CONFLICT", "Only a signed prescription can be printed.");
 
         var reveal = !caller.IsPatient || await PharmacyAcceptedAsync(snapshot.ErxSnapshotId);
         var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, reveal);
@@ -817,7 +861,7 @@ public partial class S4Week4Service
         var snapshot = await LoadSnapshotAsync(request.ErxSnapshotId);
         if (snapshot == null || snapshot.Status != "SIGNED")
             return Fail(404, "NOT_FOUND", "Signed prescription not found.");
-        if (snapshot.PatientId != caller.PatientId)
+        if (!await PatientMayActForAsync(caller, snapshot.PatientId))
             return Fail(403, "FORBIDDEN", "This prescription belongs to another patient.");
         if (await _context.Database.SqlQuery<int>($@"
                 SELECT COUNT(1) AS Value FROM dbo.RefillRequest
@@ -851,9 +895,12 @@ public partial class S4Week4Service
     {
         if (caller.IsPatient)
         {
-            if (caller.PatientId is null)
+            if (caller.PatientId is null || caller.UserId <= 0)
                 return Fail(403, "FORBIDDEN", "A patient profile is required.");
-            var mine = await _context.Database.SqlQuery<RefillListRow>($@"
+            var household = await ListAccessiblePatientIdsForVisitsAsync(caller.UserId, caller.PatientId.Value);
+            if (household.Count == 0) household.Add(caller.PatientId.Value);
+            var idList = string.Join(",", household);
+            var mine = await _context.Database.SqlQueryRaw<RefillListRow>($@"
                 SELECT r.RefillRequestId, r.ErxSnapshotId, r.PatientId, r.DoctorId, r.Status, r.Reason, r.CreatedAt, r.DecidedAt,
                        p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId,
                        s.SignedAt,
@@ -863,7 +910,7 @@ public partial class S4Week4Service
                 LEFT JOIN dbo.Patient p ON p.PatientId = r.PatientId
                 LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
                 LEFT JOIN dbo.ErxSnapshot s ON s.ErxSnapshotId = r.ErxSnapshotId
-                WHERE r.PatientId = {caller.PatientId}
+                WHERE r.PatientId IN ({idList})
                 ORDER BY r.CreatedAt DESC").ToListAsync();
             return Ok(new { success = true, data = mine });
         }
@@ -907,7 +954,8 @@ public partial class S4Week4Service
         if (row == null) return Fail(404, "NOT_FOUND", "Refill request not found.");
         if (caller.IsPatient)
         {
-            if (caller.PatientId != row.PatientId) return Fail(403, "FORBIDDEN", "This refill belongs to another patient.");
+            if (!await PatientMayActForAsync(caller, row.PatientId))
+                return Fail(403, "FORBIDDEN", "This refill belongs to another patient.");
         }
         else if (!caller.OwnsDoctor(row.DoctorId))
         {
@@ -1107,7 +1155,7 @@ public partial class S4Week4Service
         var snapshot = await LoadSnapshotAsync(request.ErxSnapshotId);
         if (snapshot == null || snapshot.Status != "SIGNED")
             return Fail(404, "NOT_FOUND", "Signed prescription not found.");
-        if (snapshot.PatientId != caller.PatientId)
+        if (!await PatientMayActForAsync(caller, snapshot.PatientId))
             return Fail(403, "FORBIDDEN", "This prescription belongs to another patient.");
         int? addressId = null;
         if (request.AddressId.HasValue && request.AddressId.Value > 0)
@@ -1151,7 +1199,8 @@ public partial class S4Week4Service
     {
         var order = await LoadMedicineAsync(orderId);
         if (order == null) return Fail(404, "NOT_FOUND", "Medicine order not found.");
-        if (caller.PatientId != order.PatientId) return Fail(403, "FORBIDDEN", "Only the patient can grant consent.");
+        if (!await PatientMayActForAsync(caller, order.PatientId))
+            return Fail(403, "FORBIDDEN", "Only the patient can grant consent.");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.MedicineOrder SET ConsentGranted = 1 WHERE MedicineOrderId = {orderId}");
         return Ok(new { success = true, message = "Consent granted for pharmacy fulfilment." });
@@ -1278,7 +1327,8 @@ public partial class S4Week4Service
     {
         var order = await LoadMedicineAsync(orderId);
         if (order == null) return Fail(404, "NOT_FOUND", "Medicine order not found.");
-        if (caller.PatientId != order.PatientId) return Fail(403, "FORBIDDEN", "Only the patient can accept the quote.");
+        if (!await PatientMayActForAsync(caller, order.PatientId))
+            return Fail(403, "FORBIDDEN", "Only the patient can accept the quote.");
         if (!string.Equals(order.Status, "QUOTED", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "There is no open quote to accept.");
         await SetMedicineStatusAsync(orderId, "QUOTED_ACCEPTED", "Patient accepted quote");
@@ -1303,7 +1353,7 @@ public partial class S4Week4Service
             var denied = await EnsurePharmacyOwnsOrderAsync(order, caller);
             if (denied != null) return denied;
         }
-        else if (!caller.IsAdmin && caller.PatientId != order.PatientId)
+        else if (!caller.IsAdmin && !await PatientMayActForAsync(caller, order.PatientId))
             return Fail(403, "FORBIDDEN", "You cannot track this order.");
         var reveal = !string.Equals(order.Status, "OFFERED", StringComparison.OrdinalIgnoreCase);
         var items = await _context.Database.SqlQuery<OrderItemRow>($@"
@@ -1363,7 +1413,7 @@ public partial class S4Week4Service
             return Fail(409, "CONFLICT", "This refill was already turned into an order.");
         if (!string.Equals(refill.Status, "APPROVED", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "The doctor has not approved this refill.");
-        if (refill.PatientId != caller.PatientId)
+        if (!await PatientMayActForAsync(caller, refill.PatientId))
             return Fail(403, "FORBIDDEN", "This refill belongs to another patient.");
 
         var created = await CreateMedicineOrderAsync(new MedicineOrderCreateRequest
@@ -1777,12 +1827,10 @@ public partial class S4Week4Service
             ORDER BY t.DueDate").FirstOrDefaultAsync();
 
         string? erxPdfUrl = null;
-        if (erx?.Status == "SIGNED")
+        DateTime? erxPdfExpiresAt = null;
+        if (erx?.Status == "SIGNED" && caller.UserId > 0)
         {
-            var request = _http.HttpContext?.Request;
-            erxPdfUrl = request == null
-                ? $"/api/Erx/{erx.ErxSnapshotId}/Pdf"
-                : PublicApiUrl.For(request, $"/api/Erx/{erx.ErxSnapshotId}/Pdf");
+            (erxPdfUrl, erxPdfExpiresAt) = BuildTicketedErxPdfUrl(erx.ErxSnapshotId, caller.UserId, caller.IsPatient);
         }
 
         return Ok(new
@@ -1825,6 +1873,7 @@ public partial class S4Week4Service
                 erxSnapshotId = erx?.Status == "SIGNED" ? erx.ErxSnapshotId : (int?)null,
                 erxSigned = erx?.Status == "SIGNED",
                 erxPdfUrl,
+                erxPdfExpiresAt,
                 actions = new
                 {
                     canPay = !cancelled && !paid,
@@ -1939,7 +1988,8 @@ public partial class S4Week4Service
         var doc = await _context.SecureDocuments
             .FirstOrDefaultAsync(d => d.SecureDocumentId == documentId && d.OwnerType == "Patient");
         if (doc == null) return Fail(404, "NOT_FOUND", "Document not found.");
-        if (doc.OwnerId != caller.PatientId.Value) return Fail(403, "FORBIDDEN", "This document belongs to another patient.");
+        if (!await PatientMayActForAsync(caller, (int)doc.OwnerId))
+            return Fail(403, "FORBIDDEN", "This document belongs to another patient.");
         var stored = doc.BlobPath;
         _context.SecureDocuments.Remove(doc);
         await _context.SaveChangesAsync();
@@ -2037,7 +2087,8 @@ public partial class S4Week4Service
             INNER JOIN dbo.FollowUpPlan p ON p.FollowUpPlanId = t.FollowUpPlanId
             WHERE t.FollowUpTaskId = {taskId}").FirstOrDefaultAsync();
         if (row == null) return Fail(404, "NOT_FOUND", "Follow-up task not found.");
-        if (row.PatientId != caller.PatientId) return Fail(403, "FORBIDDEN", "This task belongs to another patient.");
+        if (!await PatientMayActForAsync(caller, row.PatientId))
+            return Fail(403, "FORBIDDEN", "This task belongs to another patient.");
         if (string.Equals(row.Status, "DONE", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "This task is already complete.");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
@@ -2071,7 +2122,8 @@ public partial class S4Week4Service
             SELECT SymptomDiaryId, PatientId, EntryDate, Severity, Note
             FROM dbo.SymptomDiary WHERE SymptomDiaryId = {diaryId} AND DeleteStatus = 0").FirstOrDefaultAsync();
         if (row == null) return Fail(404, "NOT_FOUND", "Diary entry not found.");
-        if (row.PatientId != caller.PatientId) return Fail(403, "FORBIDDEN", "This entry belongs to another patient.");
+        if (!await PatientMayActForAsync(caller, row.PatientId))
+            return Fail(403, "FORBIDDEN", "This entry belongs to another patient.");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.SymptomDiary SET DeleteStatus = 1 WHERE SymptomDiaryId = {diaryId}");
         return Ok(new { success = true, message = "Diary entry removed." });
@@ -2230,7 +2282,9 @@ public partial class S4Week4Service
         if (caller.PatientId is null) return Fail(403, "FORBIDDEN", "A patient profile is required.");
         var row = await _context.ConsentRecords.FirstOrDefaultAsync(c => c.ConsentRecordId == consentId);
         if (row == null) return Fail(404, "NOT_FOUND", "Consent record not found.");
-        var ownsRecord = (row.SubjectType == "Patient" && row.SubjectId == caller.PatientId)
+        var ownsRecord = (row.SubjectType == "Patient"
+                          && row.SubjectId > 0
+                          && await PatientMayActForAsync(caller, (int)row.SubjectId))
                          || (row.SubjectType == "User" && row.SubjectId == caller.UserId);
         if (!ownsRecord)
             return Fail(403, "FORBIDDEN", "This consent belongs to another patient.");
@@ -2352,7 +2406,8 @@ public partial class S4Week4Service
             SELECT SymptomDiaryId, PatientId, EntryDate, Severity, Note
             FROM dbo.SymptomDiary WHERE SymptomDiaryId = {diaryId} AND DeleteStatus = 0").FirstOrDefaultAsync();
         if (row == null) return Fail(404, "NOT_FOUND", "Diary entry not found.");
-        if (row.PatientId != caller.PatientId) return Fail(403, "FORBIDDEN", "This entry belongs to another patient.");
+        if (!await PatientMayActForAsync(caller, row.PatientId))
+            return Fail(403, "FORBIDDEN", "This entry belongs to another patient.");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.SymptomDiary
             SET EntryDate = {request.EntryDate.Value.Date}, Severity = {request.Severity}, Note = {TrimOrNull(request.Note, 1000)}
@@ -2571,9 +2626,58 @@ public partial class S4Week4Service
     {
         if (caller.IsAdmin) return null;
         if (patientView || caller.IsPatient)
-            return caller.PatientId == snapshot.PatientId ? null : Fail(403, "FORBIDDEN", "This prescription belongs to another patient.");
+        {
+            if (await PatientMayActForAsync(caller, snapshot.PatientId))
+                return null;
+            return Fail(403, "FORBIDDEN", "This prescription belongs to another patient.");
+        }
         if (caller.OwnsDoctor(snapshot.DoctorId)) return null;
         return Fail(403, "FORBIDDEN", "You cannot read this prescription.");
+    }
+
+    private (string PdfUrl, DateTime ExpiresAtUtc) BuildTicketedErxPdfUrl(int erxId, long userId, bool patientView)
+    {
+        var (ticket, expiresAt) = _erxPdfTickets.Mint(erxId, userId, patientView);
+        var relative = $"/api/Erx/{erxId}/Pdf?ticket={Uri.EscapeDataString(ticket)}";
+        var request = _http.HttpContext?.Request;
+        var pdfUrl = request == null ? relative : PublicApiUrl.For(request, relative);
+        return (pdfUrl, expiresAt);
+    }
+
+    private async Task<S4Caller> BuildCallerFromTicketAsync(long userId, bool patientView)
+    {
+        if (userId <= 0)
+            return new S4Caller();
+
+        if (patientView)
+        {
+            var owner = await PatientPortalOwnerResolver.ResolveAsync(
+                _context, userId, preferActingFor: true, createIfMissing: false);
+            return new S4Caller
+            {
+                UserId = userId,
+                PatientId = owner?.PatientId,
+                Role = "Patient",
+                DoctorId = null,
+                IsAdmin = false
+            };
+        }
+
+        var doctorUserId = userId <= int.MaxValue ? (int)userId : 0;
+        var doctorId = doctorUserId <= 0
+            ? null
+            : await _context.Doctors.AsNoTracking()
+                .Where(d => d.UserId == doctorUserId && !d.DeleteStatus)
+                .Select(d => (int?)d.DoctorId)
+                .FirstOrDefaultAsync();
+        return new S4Caller
+        {
+            UserId = userId,
+            DoctorId = doctorId,
+            Role = doctorId.HasValue ? "Doctor" : "",
+            PatientId = null,
+            IsAdmin = false
+        };
     }
 
     private static bool S3AppointmentRulesCancelled(string? status)

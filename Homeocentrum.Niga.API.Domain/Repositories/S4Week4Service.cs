@@ -15,6 +15,7 @@ using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Master;
+using Homeocentrum.Niga.API.Domain.Security;
 using Homeocentrum.Niga.API.Domain.Services;
 
 namespace Homeocentrum.Niga.API.Domain.Repositories;
@@ -37,6 +38,7 @@ public partial class S4Week4Service : IS4Week4Service
     private readonly IRazorpayPaymentVerifier _razorpay;
     private readonly IStoredFileStore _files;
     private readonly IClinicInboxFanout _clinicInbox;
+    private readonly IErxPdfAccessTicketService _erxPdfTickets;
 
     public S4Week4Service(
         NIGACentrumContext context,
@@ -51,7 +53,8 @@ public partial class S4Week4Service : IS4Week4Service
         IOptions<SmsOptions> smsOptions,
         IRazorpayPaymentVerifier razorpay,
         IStoredFileStore files,
-        IClinicInboxFanout clinicInbox)
+        IClinicInboxFanout clinicInbox,
+        IErxPdfAccessTicketService erxPdfTickets)
     {
         _context = context;
         _config = config;
@@ -66,6 +69,7 @@ public partial class S4Week4Service : IS4Week4Service
         _smsOptions = smsOptions.Value ?? new SmsOptions();
         _razorpay = razorpay;
         _files = files;
+        _erxPdfTickets = erxPdfTickets;
     }
 
     public async Task<bool> PayAtClinicEnabledAsync(int doctorId)
@@ -979,7 +983,7 @@ public partial class S4Week4Service : IS4Week4Service
         var order = await LoadMedicineAsync(request.MedicineOrderId);
         if (order == null)
             return Fail(404, "NOT_FOUND", "Medicine order not found.");
-        if (!caller.IsAdmin && caller.PatientId != order.PatientId)
+        if (!caller.IsAdmin && !await PatientMayActForAsync(caller, order.PatientId))
             return Fail(403, "FORBIDDEN", "Only the patient can pay this medicine order.");
         if (!string.Equals(order.Status, "QUOTED_ACCEPTED", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "Accept the pharmacy quote before payment.");
@@ -1389,21 +1393,17 @@ public partial class S4Week4Service : IS4Week4Service
             WHERE PatientAppId = {patientAppId} AND Stream = N'CONSULT'
             ORDER BY PaymentOrderId DESC").FirstOrDefaultAsync();
 
-    private async Task<bool> UserCanAccessAppointmentPatientAsync(long userId, int patientId)
+    private Task<bool> UserCanAccessAppointmentPatientAsync(long userId, int patientId)
+        => PatientHouseholdAccess.UserCanAccessPatientAsync(_context, userId, patientId);
+
+    /// <summary>Self patient, or household/caregiver access to that patient id.</summary>
+    private async Task<bool> PatientMayActForAsync(S4Caller caller, int patientId)
     {
-        if (await _context.PatientUserMaps.AnyAsync(m =>
-                m.UserId == userId && m.PatientId == patientId && !m.DeleteStatus))
+        if (!caller.IsPatient || caller.UserId <= 0 || patientId <= 0)
+            return false;
+        if (caller.PatientId == patientId)
             return true;
-        if (await _context.PatientFamilyMembers.AnyAsync(f =>
-                f.OwnerUserId == userId && f.MemberPatientId == patientId && !f.DeleteStatus))
-            return true;
-        if (await _context.CaregiverAuthorizations.AnyAsync(c =>
-                c.CaregiverUserId == userId
-                && c.PatientId == patientId
-                && !c.DeleteStatus
-                && c.RevokedAt == null))
-            return true;
-        return false;
+        return await UserCanAccessAppointmentPatientAsync(caller.UserId, patientId);
     }
 
     private async Task EnsureBookedByUserIdColumnAsync()
@@ -1868,7 +1868,15 @@ IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
         if (caller.IsAdmin || caller.IsAccount)
             return null;
         if (caller.IsPatient)
-            return caller.PatientId == appointment.PatientId ? null : Fail(403, "FORBIDDEN", "This appointment belongs to another patient.");
+        {
+            if (await PatientMayActForAsync(caller, appointment.PatientId))
+                return null;
+            if (appointment.BookedByUserId.HasValue
+                && appointment.BookedByUserId.Value > 0
+                && appointment.BookedByUserId.Value == caller.UserId)
+                return null;
+            return Fail(403, "FORBIDDEN", "This appointment belongs to another patient.");
+        }
         if ((caller.IsDoctor || caller.IsReception) && caller.OwnsDoctor(appointment.DoctorId))
             return null;
         if (!string.IsNullOrWhiteSpace(bookingToken)

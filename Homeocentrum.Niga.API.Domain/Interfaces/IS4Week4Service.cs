@@ -73,7 +73,8 @@ public interface IS4Week4Service
     Task<S4ActionResult> SignErxAsync(SignErxRequest request, S4Caller caller);
     Task<S4ActionResult> SaveErxDraftAsync(ErxDraftRequest request, S4Caller caller);
     Task<S4ActionResult> ErxHistoryAsync(int? patientId, int? patientAppId, S4Caller caller);
-    Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller, bool asMeta = false);
+    /// <param name="ticket">Optional short-lived browser ticket (from meta/visit pdfUrl). When set, <paramref name="caller"/> may be empty.</param>
+    Task<S4ActionResult> ErxPdfAsync(int erxId, S4Caller caller, bool asMeta = false, string? ticket = null);
     Task<S4ActionResult> RequestRefillAsync(RefillCreateRequest request, S4Caller caller);
     Task<S4ActionResult> ListRefillsAsync(S4Caller caller, string? status = null);
     Task<S4ActionResult> RefillDetailAsync(int refillId, S4Caller caller);
