@@ -41,14 +41,21 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
 
         try
         {
+            var doctorLink = string.IsNullOrWhiteSpace(doctorDeepLink)
+                ? AppNotificationInbox.DoctorHomeLink()
+                : doctorDeepLink;
+
+            long? doctorUserId = await _context.Doctors.AsNoTracking()
+                .Where(d => d.DoctorId == doctorId && !d.DeleteStatus)
+                .Select(d => d.UserId)
+                .FirstOrDefaultAsync(cancellationToken);
+
             await NotifyDoctorUserAsync(
                 doctorId,
                 title,
                 body,
                 action,
-                string.IsNullOrWhiteSpace(doctorDeepLink)
-                    ? AppNotificationInbox.DoctorHomeLink()
-                    : doctorDeepLink,
+                doctorLink,
                 cancellationToken);
 
             var staffIds = await _context.DoctorReceptionStaffs.AsNoTracking()
@@ -60,7 +67,10 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
                 ? "/reception/appointments"
                 : receptionDeepLink;
             var type = AppNotificationInbox.MapType(action, null, title, body);
-            foreach (var staffId in staffIds.Distinct())
+            // Reception JWT subject is ReceptionStaffId; never also fan-out to the doctor's UserId
+            // or the doctor inbox gets two identical "New appointment" rows.
+            foreach (var staffId in staffIds.Distinct()
+                         .Where(id => !doctorUserId.HasValue || id != doctorUserId.Value))
             {
                 await SendAsync(staffId, title, body, action, type, receptionLink, cancellationToken);
             }
@@ -198,6 +208,10 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
         if (userId <= 0)
             return;
 
+        // Stable per user+action+deepLink so payment confirm after booking cannot enqueue
+        // a second push outbox / inbox for the same appointment.
+        var deliveryId = AppNotificationInbox.StableDeliveryId(action, userId, deepLink, title, body);
+
         await _push.SendToUserAsync(
             userId,
             title,
@@ -206,7 +220,8 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
             {
                 ["action"] = action,
                 ["type"] = type,
-                ["deepLink"] = deepLink
+                ["deepLink"] = deepLink,
+                ["deliveryId"] = deliveryId.ToString("D")
             },
             action,
             cancellationToken);

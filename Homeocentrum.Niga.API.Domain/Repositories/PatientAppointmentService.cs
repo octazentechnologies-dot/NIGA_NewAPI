@@ -360,6 +360,16 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 return null;
             }
 
+            // Completed visits are final — App.Status cannot be changed again
+            // (e.g. after doctor prescription save marks COMPLETED).
+            if (S3AppointmentRules.IsCompleted(appointment.Status)
+                && !S3AppointmentRules.IsCompleted(model.Status))
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.Conflict;
+                errorResponseModel.Message = "A completed appointment status cannot be changed.";
+                return null;
+            }
+
             // Status validation
             var allowedStatus = new List<string>
     {
@@ -383,6 +393,26 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
                 errorResponseModel.Message = "Invalid appointment status";
                 return null;
+            }
+
+            // Already COMPLETED and request is COMPLETED again — no-op success
+            if (S3AppointmentRules.IsCompleted(appointment.Status)
+                && S3AppointmentRules.IsCompleted(model.Status))
+            {
+                return new PatientAppointmentModel
+                {
+                    PatientAppId = appointment.PatientAppId,
+                    PatientId = appointment.PatientId,
+                    DoctorId = appointment.DoctorId,
+                    AppointmentDate = appointment.AppointmentDate,
+                    AppointmentTime = appointment.AppointmentTime,
+                    Status = appointment.Status,
+                    UserId = appointment.UserId,
+                    DeleteStatus = appointment.DeleteStatus,
+                    IsWhatsAppOptIn = appointment.Patient.IsWhatsAppOptIn,
+                    WhatsAppOptInDate = appointment.Patient.WhatsAppOptInDate,
+                    Message = "Appointment is already completed"
+                };
             }
 
             // Update status

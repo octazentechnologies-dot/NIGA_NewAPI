@@ -742,7 +742,27 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender, IP
                 : result.Status.Trim().ToUpperInvariant();
             var inboxTitle = Truncate(string.IsNullOrWhiteSpace(title) ? "Homeocentrum" : title, 160);
             var inboxBody = Truncate(body ?? "", 1000);
+            // Idempotent: booking + later payment confirm (or double submit) must not create
+            // twin "New appointment" rows for the same user/appointment deep link.
+            var hasSpecificDeepLink = !string.IsNullOrWhiteSpace(deepLink)
+                && deepLink.Contains("patientAppId=", StringComparison.OrdinalIgnoreCase)
+                ? 1
+                : 0;
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.AppNotification WITH (UPDLOCK, HOLDLOCK)
+                    WHERE UserId = {userId}
+                      AND Title = {inboxTitle}
+                      AND (
+                            ({hasSpecificDeepLink} = 1
+                             AND DeepLink = {deepLink}
+                             AND CreatedAt >= DATEADD(day, -7, GETDATE()))
+                         OR ({hasSpecificDeepLink} = 0
+                             AND Body = {inboxBody}
+                             AND CreatedAt >= DATEADD(minute, -30, GETDATE()))
+                      )
+                )
                 INSERT INTO dbo.AppNotification (UserId, Title, Body, IsRead, PushStatus, CreatedAt, Type, DeepLink)
                 VALUES ({userId}, {inboxTitle}, {inboxBody}, 0, {pushStatus}, {DateTime.Now}, {type}, {deepLink})",
                 cancellationToken);

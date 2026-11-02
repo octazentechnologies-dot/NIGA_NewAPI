@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Homeocentrum.Niga.API.Domain.Services;
 
@@ -26,6 +28,29 @@ public static class AppNotificationInbox
     }
 
     public static string DoctorFollowUpsLink() => "/doctor/follow-ups";
+
+    /// <summary>
+    /// Deterministic GUID so booking + later payment confirm share one DeliveryId / inbox key.
+    /// </summary>
+    public static Guid StableDeliveryId(
+        string? action,
+        long userId,
+        string? deepLink,
+        string? title,
+        string? body)
+    {
+        var key = string.Join('|',
+            (action ?? "").Trim().ToLowerInvariant(),
+            userId.ToString(),
+            (deepLink ?? "").Trim().ToLowerInvariant(),
+            (title ?? "").Trim(),
+            // Include body only when deepLink is weak (no patientAppId) so text twins still collide.
+            (deepLink ?? "").Contains("patientAppId=", StringComparison.OrdinalIgnoreCase)
+                ? ""
+                : (body ?? "").Trim());
+        var hash = MD5.HashData(Encoding.UTF8.GetBytes(key));
+        return new Guid(hash);
+    }
 
     public static string MapType(string? action, IReadOnlyDictionary<string, string>? data, string? title, string? body)
     {

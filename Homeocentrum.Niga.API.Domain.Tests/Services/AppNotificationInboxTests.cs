@@ -69,4 +69,22 @@ public class AppNotificationInboxTests
     [Fact]
     public void Doctor_appointment_link_without_date_uses_dashboard()
         => Assert.Equal("/doctordashboard", AppNotificationInbox.DoctorAppointmentLink());
+
+    [Fact]
+    public void Stable_delivery_id_is_same_for_same_appointment_notify()
+    {
+        var link = "/doctor/schedule?date=2026-11-02&patientAppId=29201";
+        var a = AppNotificationInbox.StableDeliveryId("appointment_confirm", 20080, link, "New appointment", "A booked");
+        var b = AppNotificationInbox.StableDeliveryId("appointment_confirm", 20080, link, "New appointment", "A booked again");
+        Assert.Equal(a, b);
+    }
+
+    [Fact]
+    public void Stable_delivery_id_differs_by_user()
+    {
+        var link = "/doctor/schedule?date=2026-11-02&patientAppId=29201";
+        var doctor = AppNotificationInbox.StableDeliveryId("appointment_confirm", 20080, link, "New appointment", "body");
+        var staff = AppNotificationInbox.StableDeliveryId("appointment_confirm", 1, link, "New appointment", "body");
+        Assert.NotEqual(doctor, staff);
+    }
 }

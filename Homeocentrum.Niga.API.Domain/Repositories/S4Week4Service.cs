@@ -1345,12 +1345,24 @@ public partial class S4Week4Service : IS4Week4Service
             // Prefer BookedByUserId so FCM hits the patient app login that held the slot.
             await _notify.NotifyConfirmAsync(row.MobileNo, row.OptIn, doctorLabel, day, time, row.BookedByUserId);
             var patientLabel = string.IsNullOrWhiteSpace(row.PatientName) ? "A patient" : row.PatientName.Trim();
+            // Inbox write is also idempotent by deep link; this skips a redundant fan-out
+            // when SavePatientApp (or an earlier capture) already notified the clinic.
+            var doctorLink = AppNotificationInbox.DoctorAppointmentLink(row.AppointmentDate, patientAppId);
+            var alreadyNotified = await _context.Database.SqlQuery<int>($@"
+                SELECT TOP 1 CAST(1 AS int) AS Value
+                FROM dbo.AppNotification
+                WHERE Title = N'New appointment'
+                  AND DeepLink = {doctorLink}
+                  AND CreatedAt >= DATEADD(day, -7, GETDATE())").AnyAsync(CancellationToken.None);
+            if (alreadyNotified)
+                return;
+
             await _clinicInbox.NotifyDoctorAndReceptionAsync(
                 row.DoctorId,
                 "New appointment",
                 $"{patientLabel} booked for {day} {time}.".Trim(),
                 "appointment_confirm",
-                AppNotificationInbox.DoctorAppointmentLink(row.AppointmentDate, patientAppId));
+                doctorLink);
         }
         catch (Exception ex)
         {
