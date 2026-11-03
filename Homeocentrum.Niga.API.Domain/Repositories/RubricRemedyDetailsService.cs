@@ -235,6 +235,44 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
         }
 
         /// <summary>
+        /// PatientBoard (i) tooltip — single RemedyMaster row only (no rubric fan-out / counts).
+        /// Always reads live from SQL (no memory cache) so admin edits show immediately.
+        /// </summary>
+        public object? GetRemedyTooltipInfo(long remedyId, ref ErrorResponseModel errorResponseModel)
+        {
+            errorResponseModel = new ErrorResponseModel();
+            if (remedyId <= 0)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "RemedyId is required.";
+                return null;
+            }
+
+            var row = context.RemedyMasters.AsNoTracking()
+                .Where(x => x.RemedyId == remedyId && x.DeleteStatus == false)
+                .Select(x => new
+                {
+                    remedyId = x.RemedyId,
+                    remedyName = x.RemedyName,
+                    remedyAlies = x.RemedyAlias,
+                    themesOrCharacteristics = x.ThemesOrCharacteristics,
+                    generals = x.Generals,
+                    modalities = x.Modalities,
+                    particulars = x.Particulars
+                })
+                .FirstOrDefault();
+
+            if (row == null)
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.NotFound;
+                errorResponseModel.Message = "Remedy not found.";
+                return null;
+            }
+
+            return row;
+        }
+
+        /// <summary>
         /// GetRubricRemedyDetails
         /// </summary>
         /// <param name="subSectionId"></param>

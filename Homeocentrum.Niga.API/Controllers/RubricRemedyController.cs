@@ -103,6 +103,33 @@ namespace Homeocentrum.Niga.API.Controllers
         }
 
         /// <summary>
+        /// Fast remedy (i) tooltip payload — RemedyMaster text fields only (no rubric enumeration).
+        /// </summary>
+        [HttpGet("GetRemedyTooltipInfo/{remedyId:long}")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(typeof(string), 404)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(typeof(string), 500)]
+        public IActionResult GetRemedyTooltipInfo(long remedyId)
+        {
+            ErrorResponseModel errorResponseModel = null;
+            try
+            {
+                // Always fresh — admin materia updates must appear on next open.
+                Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+                Response.Headers["Pragma"] = "no-cache";
+                var data = _iRubricRemedyDetailsService.GetRemedyTooltipInfo(remedyId, ref errorResponseModel);
+                if (data != null)
+                    return Ok(data);
+                return ReturnErrorResponse(errorResponseModel);
+            }
+            catch (Exception ex)
+            {
+                return this.ServerError(ex);
+            }
+        }
+
+        /// <summary>
         /// To add new BodyPart 
         /// </summary>
         /// <param name="subSectionId"></param>

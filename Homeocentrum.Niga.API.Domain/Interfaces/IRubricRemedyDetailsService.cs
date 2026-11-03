@@ -29,6 +29,10 @@ namespace Homeocentrum.Niga.API.Domain.Interface
         /// <returns></returns>
         RemedyRubricViewModel GetRubricRemedyDetails(long RemedyId, ref ErrorResponseModel errorResponseModel);
 
+        /// <summary>
+        /// Lightweight remedy master fields for PatientBoard (i) tooltip — no rubric list / counts.
+        /// </summary>
+        object? GetRemedyTooltipInfo(long remedyId, ref ErrorResponseModel errorResponseModel);
 
         /// <summary>
         /// GetRubricRemedyDetails
