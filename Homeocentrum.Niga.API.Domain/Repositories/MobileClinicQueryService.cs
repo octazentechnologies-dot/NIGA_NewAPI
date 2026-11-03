@@ -86,6 +86,7 @@ public class MobileClinicQueryService
             SET Status = N'DONE', CompletedAt = {DateTime.Now}
             WHERE FollowUpTaskId = {followUpTaskId}");
         _ = note; // optional note is accepted but not stored until a note column exists
+        await PublishFollowUpChangedAsync(row.DoctorId, "done", followUpTaskId);
         return Ok(new { followUpTaskId, status = "DONE" });
     }
 
@@ -105,6 +106,7 @@ public class MobileClinicQueryService
             UPDATE dbo.FollowUpTask
             SET Status = N'OPEN', CompletedAt = NULL
             WHERE FollowUpTaskId = {followUpTaskId}");
+        await PublishFollowUpChangedAsync(row.DoctorId, "reopened", followUpTaskId);
         return Ok(new { followUpTaskId, status = "OPEN" });
     }
 
@@ -1278,6 +1280,27 @@ public class MobileClinicQueryService
             FROM dbo.AppointmentRequest
             WHERE DoctorId = {doctorId} AND Status IN (N'PENDING', N'PROPOSED')").FirstOrDefaultAsync();
         return n?.Value ?? 0;
+    }
+
+    private async Task PublishFollowUpChangedAsync(int doctorId, string eventType, int followUpTaskId)
+    {
+        if (doctorId <= 0) return;
+        try
+        {
+            await _realtime.FollowUpChangedAsync(doctorId, new
+            {
+                eventId = Guid.NewGuid().ToString("N"),
+                schemaVersion = 1,
+                eventType,
+                doctorId,
+                followUpTaskId,
+                occurredAtUtc = DateTime.UtcNow
+            });
+        }
+        catch
+        {
+            /* realtime is best-effort */
+        }
     }
 
     private async Task PublishAppointmentRequestAsync(

@@ -22,5 +22,10 @@ public class RealtimeHubGroupTests
         Assert.Equal("inboxChanged", PatientRealtimeHub.InboxChangedMethod);
         Assert.Equal("appointmentChanged", ClinicRealtimeHub.AppointmentChangedMethod);
         Assert.Equal("appointmentRequestChanged", ClinicRealtimeHub.ClientMethod);
+        Assert.Equal("inboxChanged", ClinicRealtimeHub.InboxChangedMethod);
+        Assert.Equal("reminderChanged", ClinicRealtimeHub.ReminderChangedMethod);
+        Assert.Equal("reminderDue", ClinicRealtimeHub.ReminderDueMethod);
+        Assert.Equal("instantOfferChanged", ClinicRealtimeHub.InstantOfferChangedMethod);
+        Assert.Equal("followUpChanged", ClinicRealtimeHub.FollowUpChangedMethod);
     }
 }

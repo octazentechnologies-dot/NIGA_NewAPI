@@ -39,6 +39,12 @@ public interface IS5Week5Service
     Task<S4ActionResult> DeleteReminderAsync(int reminderId, S4Caller caller);
     /// <summary>fire | snooze | done — web reminder interrupt lifecycle.</summary>
     Task<S4ActionResult> ActOnReminderAsync(int reminderId, DoctorReminderActionWrite request, S4Caller caller);
+
+    /// <summary>
+    /// Server-side sweep: fire due doctor reminders and push SignalR <c>reminderDue</c>
+    /// so open browser tabs need not poll.
+    /// </summary>
+    Task FireDueDoctorRemindersAsync(CancellationToken cancellationToken = default);
     Task<S4ActionResult> PracticeReportAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> FollowUpReportAsync(DateTime? from, DateTime? to, S4Caller caller);
     Task<S4ActionResult> UpdateFollowUpTaskAsync(int taskId, FollowUpTaskWrite request, S4Caller caller);

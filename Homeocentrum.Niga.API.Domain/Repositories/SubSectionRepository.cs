@@ -242,38 +242,66 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             return await PagedList<SubSectionList>.CreateAsync(query.AsNoTracking(), parameter.PageNumber, parameter.PageSize);
         }
 
+        /// <summary>
+        /// Clinical Pattern / Questions "RUBRICS WITH REMEDIES" search.
+        /// Same multi-word AND like-search as Repertory (token LIKE %word%), but returns a
+        /// flat rubric list only — no parent/child ancestor tree.
+        /// Example: "Convulsion Morning" → matches GENERALITIES-CONVULSIONS-morning.
+        /// </summary>
         public async Task<RubricKeywordSearchPagedResponse> SearchRubricsByKeywordAsync(
             string keyword,
             int pageNumber,
             int pageSize,
             List<int> sectionIds = null)
         {
-            var normalizedKeyword = keyword?.Trim();
-            if (string.IsNullOrWhiteSpace(normalizedKeyword))
-            {
-                return new RubricKeywordSearchPagedResponse
-                {
-                    PageNumber = pageNumber > 0 ? pageNumber : 1,
-                    PageSize = pageSize > 0 ? pageSize : 10,
-                };
-            }
-
-            var searchLower = normalizedKeyword.ToLower();
             var safePageNumber = pageNumber > 0 ? pageNumber : 1;
             var safePageSize = pageSize > 0 ? pageSize : 10;
+            var empty = new RubricKeywordSearchPagedResponse
+            {
+                PageNumber = safePageNumber,
+                PageSize = safePageSize,
+            };
+
+            if (string.IsNullOrWhiteSpace(keyword))
+                return empty;
+
+            var normalized = NormalizeSubSectionSearchText(keyword);
+            var words = GetSearchWords(normalized);
+            if (words.Length == 0)
+            {
+                // Short / stop-word-only input: keep a single-token contains fallback.
+                var fallback = keyword.Trim().ToLowerInvariant();
+                if (fallback.Length < 2)
+                    return empty;
+                words = new[] { fallback };
+            }
+
             var filteredSectionIds = sectionIds?.Where(id => id > 0).Distinct().ToList();
+            var hasSectionFilter = filteredSectionIds != null && filteredSectionIds.Count > 0;
+
+            // Join keeps SectionName for UI; match fields follow Repertory LIKE path
+            // (SubSectionName / SearchNormalized), not exact phrase Contains.
+            IQueryable<SubSectionMaster> subQuery = _context.SubSectionMasters
+                .AsNoTracking()
+                .Where(s => s.DeleteStatus == false && s.SectionId != null);
+
+            if (hasSectionFilter)
+            {
+                subQuery = subQuery.Where(s => filteredSectionIds!.Contains((int)s.SectionId!));
+            }
+
+            foreach (var word in words)
+            {
+                var pattern = "%" + word + "%";
+                subQuery = subQuery.Where(s =>
+                    (s.SearchNormalized != null && EF.Functions.Like(s.SearchNormalized, pattern))
+                    || (s.SubSectionName != null && EF.Functions.Like(s.SubSectionName, pattern)));
+            }
 
             var query =
-                from sub in _context.SubSectionMasters.AsNoTracking()
+                from sub in subQuery
                 join sec in _context.SectionMasters.AsNoTracking() on sub.SectionId equals sec.SectionId
-                where sub.DeleteStatus == false
-                    && sec.DeleteStatus == false
-                    && sub.SectionId != null
-                    && (
-                        (sub.SubSectionName != null && sub.SubSectionName.ToLower().Contains(searchLower))
-                        || (sec.SectionName != null && sec.SectionName.ToLower().Contains(searchLower))
-                    )
-                    && (filteredSectionIds == null || filteredSectionIds.Count == 0 || filteredSectionIds.Contains((int)sub.SectionId))
+                where sec.DeleteStatus == false
                 orderby sub.SubSectionName
                 select new RubricKeywordModel
                 {

@@ -2036,6 +2036,22 @@ public partial class S4Week4Service
             VALUES ({planId}, {request.Title.Trim()}, {request.DueDate.Value.Date}, N'OPEN')");
         try
         {
+            await _clinicRealtime.FollowUpChangedAsync(appointment.DoctorId, new
+            {
+                eventId = Guid.NewGuid().ToString("N"),
+                schemaVersion = 1,
+                eventType = "created",
+                doctorId = appointment.DoctorId,
+                followUpPlanId = planId,
+                occurredAtUtc = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Follow-up realtime failed for appointment {PatientAppId}", appointment.PatientAppId);
+        }
+        try
+        {
             var mobile = await _context.Patients.AsNoTracking()
                 .Where(p => p.PatientId == appointment.PatientId)
                 .Select(p => p.MobileNo)
@@ -2093,6 +2109,22 @@ public partial class S4Week4Service
             return Fail(409, "CONFLICT", "This task is already complete.");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.FollowUpTask SET Status = N'DONE', CompletedAt = {DateTime.Now} WHERE FollowUpTaskId = {taskId}");
+        try
+        {
+            await _clinicRealtime.FollowUpChangedAsync(row.DoctorId, new
+            {
+                eventId = Guid.NewGuid().ToString("N"),
+                schemaVersion = 1,
+                eventType = "done",
+                doctorId = row.DoctorId,
+                followUpTaskId = taskId,
+                occurredAtUtc = DateTime.UtcNow
+            });
+        }
+        catch
+        {
+            /* realtime is best-effort */
+        }
         return Ok(new { success = true, data = new { taskId, status = "DONE" } });
     }
 

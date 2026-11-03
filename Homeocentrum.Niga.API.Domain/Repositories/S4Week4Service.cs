@@ -15,6 +15,7 @@ using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Master;
+using Homeocentrum.Niga.API.Domain.Realtime;
 using Homeocentrum.Niga.API.Domain.Security;
 using Homeocentrum.Niga.API.Domain.Services;
 
@@ -38,6 +39,7 @@ public partial class S4Week4Service : IS4Week4Service
     private readonly IRazorpayPaymentVerifier _razorpay;
     private readonly IStoredFileStore _files;
     private readonly IClinicInboxFanout _clinicInbox;
+    private readonly IClinicRealtimeNotifier _clinicRealtime;
     private readonly IErxPdfAccessTicketService _erxPdfTickets;
 
     public S4Week4Service(
@@ -54,6 +56,7 @@ public partial class S4Week4Service : IS4Week4Service
         IRazorpayPaymentVerifier razorpay,
         IStoredFileStore files,
         IClinicInboxFanout clinicInbox,
+        IClinicRealtimeNotifier clinicRealtime,
         IErxPdfAccessTicketService erxPdfTickets)
     {
         _context = context;
@@ -64,6 +67,7 @@ public partial class S4Week4Service : IS4Week4Service
         _notify = notify;
         _outbox = outbox;
         _clinicInbox = clinicInbox;
+        _clinicRealtime = clinicRealtime;
         _sms = sms;
         _templates = templates;
         _smsOptions = smsOptions.Value ?? new SmsOptions();

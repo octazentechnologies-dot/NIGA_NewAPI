@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.Helpers;
+using Homeocentrum.Niga.API.Domain.Realtime;
 
 namespace Homeocentrum.Niga.API.Domain.Services;
 
@@ -62,6 +63,7 @@ public sealed class FollowUpMissedNotificationWorker : BackgroundService
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NIGACentrumContext>();
         var push = scope.ServiceProvider.GetRequiredService<IPushNotificationSender>();
+        var realtime = scope.ServiceProvider.GetRequiredService<IClinicRealtimeNotifier>();
 
         var today = DateTime.Today;
         var rows = await db.Database.SqlQuery<MissedFollowUpRow>($@"
@@ -117,6 +119,32 @@ public sealed class FollowUpMissedNotificationWorker : BackgroundService
                 INSERT INTO dbo.NotificationOutbox (Channel, EventType, Destination, Body, Status, LastError, CreatedAt)
                 VALUES (N'PUSH', {("FOLLOW_UP_MISS_" + row.FollowUpTaskId)}, {userId.ToString()}, {body}, N'SENT', NULL, {DateTime.Now})",
                 cancellationToken);
+
+            try
+            {
+                await realtime.InboxChangedAsync(row.DoctorId, new
+                {
+                    eventId = Guid.NewGuid().ToString("N"),
+                    schemaVersion = 1,
+                    eventType = "FOLLOW_UP_MISSED",
+                    doctorId = row.DoctorId,
+                    followUpTaskId = row.FollowUpTaskId,
+                    occurredAtUtc = DateTime.UtcNow
+                }, cancellationToken);
+                await realtime.FollowUpChangedAsync(row.DoctorId, new
+                {
+                    eventId = Guid.NewGuid().ToString("N"),
+                    schemaVersion = 1,
+                    eventType = "missed",
+                    doctorId = row.DoctorId,
+                    followUpTaskId = row.FollowUpTaskId,
+                    occurredAtUtc = DateTime.UtcNow
+                }, cancellationToken);
+            }
+            catch
+            {
+                /* realtime is best-effort */
+            }
         }
 
         if (rows.Count > 0)
@@ -131,6 +159,7 @@ public sealed class FollowUpMissedNotificationWorker : BackgroundService
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NIGACentrumContext>();
         var push = scope.ServiceProvider.GetRequiredService<IPushNotificationSender>();
+        var realtime = scope.ServiceProvider.GetRequiredService<IClinicRealtimeNotifier>();
 
         var from = DateTime.Today.AddDays(-2);
         var to = DateTime.Today.AddDays(1);
@@ -195,6 +224,32 @@ public sealed class FollowUpMissedNotificationWorker : BackgroundService
                 INSERT INTO dbo.NotificationOutbox (Channel, EventType, Destination, Body, Status, LastError, CreatedAt)
                 VALUES (N'PUSH', {("APPT_MISS_" + row.PatientAppId)}, {userId.ToString()}, {body}, N'SENT', NULL, {DateTime.Now})",
                 cancellationToken);
+
+            try
+            {
+                await realtime.InboxChangedAsync(row.DoctorId, new
+                {
+                    eventId = Guid.NewGuid().ToString("N"),
+                    schemaVersion = 1,
+                    eventType = "APPT_MISSED",
+                    doctorId = row.DoctorId,
+                    patientAppId = row.PatientAppId,
+                    occurredAtUtc = DateTime.UtcNow
+                }, cancellationToken);
+                await realtime.FollowUpChangedAsync(row.DoctorId, new
+                {
+                    eventId = Guid.NewGuid().ToString("N"),
+                    schemaVersion = 1,
+                    eventType = "appointment_missed",
+                    doctorId = row.DoctorId,
+                    patientAppId = row.PatientAppId,
+                    occurredAtUtc = DateTime.UtcNow
+                }, cancellationToken);
+            }
+            catch
+            {
+                /* realtime is best-effort */
+            }
         }
 
         if (rows.Count > 0)

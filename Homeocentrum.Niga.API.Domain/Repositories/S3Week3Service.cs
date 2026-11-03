@@ -8,6 +8,7 @@ using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Master;
 using Homeocentrum.Niga.API.Domain.Security;
+using Homeocentrum.Niga.API.Domain.Realtime;
 using Homeocentrum.Niga.API.Domain.Services;
 using Homeocentrum.Niga.API.Domain.Services.Tele;
 
@@ -28,6 +29,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         private readonly IConfiguration _config;
         private readonly ILogger<S3Week3Service> _logger;
         private readonly IClinicInboxFanout _clinicInbox;
+        private readonly IClinicRealtimeNotifier _clinicRealtime;
 
         public S3Week3Service(
             NIGACentrumContext context,
@@ -37,7 +39,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             IHttpContextAccessor http,
             IConfiguration config,
             ILogger<S3Week3Service> logger,
-            IClinicInboxFanout clinicInbox)
+            IClinicInboxFanout clinicInbox,
+            IClinicRealtimeNotifier clinicRealtime)
         {
             _context = context;
             _appointments = appointments;
@@ -47,6 +50,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             _config = config;
             _logger = logger;
             _clinicInbox = clinicInbox;
+            _clinicRealtime = clinicRealtime;
         }
 
         public async Task<S3ActionResult> JoinWaitlistAsync(JoinWaitlistRequest request)
@@ -1105,6 +1109,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 UPDATE dbo.InstantConsultRequest
                 SET Status = N'OFFERED'
                 WHERE InstantConsultRequestId = {created.Id}");
+            await PublishInstantOfferChangedAsync(online.Id, "offered", created.Id);
             return S3ActionResult.Ok(new
             {
                 success = true,
@@ -1212,6 +1217,11 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 UPDATE dbo.TeleSession SET RoomId = {room} WHERE TeleSessionId = {session.Id}");
             await LogEventAsync(session.Id, "Created", "Waiting room opened from instant accept");
 
+            var withdrawnDoctors = await _context.Database.SqlQuery<IdRow>($@"
+                SELECT DoctorId AS Id
+                FROM dbo.DoctorOffer
+                WHERE InstantConsultRequestId = {requestId} AND DoctorOfferId <> {offer.Id} AND Status = N'OFFERED'").ToListAsync();
+
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
                 UPDATE dbo.DoctorOffer SET Status = N'ACCEPTED', At = {now} WHERE DoctorOfferId = {offer.Id}");
             await _context.Database.ExecuteSqlInterpolatedAsync($@"
@@ -1221,6 +1231,10 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 UPDATE dbo.InstantConsultRequest
                 SET Status = N'ACCEPTED', PatientAppId = {appt.PatientAppId}, TeleSessionId = {session.Id}
                 WHERE InstantConsultRequestId = {requestId}");
+
+            await PublishInstantOfferChangedAsync(doctorId, "accepted", requestId);
+            foreach (var other in withdrawnDoctors.Select(d => d.Id).Distinct().Where(id => id > 0 && id != doctorId))
+                await PublishInstantOfferChangedAsync(other, "withdrawn", requestId);
 
             try
             {
@@ -1284,6 +1298,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                     await _context.Database.ExecuteSqlInterpolatedAsync($@"
                         UPDATE dbo.InstantConsultRequest SET Status = N'OFFERED'
                         WHERE InstantConsultRequestId = {requestId} AND Status = N'NO_DOCTOR'");
+                    await PublishInstantOfferChangedAsync(online.Id, "offered", requestId);
                     row = await LoadInstantAsync(requestId) ?? row;
                 }
             }
@@ -1987,6 +2002,27 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             if (!approve && string.IsNullOrWhiteSpace(reason))
                 return Task.FromResult(S3ActionResult.Fail(400, "Reject reason is required."));
             return Task.FromResult(S3ActionResult.Fail(404, "Refill request " + refillId + " was not found."));
+        }
+
+        private async Task PublishInstantOfferChangedAsync(int doctorId, string eventType, int requestId)
+        {
+            if (doctorId <= 0 || requestId <= 0) return;
+            try
+            {
+                await _clinicRealtime.InstantOfferChangedAsync(doctorId, new
+                {
+                    eventId = Guid.NewGuid().ToString("N"),
+                    schemaVersion = 1,
+                    eventType,
+                    doctorId,
+                    instantConsultRequestId = requestId,
+                    occurredAtUtc = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Instant offer realtime failed for DoctorId={DoctorId} RequestId={RequestId}", doctorId, requestId);
+            }
         }
 
         private async Task ExpireHeartbeatsAsync()

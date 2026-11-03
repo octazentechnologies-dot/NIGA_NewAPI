@@ -181,6 +181,26 @@ public partial class S5Week5Service
             WHERE t.FollowUpTaskId = {taskId} AND ({doctorId} IS NULL OR pl.DoctorId = {doctorId})");
         if (updated == 0)
             return S4ActionResult.Fail(404, "NOT_FOUND", "Follow-up not found.");
+        if (doctorId is > 0)
+        {
+            try
+            {
+                await _clinicRealtime.FollowUpChangedAsync(doctorId.Value, new
+                {
+                    eventId = Guid.NewGuid().ToString("N"),
+                    schemaVersion = 1,
+                    eventType = "updated",
+                    doctorId = doctorId.Value,
+                    followUpTaskId = taskId,
+                    status,
+                    occurredAtUtc = DateTime.UtcNow
+                });
+            }
+            catch
+            {
+                /* realtime is best-effort */
+            }
+        }
         return S4ActionResult.Ok(new { success = true, followUpTaskId = taskId, status });
     });
 

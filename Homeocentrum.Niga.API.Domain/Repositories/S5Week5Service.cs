@@ -9,6 +9,7 @@ using Homeocentrum.Niga.API.Domain.Configuration;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Interfaces;
+using Homeocentrum.Niga.API.Domain.Realtime;
 using Homeocentrum.Niga.API.Domain.Services;
 
 namespace Homeocentrum.Niga.API.Domain.Repositories;
@@ -24,6 +25,7 @@ public partial class S5Week5Service : IS5Week5Service
     private readonly ISmsSender _sms;
     private readonly ISmsTemplateRenderer _templates;
     private readonly IPushNotificationSender _push;
+    private readonly IClinicRealtimeNotifier _clinicRealtime;
     private readonly SmsOptions _smsOptions;
 
     public S5Week5Service(
@@ -32,6 +34,7 @@ public partial class S5Week5Service : IS5Week5Service
         ISmsSender sms,
         ISmsTemplateRenderer templates,
         IPushNotificationSender push,
+        IClinicRealtimeNotifier clinicRealtime,
         IOptions<SmsOptions> smsOptions)
     {
         _context = context;
@@ -39,6 +42,7 @@ public partial class S5Week5Service : IS5Week5Service
         _sms = sms;
         _templates = templates;
         _push = push;
+        _clinicRealtime = clinicRealtime;
         _smsOptions = smsOptions.Value ?? new SmsOptions();
     }
 
@@ -834,6 +838,7 @@ public partial class S5Week5Service : IS5Week5Service
                 WHERE DoctorReminderId = {reminderId.Value} AND DoctorId = {doctorId} AND IsDeleted = 0");
             if (updated == 0)
                 return S4ActionResult.Fail(404, "NOT_FOUND", "Reminder not found.");
+            await PublishReminderChangedAsync(doctorId, "updated", reminderId.Value);
             return S4ActionResult.Ok(new { success = true, doctorReminderId = reminderId.Value });
         }
 
@@ -842,7 +847,9 @@ public partial class S5Week5Service : IS5Week5Service
             INSERT INTO dbo.DoctorReminder (DoctorId, UserId, ReminderDate, ReminderTime, Title, Description, ContactNumber, IsDone, IsDeleted, CreatedAt)
             OUTPUT INSERTED.DoctorReminderId AS Value
             VALUES ({doctorId}, {userId}, {date}, {time}, {title}, {description}, {contact}, 0, 0, {now})").ToListAsync();
-        return S4ActionResult.Ok(new { success = true, doctorReminderId = id.FirstOrDefault() });
+        var createdId = id.FirstOrDefault();
+        await PublishReminderChangedAsync(doctorId, "created", createdId);
+        return S4ActionResult.Ok(new { success = true, doctorReminderId = createdId });
     });
 
     public Task<S4ActionResult> DeleteReminderAsync(int reminderId, S4Caller caller) => Guard(async () =>
@@ -856,6 +863,7 @@ public partial class S5Week5Service : IS5Week5Service
             WHERE DoctorReminderId = {reminderId} AND DoctorId = {doctorId} AND IsDeleted = 0");
         if (updated == 0)
             return S4ActionResult.Fail(404, "NOT_FOUND", "Reminder not found.");
+        await PublishReminderChangedAsync(doctorId, "deleted", reminderId);
         return S4ActionResult.Ok(new { success = true, doctorReminderId = reminderId });
     });
 
@@ -889,6 +897,7 @@ public partial class S5Week5Service : IS5Week5Service
                 UPDATE dbo.DoctorReminder
                 SET IsDone = 1, SnoozedUntil = NULL, UpdatedAt = {now}
                 WHERE DoctorReminderId = {reminderId} AND DoctorId = {doctorId} AND IsDeleted = 0");
+            await PublishReminderChangedAsync(doctorId, "done", reminderId);
             return S4ActionResult.Ok(new { success = true, action, doctorReminderId = reminderId, isDone = true });
         }
 
@@ -904,6 +913,7 @@ public partial class S5Week5Service : IS5Week5Service
                 UPDATE dbo.DoctorReminder
                 SET SnoozedUntil = {until}, UpdatedAt = {now}
                 WHERE DoctorReminderId = {reminderId} AND DoctorId = {doctorId} AND IsDeleted = 0");
+            await PublishReminderChangedAsync(doctorId, "snoozed", reminderId);
             return S4ActionResult.Ok(new
             {
                 success = true,
@@ -950,6 +960,78 @@ public partial class S5Week5Service : IS5Week5Service
                 deepLink = DoctorReminderDeepLink(reminderId, row.ReminderDate)
             });
 
+        var firePayload = await PersistReminderFireAsync(doctorId, reminderId, row, now, row.UserId ?? caller.UserId);
+        return S4ActionResult.Ok(firePayload);
+    });
+
+    public async Task FireDueDoctorRemindersAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureDoctorReminderFireColumnsAsync();
+        await EnsureNotificationNavColumnsAsync();
+
+        var now = DateTime.Now;
+        var today = now.Date;
+        // Due when ReminderDate+Time <= now, not done, not snoozed, and not yet notified (or snooze cycle reset).
+        var due = await _context.Database.SqlQuery<ReminderDueSweepRow>($@"
+            SELECT TOP 40
+                r.DoctorReminderId, r.DoctorId, r.UserId, r.ReminderDate, r.ReminderTime,
+                r.Title, r.Description, r.ContactNumber, r.IsDone, r.FiredAt, r.SnoozedUntil, r.LastNotifiedAt
+            FROM dbo.DoctorReminder r
+            WHERE r.IsDeleted = 0
+              AND r.IsDone = 0
+              AND r.ReminderDate <= {today}
+              AND (r.SnoozedUntil IS NULL OR r.SnoozedUntil <= {now})
+              AND (
+                    (r.ReminderDate < {today})
+                    OR (r.ReminderTime IS NULL)
+                    OR (DATEADD(MINUTE, DATEDIFF(MINUTE, 0, r.ReminderTime), CAST(r.ReminderDate AS datetime2)) <= {now})
+                  )
+              AND (
+                    r.LastNotifiedAt IS NULL
+                    OR (r.SnoozedUntil IS NOT NULL AND r.LastNotifiedAt < r.SnoozedUntil)
+                  )
+            ORDER BY r.ReminderDate, r.ReminderTime, r.DoctorReminderId").ToListAsync(cancellationToken);
+
+        foreach (var row in due)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var actionRow = new ReminderActionRow
+                {
+                    DoctorReminderId = row.DoctorReminderId,
+                    UserId = row.UserId,
+                    ReminderDate = row.ReminderDate,
+                    ReminderTime = row.ReminderTime,
+                    Title = row.Title,
+                    Description = row.Description,
+                    ContactNumber = row.ContactNumber,
+                    IsDone = row.IsDone,
+                    FiredAt = row.FiredAt,
+                    SnoozedUntil = row.SnoozedUntil,
+                    LastNotifiedAt = row.LastNotifiedAt
+                };
+                await PersistReminderFireAsync(
+                    row.DoctorId,
+                    row.DoctorReminderId,
+                    actionRow,
+                    now,
+                    row.UserId ?? 0);
+            }
+            catch (Exception)
+            {
+                /* next sweep retries; one reminder must not block others */
+            }
+        }
+    }
+
+    private async Task<object> PersistReminderFireAsync(
+        int doctorId,
+        int reminderId,
+        ReminderActionRow row,
+        DateTime now,
+        long inboxUserId)
+    {
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.DoctorReminder
             SET FiredAt = COALESCE(FiredAt, {now}),
@@ -958,9 +1040,23 @@ public partial class S5Week5Service : IS5Week5Service
                 UpdatedAt = {now}
             WHERE DoctorReminderId = {reminderId} AND DoctorId = {doctorId} AND IsDeleted = 0");
 
+        if (inboxUserId <= 0 && doctorId > 0)
+        {
+            try
+            {
+                inboxUserId = await _context.Doctors.AsNoTracking()
+                    .Where(d => d.DoctorId == doctorId && !d.DeleteStatus && d.UserId != null)
+                    .Select(d => (long)(d.UserId ?? 0))
+                    .FirstOrDefaultAsync();
+            }
+            catch
+            {
+                inboxUserId = 0;
+            }
+        }
+
         var deepLink = DoctorReminderDeepLink(reminderId, row.ReminderDate);
         var body = BuildReminderNotifyBody(row);
-        var inboxUserId = row.UserId ?? caller.UserId;
         if (inboxUserId > 0)
         {
             var title = Truncate($"Reminder: {row.Title}", 200);
@@ -977,23 +1073,81 @@ public partial class S5Week5Service : IS5Week5Service
             }
         }
 
-        return S4ActionResult.Ok(new
+        var reminderTime = row.ReminderTime.HasValue
+            ? $"{row.ReminderTime.Value.Hours:D2}:{row.ReminderTime.Value.Minutes:D2}"
+            : null;
+        var payload = new
         {
+            eventId = Guid.NewGuid().ToString("N"),
+            schemaVersion = 1,
+            eventType = "reminder_due",
             success = true,
-            action,
+            action = "fire",
+            doctorId,
             doctorReminderId = reminderId,
             notified = true,
             title = row.Title,
             description = row.Description,
             contactNumber = row.ContactNumber,
             reminderDate = row.ReminderDate.Date,
-            reminderTime = row.ReminderTime.HasValue
-                ? $"{row.ReminderTime.Value.Hours:D2}:{row.ReminderTime.Value.Minutes:D2}"
-                : null,
+            reminderTime,
             deepLink,
-            lastNotifiedAt = now
-        });
-    });
+            lastNotifiedAt = now,
+            occurredAtUtc = DateTime.UtcNow
+        };
+
+        try
+        {
+            await _clinicRealtime.ReminderDueAsync(doctorId, payload);
+            await _clinicRealtime.ReminderChangedAsync(doctorId, new
+            {
+                eventId = Guid.NewGuid().ToString("N"),
+                schemaVersion = 1,
+                eventType = "fired",
+                doctorId,
+                doctorReminderId = reminderId,
+                occurredAtUtc = DateTime.UtcNow
+            });
+            await _clinicRealtime.InboxChangedAsync(doctorId, new
+            {
+                eventId = Guid.NewGuid().ToString("N"),
+                schemaVersion = 1,
+                eventType = "reminder_due",
+                doctorId,
+                doctorReminderId = reminderId,
+                title = row.Title,
+                deepLink,
+                occurredAtUtc = DateTime.UtcNow
+            });
+        }
+        catch
+        {
+            /* realtime is best-effort */
+        }
+
+        return payload;
+    }
+
+    private async Task PublishReminderChangedAsync(int doctorId, string eventType, int reminderId)
+    {
+        if (doctorId <= 0 || reminderId <= 0) return;
+        try
+        {
+            await _clinicRealtime.ReminderChangedAsync(doctorId, new
+            {
+                eventId = Guid.NewGuid().ToString("N"),
+                schemaVersion = 1,
+                eventType,
+                doctorId,
+                doctorReminderId = reminderId,
+                occurredAtUtc = DateTime.UtcNow
+            });
+        }
+        catch
+        {
+            /* realtime is best-effort */
+        }
+    }
 
     private static string DoctorReminderDeepLink(int reminderId, DateTime reminderDate)
         => $"/doctordashboard?reminderDate={reminderDate:yyyy-MM-dd}&reminderId={reminderId}";
@@ -1389,6 +1543,22 @@ public partial class S5Week5Service : IS5Week5Service
     private sealed class ReminderActionRow
     {
         public int DoctorReminderId { get; set; }
+        public long? UserId { get; set; }
+        public DateTime ReminderDate { get; set; }
+        public TimeSpan? ReminderTime { get; set; }
+        public string Title { get; set; } = "";
+        public string? Description { get; set; }
+        public string? ContactNumber { get; set; }
+        public bool IsDone { get; set; }
+        public DateTime? FiredAt { get; set; }
+        public DateTime? SnoozedUntil { get; set; }
+        public DateTime? LastNotifiedAt { get; set; }
+    }
+
+    private sealed class ReminderDueSweepRow
+    {
+        public int DoctorReminderId { get; set; }
+        public int DoctorId { get; set; }
         public long? UserId { get; set; }
         public DateTime ReminderDate { get; set; }
         public TimeSpan? ReminderTime { get; set; }

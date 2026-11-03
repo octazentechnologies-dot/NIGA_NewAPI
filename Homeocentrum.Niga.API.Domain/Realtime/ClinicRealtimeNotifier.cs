@@ -16,39 +16,65 @@ public sealed class ClinicRealtimeNotifier : IClinicRealtimeNotifier
         _logger = logger;
     }
 
-    public async Task AppointmentRequestChangedAsync(
+    public Task AppointmentRequestChangedAsync(
         int doctorId,
         object payload,
         CancellationToken cancellationToken = default)
-    {
-        if (doctorId <= 0 || payload == null) return;
-        try
-        {
-            await _hub.Clients
-                .Group(ClinicRealtimeHub.DoctorGroup(doctorId))
-                .SendAsync(ClinicRealtimeHub.ClientMethod, payload, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Clinic realtime push failed for doctor {DoctorId}", doctorId);
-        }
-    }
+        => SendAsync(doctorId, ClinicRealtimeHub.ClientMethod, payload, cancellationToken);
 
-    public async Task AppointmentChangedAsync(
+    public Task AppointmentChangedAsync(
         int doctorId,
         object payload,
         CancellationToken cancellationToken = default)
+        => SendAsync(doctorId, ClinicRealtimeHub.AppointmentChangedMethod, payload, cancellationToken);
+
+    public Task InboxChangedAsync(
+        int doctorId,
+        object payload,
+        CancellationToken cancellationToken = default)
+        => SendAsync(doctorId, ClinicRealtimeHub.InboxChangedMethod, payload, cancellationToken);
+
+    public Task ReminderChangedAsync(
+        int doctorId,
+        object payload,
+        CancellationToken cancellationToken = default)
+        => SendAsync(doctorId, ClinicRealtimeHub.ReminderChangedMethod, payload, cancellationToken);
+
+    public Task ReminderDueAsync(
+        int doctorId,
+        object payload,
+        CancellationToken cancellationToken = default)
+        => SendAsync(doctorId, ClinicRealtimeHub.ReminderDueMethod, payload, cancellationToken);
+
+    public Task InstantOfferChangedAsync(
+        int doctorId,
+        object payload,
+        CancellationToken cancellationToken = default)
+        => SendAsync(doctorId, ClinicRealtimeHub.InstantOfferChangedMethod, payload, cancellationToken);
+
+    public Task FollowUpChangedAsync(
+        int doctorId,
+        object payload,
+        CancellationToken cancellationToken = default)
+        => SendAsync(doctorId, ClinicRealtimeHub.FollowUpChangedMethod, payload, cancellationToken);
+
+    private async Task SendAsync(
+        int doctorId,
+        string method,
+        object payload,
+        CancellationToken cancellationToken)
     {
-        if (doctorId <= 0 || payload == null) return;
+        if (doctorId <= 0 || payload == null || string.IsNullOrWhiteSpace(method))
+            return;
         try
         {
             await _hub.Clients
                 .Group(ClinicRealtimeHub.DoctorGroup(doctorId))
-                .SendAsync(ClinicRealtimeHub.AppointmentChangedMethod, payload, cancellationToken);
+                .SendAsync(method, payload, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Appointment realtime push failed for doctor {DoctorId}", doctorId);
+            _logger.LogWarning(ex, "Clinic realtime {Method} failed for doctor {DoctorId}", method, doctorId);
         }
     }
 }

@@ -10,6 +10,16 @@ public sealed class ClinicRealtimeHub : Hub
     public const string HubPath = "/hubs/clinic";
     public const string ClientMethod = "appointmentRequestChanged";
     public const string AppointmentChangedMethod = "appointmentChanged";
+    /// <summary>AppNotification / bell inbox changed — client refetches list immediately.</summary>
+    public const string InboxChangedMethod = "inboxChanged";
+    /// <summary>Doctor reminder created / updated / deleted / completed.</summary>
+    public const string ReminderChangedMethod = "reminderChanged";
+    /// <summary>Server fired a due reminder — client shows toast with payload (no poll).</summary>
+    public const string ReminderDueMethod = "reminderDue";
+    /// <summary>Instant tele consult offer created / accepted / withdrawn.</summary>
+    public const string InstantOfferChangedMethod = "instantOfferChanged";
+    /// <summary>Follow-up task due list may have changed.</summary>
+    public const string FollowUpChangedMethod = "followUpChanged";
 
     public static string DoctorGroup(int doctorId) => "doctor:" + doctorId;
 

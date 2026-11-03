@@ -133,18 +133,22 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
             if (!doctorUserId.HasValue || doctorUserId.Value <= 0)
                 return;
 
+            var type = AppNotificationInbox.MapType(action, null, title, body);
+            var link = string.IsNullOrWhiteSpace(deepLink)
+                ? AppNotificationInbox.DoctorHomeLink()
+                : deepLink;
+
             await SendAsync(
                 doctorUserId.Value,
                 title,
                 body,
                 action,
-                AppNotificationInbox.MapType(action, null, title, body),
-                string.IsNullOrWhiteSpace(deepLink)
-                    ? AppNotificationInbox.DoctorHomeLink()
-                    : deepLink,
+                type,
+                link,
                 cancellationToken);
 
-            await PublishAppointmentRealtimeAsync(doctorId, action, title, body, deepLink, cancellationToken);
+            await PublishInboxRealtimeAsync(doctorId, action, title, body, link, type, cancellationToken);
+            await PublishAppointmentRealtimeAsync(doctorId, action, title, body, link, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -225,6 +229,50 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
             },
             action,
             cancellationToken);
+    }
+
+    private async Task PublishInboxRealtimeAsync(
+        int doctorId,
+        string action,
+        string title,
+        string body,
+        string deepLink,
+        string type,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _realtime.InboxChangedAsync(doctorId, new
+            {
+                eventId = Guid.NewGuid().ToString("N"),
+                schemaVersion = 1,
+                eventType = string.IsNullOrWhiteSpace(action) ? "inbox_changed" : action.Trim(),
+                doctorId,
+                title,
+                body,
+                deepLink,
+                type,
+                occurredAtUtc = DateTime.UtcNow
+            }, cancellationToken);
+
+            if (string.Equals(type, "FOLLOW_UP", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(action, "FOLLOW_UP_MISSED", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(action, "follow_up", StringComparison.OrdinalIgnoreCase))
+            {
+                await _realtime.FollowUpChangedAsync(doctorId, new
+                {
+                    eventId = Guid.NewGuid().ToString("N"),
+                    schemaVersion = 1,
+                    eventType = "follow_up_changed",
+                    doctorId,
+                    occurredAtUtc = DateTime.UtcNow
+                }, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Inbox realtime publish failed for DoctorId={DoctorId}", doctorId);
+        }
     }
 
     private async Task PublishAppointmentRealtimeAsync(
