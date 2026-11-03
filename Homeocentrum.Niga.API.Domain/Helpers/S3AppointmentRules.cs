@@ -10,6 +10,10 @@ namespace Homeocentrum.Niga.API.Domain.Helpers
         public const string Cancelled = "CANCELLED";
         public const string Unpaid = "UNPAID";
         public const string Paid = "PAID";
+        /// <summary>Slot time passed; 24h reschedule grace is open.</summary>
+        public const string Overdue = "OVERDUE";
+        /// <summary>Grace lapsed; no reschedule and no refund.</summary>
+        public const string Expired = "EXPIRED";
 
         public static readonly string[] CancelReasons =
         {
@@ -45,6 +49,12 @@ namespace Homeocentrum.Niga.API.Domain.Helpers
         /// <summary>A completed visit is final: it cannot be rescheduled, moved to another time, or cancelled.</summary>
         public static bool IsCompleted(string? status)
             => string.Equals(status?.Trim(), Completed, StringComparison.OrdinalIgnoreCase);
+
+        public static bool IsOverdue(string? status)
+            => AppointmentLifecycle.IsOverdue(status);
+
+        public static bool IsExpired(string? status)
+            => AppointmentLifecycle.IsExpired(status);
 
         /// <summary>REC-13.02 — clinic SPA must not mark appointments paid; Account/webhook does.</summary>
         public static bool IsPaid(string? paymentStatus)

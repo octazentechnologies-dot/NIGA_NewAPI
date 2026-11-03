@@ -104,7 +104,7 @@ public sealed class AppointmentReminderWorker : BackgroundService
             INNER JOIN dbo.Doctor d ON d.DoctorId = a.DoctorId
             WHERE a.DeleteStatus = 0
               AND a.AppointmentDate >= {tomorrow} AND a.AppointmentDate < {dayAfter}
-              AND ISNULL(a.Status, N'') NOT IN (N'CANCELLED', N'Cancelled', N'COMPLETED', N'Completed', N'NO_SHOW', N'NoShow')
+              AND ISNULL(a.Status, N'') NOT IN (N'CANCELLED', N'Cancelled', N'COMPLETED', N'Completed', N'NO_SHOW', N'NoShow', N'OVERDUE', N'EXPIRED', N'NOT ARRIVED')
               AND ISNULL(p.SmsOptOut, 0) = 0
               AND LEN(REPLACE(REPLACE(ISNULL(p.MobileNo,''),' ',''),'-','')) >= 10
               AND NOT EXISTS (

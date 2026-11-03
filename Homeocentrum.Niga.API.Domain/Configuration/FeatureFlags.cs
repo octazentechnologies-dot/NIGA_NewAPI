@@ -26,6 +26,10 @@ public sealed class FeatureFlags
     public string MaintenanceMessage { get; set; } = DefaultMaintenanceMessage;
     public bool EnableResponseCompression { get; set; } = true;
     public bool EnableBackgroundJobs { get; set; } = true;
+    /// <summary>
+    /// true: auto OVERDUE → 24h grace → EXPIRED worker + T-15/T0/overdue/grace/expired notifications.
+    /// </summary>
+    public bool EnableAppointmentGraceLifecycle { get; set; } = true;
 
     public static FeatureFlags Current { get; private set; } = new();
 

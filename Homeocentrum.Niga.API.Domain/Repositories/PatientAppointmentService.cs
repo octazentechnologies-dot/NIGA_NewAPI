@@ -376,10 +376,12 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
         "WAITING",
         "WALK-IN",
         "NOT ARRIVED",
+        "OVERDUE",
         "E-CONSULT",
         "REMAINING",
         "COMPLETED"
     };
+            // EXPIRED is worker-only — clients cannot set it.
 
             if (S3AppointmentRules.IsCancelled(model.Status))
             {
@@ -417,11 +419,31 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
 
             // Update status
             var previousStatus = appointment.Status;
-            appointment.Status = model.Status.ToUpper();
+            var nextStatus = model.Status.ToUpper();
+            if (nextStatus is "EXPIRED")
+            {
+                errorResponseModel.StatusCode = HttpStatusCode.BadRequest;
+                errorResponseModel.Message = "EXPIRED is set automatically after the 24-hour grace window.";
+                return null;
+            }
+
+            appointment.Status = nextStatus;
+            if (AppointmentLifecycle.IsOverdue(appointment.Status)
+                && !AppointmentLifecycle.IsOverdue(previousStatus))
+            {
+                var slotAt = AppointmentLifecycle.ComputeSlotAt(appointment.AppointmentDate, appointment.AppointmentTime)
+                             ?? DateTime.Now;
+                appointment.OverdueAt ??= DateTime.Now;
+                appointment.GraceEndsAt ??= AppointmentLifecycle.ComputeGraceEndsAt(slotAt);
+                // Normalize clinic "NOT ARRIVED" into OVERDUE for the grace worker.
+                if (string.Equals(appointment.Status, "NOT ARRIVED", StringComparison.OrdinalIgnoreCase))
+                    appointment.Status = S3AppointmentRules.Overdue;
+            }
+
             _context.SaveChanges();
 
-            if (string.Equals(appointment.Status, "NOT ARRIVED", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(previousStatus, "NOT ARRIVED", StringComparison.OrdinalIgnoreCase))
+            if (AppointmentLifecycle.IsOverdue(appointment.Status)
+                && !AppointmentLifecycle.IsOverdue(previousStatus))
             {
                 _ = NotifyMissedFollowUpAppointmentAsync(appointment);
             }
@@ -1138,6 +1160,24 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 return result;
             }
 
+            if (S3AppointmentRules.IsExpired(appointment.Status))
+            {
+                result.StatusCode = 409;
+                result.Message = "This appointment has expired. Reschedule is closed; please book a new visit.";
+                return result;
+            }
+
+            if (!AppointmentLifecycle.CanReschedule(appointment))
+            {
+                var slotAt = AppointmentLifecycle.ComputeSlotAt(appointment.AppointmentDate, appointment.AppointmentTime);
+                var pastGrace = slotAt.HasValue && DateTime.Now >= AppointmentLifecycle.ComputeGraceEndsAt(slotAt.Value);
+                result.StatusCode = 409;
+                result.Message = pastGrace || AppointmentLifecycle.IsOverdue(appointment.Status)
+                    ? "The 24-hour reschedule window has ended. Please book a new appointment."
+                    : "This appointment can no longer be rescheduled.";
+                return result;
+            }
+
             if (!request.AppointmentTime.HasValue || !request.AppointmentDate.HasValue)
             {
                 result.StatusCode = 400;
@@ -1197,6 +1237,20 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 if (result.StatusCode == 409)
                     result.Alternatives = await NextOpenSlotsAsync(appointment.DoctorId, request.AppointmentDate.Value.Date, request.PatientAppId);
                 return result;
+            }
+
+            // Clear grace lifecycle after a successful reschedule from OVERDUE / NOT ARRIVED.
+            await _context.Entry(appointment).ReloadAsync();
+            if (AppointmentLifecycle.IsOverdue(appointment.Status)
+                || AppointmentLifecycle.IsExpired(appointment.Status))
+            {
+                appointment.Status = AppointmentLifecycle.ActiveStatusAfterReschedule(appointment);
+                appointment.OverdueAt = null;
+                appointment.GraceEndsAt = null;
+                appointment.ExpiredAt = null;
+                if (appointment.RefundEligible == false)
+                    appointment.RefundEligible = null;
+                await _context.SaveChangesAsync();
             }
 
             await WriteChangeLogAsync(appointment.PatientAppId, "Reschedule", oldValue, newValue, byUserId, byRole, request.Reason);

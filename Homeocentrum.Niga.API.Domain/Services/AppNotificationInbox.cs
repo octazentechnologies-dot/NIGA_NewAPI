@@ -122,7 +122,9 @@ public static class AppNotificationInbox
         return t switch
         {
             "APPOINTMENT" or "PRESCRIPTION" or "MEDICINE" or "PAYMENT" or "SYSTEM" or "MARKETING" => t,
-            "CARELINK" or "APPT_MISSED" or "FOLLOW_UP_MISSED" or "WAITLIST" or "TELE" => "APPOINTMENT",
+            "CARELINK" or "APPT_MISSED" or "FOLLOW_UP_MISSED" or "WAITLIST" or "TELE"
+                or "APPT_OVERDUE" or "APPT_EXPIRED" or "APPT_T15" or "APPT_T0" or "APPT_GRACE_SOON"
+                or "APPT_REMIND" => "APPOINTMENT",
             "PHARMACY" or "REFILL" => "MEDICINE",
             "MONEY" or "PAY_LINK" => "PAYMENT",
             "ERX" => "PRESCRIPTION",

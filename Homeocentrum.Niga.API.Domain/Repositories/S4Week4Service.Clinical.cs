@@ -1972,9 +1972,16 @@ public partial class S4Week4Service
             ? paidAmount.Amount - consultFee.Value
             : null;
         var erx = await LoadSnapshotByAppointmentAsync(patientAppId);
-        var slotAt = appointment.AppointmentDate?.Date.Add(appointment.AppointmentTime?.ToTimeSpan() ?? TimeSpan.Zero);
+        var slotAt = AppointmentLifecycle.ComputeSlotAt(appointment.AppointmentDate, appointment.AppointmentTime);
         var upcoming = slotAt.HasValue && slotAt.Value > DateTime.Now;
         var paid = IsPaid(appointment.PaymentStatus);
+        var canReschedule = AppointmentLifecycle.CanReschedule(appointment);
+        var isOverdue = AppointmentLifecycle.IsOverdue(appointment.Status);
+        var isExpiredStatus = AppointmentLifecycle.IsExpired(appointment.Status);
+        var graceEndsAt = appointment.GraceEndsAt
+            ?? (isOverdue && slotAt.HasValue ? AppointmentLifecycle.ComputeGraceEndsAt(slotAt.Value) : null);
+        var canRefund = paid && !AppointmentLifecycle.IsRefundBlocked(appointment)
+            && !(isOverdue && graceEndsAt.HasValue && DateTime.Now < graceEndsAt.Value);
 
         var followUp = await _context.Database.SqlQuery<FollowUpDateRow>($@"
             SELECT TOP 1 t.DueDate
@@ -2002,7 +2009,14 @@ public partial class S4Week4Service
                 visit.Status,
                 visit.ConsultMode,
                 visit.IsTele,
-                IsExpired = IsVisitSlotExpired(visit.AppointmentDate, visit.AppointmentTime),
+                IsExpired = isExpiredStatus || IsVisitSlotExpired(visit.AppointmentDate, visit.AppointmentTime),
+                lifecycleStatus = isExpiredStatus ? "expired" : isOverdue ? "overdue_grace" : upcoming ? "upcoming" : "open",
+                overdueAt = appointment.OverdueAt,
+                graceEndsAt,
+                expiredAt = appointment.ExpiredAt,
+                graceHoursRemaining = graceEndsAt.HasValue && DateTime.Now < graceEndsAt.Value
+                    ? Math.Round((graceEndsAt.Value - DateTime.Now).TotalHours, 1)
+                    : (double?)null,
                 appointment.VisitType,
                 appointment.QueuePosition,
                 visit.DoctorId,
@@ -2034,9 +2048,10 @@ public partial class S4Week4Service
                 erxPdfExpiresAt,
                 actions = new
                 {
-                    canPay = !cancelled && !paid,
-                    canReschedule = !cancelled && !completed && upcoming,
-                    canCancel = !cancelled && !completed && upcoming,
+                    canPay = !cancelled && !completed && !isExpiredStatus && !paid,
+                    canReschedule,
+                    canCancel = !cancelled && !completed && !isExpiredStatus && (upcoming || isOverdue),
+                    canRefund,
                     canJoinTele = visit.IsTele && visit.TeleSessionId.HasValue
                         && (visit.SessionStatus == "Waiting" || visit.SessionStatus == "Active"),
                     canChat = visit.TeleSessionId.HasValue,

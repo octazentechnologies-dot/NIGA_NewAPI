@@ -2496,6 +2496,9 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.Property(e => e.PaymentMethod).HasMaxLength(30);
             entity.Property(e => e.BookingChannel).HasMaxLength(30);
             entity.Property(e => e.CalledAt).HasColumnType("datetime");
+            entity.Property(e => e.OverdueAt).HasColumnType("datetime");
+            entity.Property(e => e.GraceEndsAt).HasColumnType("datetime");
+            entity.Property(e => e.ExpiredAt).HasColumnType("datetime");
 
             entity.HasOne(d => d.Doctor).WithMany(p => p.PatientAppointments)
                 .HasForeignKey(d => d.DoctorId)

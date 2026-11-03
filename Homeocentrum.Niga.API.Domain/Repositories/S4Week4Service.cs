@@ -1641,11 +1641,18 @@ IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
 
     private static RefundPolicy BuildPolicy(OrderRow order, PatientAppointment? appointment)
     {
+        if (AppointmentLifecycle.IsRefundBlocked(appointment))
+            return new RefundPolicy("NONE", 0, "Missed-visit grace ended; this payment is not refundable.");
         if (appointment?.AppointmentDate == null)
             return new RefundPolicy("FULL", order.Amount, "No visit time is stored, so the full captured amount can be refunded.");
         var when = appointment.AppointmentDate.Value.Date;
         if (appointment.AppointmentTime.HasValue)
             when = when.Add(appointment.AppointmentTime.Value.ToTimeSpan());
+        // OVERDUE within grace: no cash refund — patient should reschedule to keep value.
+        if (AppointmentLifecycle.IsOverdue(appointment.Status)
+            && appointment.GraceEndsAt.HasValue
+            && DateTime.Now < appointment.GraceEndsAt.Value)
+            return new RefundPolicy("NONE", 0, "Visit is overdue. Reschedule within 24 hours to keep payment; cash refund is not available in the grace window.");
         if (when <= DateTime.Now)
             return new RefundPolicy("NONE", 0, "The visit time has passed.");
         if (when <= DateTime.Now.AddHours(24))

@@ -56,6 +56,18 @@ public partial class PatientAppointment
 
     public DateTime? CalledAt { get; set; }
 
+    /// <summary>When the visit entered OVERDUE (missed slot).</summary>
+    public DateTime? OverdueAt { get; set; }
+
+    /// <summary>End of 24h reschedule window (SlotAt + 24h).</summary>
+    public DateTime? GraceEndsAt { get; set; }
+
+    /// <summary>When the visit was auto-marked EXPIRED after grace.</summary>
+    public DateTime? ExpiredAt { get; set; }
+
+    /// <summary>False after EXPIRED (missed grace) — blocks refunds. Null = use default cancel policy.</summary>
+    public bool? RefundEligible { get; set; }
+
     public virtual ICollection<AppointmentHistoryNote> AppointmentHistoryNotes { get; set; } = new List<AppointmentHistoryNote>();
 
     public virtual Doctor Doctor { get; set; } = null!;

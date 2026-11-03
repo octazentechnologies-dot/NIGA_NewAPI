@@ -363,6 +363,7 @@ namespace Homeocentrum.Niga.API.Domain.Extensions
             services.AddHostedService<SmsOutboxWorker>();
             services.AddHostedService<PushNotificationOutboxWorker>();
             services.AddHostedService<AppointmentReminderWorker>();
+            services.AddHostedService<AppointmentLifecycleWorker>();
             services.AddHostedService<DoctorReminderDueWorker>();
             services.AddHostedService<FollowUpMissedNotificationWorker>();
             services.AddHostedService<DailyIssueMatrixEmailService>();
