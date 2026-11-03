@@ -2,6 +2,7 @@ using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Threading;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -1513,16 +1514,173 @@ public partial class S4Week4Service
         var owned = await ResolvePatientAsync(patientId, caller, write: false);
         if (owned.Error != null) return owned.Error;
         var id = owned.PatientId;
-        var appointments = await _context.PatientAppointments.AsNoTracking()
-            .Where(a => a.PatientId == id && a.DeleteStatus != true)
-            .OrderByDescending(a => a.AppointmentDate)
+
+        var appointmentRows = await (
+            from a in _context.PatientAppointments.AsNoTracking()
+            join d in _context.Doctors.AsNoTracking() on a.DoctorId equals d.DoctorId into dj
+            from d in dj.DefaultIfEmpty()
+            where a.PatientId == id && a.DeleteStatus != true
+            orderby a.AppointmentDate descending
+            select new
+            {
+                a.PatientAppId,
+                a.AppointmentDate,
+                a.Status,
+                a.VisitType,
+                a.ConsultMode,
+                a.IsTele,
+                DoctorName = d == null
+                    ? null
+                    : ((d.FirstName ?? "") + " " + (d.LastName ?? "")).Trim()
+            })
             .Take(50)
-            .Select(a => new { kind = "appointment", at = a.AppointmentDate, refId = a.PatientAppId, title = a.Status })
             .ToListAsync();
-        var erx = await _context.Database.SqlQuery<SnapshotRow>($@"
-            SELECT ErxSnapshotId, PatientAppId, PatientId, DoctorId, Status, SignedAt, LabOrdersJson
-            FROM dbo.ErxSnapshot WHERE PatientId = {id} AND Status = N'SIGNED'").ToListAsync();
-        return Ok(new { success = true, data = new { appointments, prescriptions = erx } });
+
+        var signedAppIds = (await _context.Database.SqlQuery<IdRow>($@"
+            SELECT DISTINCT PatientAppId AS Id
+            FROM dbo.ErxSnapshot
+            WHERE PatientId = {id} AND Status = N'SIGNED' AND PatientAppId IS NOT NULL").ToListAsync())
+            .Select(r => r.Id)
+            .ToHashSet();
+
+        var appointments = appointmentRows.Select(a =>
+        {
+            var status = (a.Status ?? "").Trim();
+            var appointmentType = !string.IsNullOrWhiteSpace(a.VisitType)
+                ? a.VisitType!.Trim()
+                : !string.IsNullOrWhiteSpace(a.ConsultMode)
+                    ? a.ConsultMode!.Trim()
+                    : a.IsTele == true ? "Tele" : "InClinic";
+            return new
+            {
+                kind = "appointment",
+                at = a.AppointmentDate,
+                refId = a.PatientAppId,
+                title = status,
+                doctorName = string.IsNullOrWhiteSpace(a.DoctorName) ? null : a.DoctorName,
+                appointmentType,
+                consultationCompleted = status.Equals("COMPLETED", StringComparison.OrdinalIgnoreCase),
+                prescriptionSigned = signedAppIds.Contains(a.PatientAppId)
+            };
+        }).ToList();
+
+        var prescriptionRows = await _context.Database.SqlQuery<TimelinePrescriptionRow>($@"
+            SELECT TOP 50
+                s.ErxSnapshotId,
+                s.PatientAppId,
+                s.PatientId,
+                s.DoctorId,
+                s.Status,
+                s.SignedAt,
+                s.LabOrdersJson,
+                LTRIM(RTRIM(CONCAT(ISNULL(d.FirstName, N''), N' ', ISNULL(d.LastName, N'')))) AS DoctorName,
+                d.CasePaperValidity,
+                (SELECT COUNT(1) FROM dbo.ErxSnapshotItem i WHERE i.ErxSnapshotId = s.ErxSnapshotId) AS RemedyCount
+            FROM dbo.ErxSnapshot s
+            LEFT JOIN dbo.Doctor d ON d.DoctorID = s.DoctorId
+            WHERE s.PatientId = {id} AND s.Status = N'SIGNED'
+            ORDER BY s.SignedAt DESC").ToListAsync();
+
+        var durationBySnapshot = new Dictionary<int, List<string>>();
+        if (prescriptionRows.Count > 0)
+        {
+            var idsCsv = string.Join(",", prescriptionRows.Select(p => p.ErxSnapshotId).Distinct());
+            var durationRows = await _context.Database.SqlQueryRaw<TimelineDurationRow>($@"
+                SELECT ErxSnapshotId, Duration
+                FROM dbo.ErxSnapshotItem
+                WHERE ErxSnapshotId IN ({idsCsv})
+                  AND Duration IS NOT NULL
+                  AND LTRIM(RTRIM(Duration)) <> N''").ToListAsync();
+            foreach (var row in durationRows)
+            {
+                if (string.IsNullOrWhiteSpace(row.Duration)) continue;
+                if (!durationBySnapshot.TryGetValue(row.ErxSnapshotId, out var list))
+                {
+                    list = new List<string>();
+                    durationBySnapshot[row.ErxSnapshotId] = list;
+                }
+                list.Add(row.Duration!);
+            }
+        }
+
+        var today = DateTime.Now.Date;
+        var prescriptions = prescriptionRows.Select(p =>
+        {
+            durationBySnapshot.TryGetValue(p.ErxSnapshotId, out var durations);
+            var validityDays = ResolvePrescriptionValidityDays(durations)
+                ?? (p.CasePaperValidity is > 0 ? p.CasePaperValidity : null)
+                ?? 30;
+            DateTime? expiresAt = p.SignedAt.HasValue
+                ? p.SignedAt.Value.Date.AddDays(validityDays)
+                : null;
+            var isExpired = expiresAt.HasValue && expiresAt.Value < today;
+
+            return new
+            {
+                erxSnapshotId = p.ErxSnapshotId,
+                patientAppId = p.PatientAppId,
+                patientId = p.PatientId,
+                doctorId = p.DoctorId,
+                doctorName = string.IsNullOrWhiteSpace(p.DoctorName) ? null : p.DoctorName.Trim(),
+                status = p.Status,
+                signedAt = p.SignedAt,
+                labOrdersJson = p.LabOrdersJson,
+                remedyCount = p.RemedyCount,
+                isExpired,
+                expiresAt
+            };
+        }).ToList();
+
+        return Ok(new { success = true, data = new { appointments, prescriptions } });
+    }
+
+    /// <summary>
+    /// Parses free-text remedy durations (e.g. "7 days", "2 weeks", "1 month") and returns the
+    /// longest validity in days. Null when nothing parseable.
+    /// </summary>
+    private static int? ResolvePrescriptionValidityDays(IReadOnlyList<string>? durations)
+    {
+        if (durations == null || durations.Count == 0)
+            return null;
+
+        int? maxDays = null;
+        foreach (var raw in durations)
+        {
+            var days = TryParseDurationDays(raw);
+            if (!days.HasValue) continue;
+            if (!maxDays.HasValue || days.Value > maxDays.Value)
+                maxDays = days.Value;
+        }
+        return maxDays;
+    }
+
+    private static int? TryParseDurationDays(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var text = raw.Trim().ToLowerInvariant();
+        if (int.TryParse(text, out var plain) && plain > 0)
+            return plain;
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            text,
+            @"(\d+)\s*(day|days|d|week|weeks|w|month|months|m)\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return null;
+
+        if (!int.TryParse(match.Groups[1].Value, out var n) || n <= 0)
+            return null;
+
+        var unit = match.Groups[2].Value.ToLowerInvariant();
+        return unit switch
+        {
+            "day" or "days" or "d" => n,
+            "week" or "weeks" or "w" => n * 7,
+            "month" or "months" or "m" => n * 30,
+            _ => null
+        };
     }
 
     public async Task<S4ActionResult> PatientVisitsAsync(
@@ -1901,7 +2059,12 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = note });
     }
 
-    public async Task<S4ActionResult> SavePatientDocumentAsync(IFormFile file, S4Caller caller)
+    public async Task<S4ActionResult> SavePatientDocumentAsync(
+        IFormFile file,
+        S4Caller caller,
+        int? patientId = null,
+        string? documentType = null,
+        string? description = null)
     {
         if (caller.PatientId is null) return Fail(403, "FORBIDDEN", "A patient profile is required.");
         if (file == null || file.Length == 0) return Fail(400, "VALIDATION", "File is required.");
@@ -1909,14 +2072,44 @@ public partial class S4Week4Service
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (ext is not (".pdf" or ".jpg" or ".jpeg" or ".png"))
             return Fail(400, "VALIDATION", "Allowed files are pdf, jpg, jpeg, and png.");
+
+        var targetPatientId = caller.PatientId.Value;
+        if (patientId is > 0)
+        {
+            if (!await PatientMayActForAsync(caller, patientId.Value))
+                return Fail(403, "FORBIDDEN", "You can upload only for yourself or family members you manage.");
+            targetPatientId = patientId.Value;
+        }
+
+        var normalizedType = NormalizePatientDocumentType(documentType);
+        if (normalizedType == null)
+            return Fail(400, "VALIDATION", "documentType must be Report, Prescription, LabReport, Invoice, or Other.");
+
+        string? note = null;
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            note = description.Trim();
+            if (note.Length > 500)
+                return Fail(400, "VALIDATION", "description must be 500 characters or fewer.");
+        }
+
+        await EnsureSecureDocumentMetaColumnsAsync();
         await using var stream = file.OpenReadStream();
         using var memory = new MemoryStream();
         await stream.CopyToAsync(memory);
         var bytes = memory.ToArray();
-        (string Path, long DocumentId) stored;
+        (string Path, long DocumentId, DateTime CreatedAt) stored;
         try
         {
-            stored = await StorePdfAsync(bytes, Path.GetFileName(file.FileName), "Patient", caller.PatientId.Value, caller.UserId, file.ContentType);
+            stored = await StorePdfAsync(
+                bytes,
+                Path.GetFileName(file.FileName),
+                "Patient",
+                targetPatientId,
+                caller.UserId,
+                file.ContentType,
+                normalizedType,
+                note);
         }
         catch (InvalidOperationException)
         {
@@ -1927,11 +2120,15 @@ public partial class S4Week4Service
             success = true,
             data = new
             {
-                stored.DocumentId,
-                stored.Path,
+                documentId = stored.DocumentId,
+                patientId = targetPatientId,
+                path = stored.Path,
                 fileName = Path.GetFileName(file.FileName),
                 mime = file.ContentType,
                 size = file.Length,
+                documentType = normalizedType,
+                description = note,
+                uploadedAt = stored.CreatedAt,
                 downloadUrl = $"/api/Patient/Documents/{stored.DocumentId}"
             }
         });
@@ -1941,10 +2138,21 @@ public partial class S4Week4Service
     {
         var owned = await ResolvePatientAsync(patientId, caller, write: false);
         if (owned.Error != null) return owned.Error;
+        await EnsureSecureDocumentMetaColumnsAsync();
         var rows = await _context.SecureDocuments.AsNoTracking()
             .Where(d => d.OwnerType == "Patient" && d.OwnerId == owned.PatientId)
             .OrderByDescending(d => d.CreatedAt)
-            .Select(d => new { documentId = d.SecureDocumentId, d.FileName, d.Mime, d.CreatedAt, d.CreatedBy })
+            .Select(d => new
+            {
+                documentId = d.SecureDocumentId,
+                patientId = (int)d.OwnerId,
+                d.FileName,
+                d.Mime,
+                documentType = d.DocumentType,
+                d.Description,
+                uploadedAt = d.CreatedAt,
+                d.CreatedBy
+            })
             .ToListAsync();
         return Ok(new
         {
@@ -1952,13 +2160,55 @@ public partial class S4Week4Service
             data = rows.Select(d => new
             {
                 d.documentId,
-                d.FileName,
-                d.Mime,
-                d.CreatedAt,
+                d.patientId,
+                fileName = d.FileName,
+                mime = d.Mime,
+                documentType = string.IsNullOrWhiteSpace(d.documentType) ? "Other" : d.documentType,
+                description = d.Description,
+                uploadedAt = d.uploadedAt,
+                createdAt = d.uploadedAt,
                 d.CreatedBy,
                 downloadUrl = $"/api/Patient/Documents/{d.documentId}"
             })
         });
+    }
+
+    /// <summary>Canonical patient document categories (case-insensitive input).</summary>
+    private static readonly string[] PatientDocumentTypes =
+        { "Report", "Prescription", "LabReport", "Invoice", "Other" };
+
+    private static string? NormalizePatientDocumentType(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "Other";
+        var value = raw.Trim();
+        // Common misspelling from product copy.
+        if (value.Equals("Priscription", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("Rx", StringComparison.OrdinalIgnoreCase))
+            return "Prescription";
+        if (value.Equals("Lab", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("Lab Report", StringComparison.OrdinalIgnoreCase))
+            return "LabReport";
+        foreach (var allowed in PatientDocumentTypes)
+        {
+            if (value.Equals(allowed, StringComparison.OrdinalIgnoreCase))
+                return allowed;
+        }
+        return null;
+    }
+
+    private static int _secureDocMetaReady;
+    private async Task EnsureSecureDocumentMetaColumnsAsync()
+    {
+        if (Volatile.Read(ref _secureDocMetaReady) == 1)
+            return;
+        await _context.Database.ExecuteSqlRawAsync("""
+            IF COL_LENGTH(N'dbo.SecureDocument', N'DocumentType') IS NULL
+                ALTER TABLE dbo.SecureDocument ADD DocumentType nvarchar(40) NULL;
+            IF COL_LENGTH(N'dbo.SecureDocument', N'Description') IS NULL
+                ALTER TABLE dbo.SecureDocument ADD Description nvarchar(500) NULL;
+            """);
+        Volatile.Write(ref _secureDocMetaReady, 1);
     }
 
     public async Task<S4ActionResult> PatientDocumentFileAsync(long documentId, S4Caller caller)
@@ -2821,6 +3071,26 @@ public partial class S4Week4Service
         public string Status { get; set; } = "";
         public DateTime? SignedAt { get; set; }
         public string? LabOrdersJson { get; set; }
+    }
+
+    private sealed class TimelinePrescriptionRow
+    {
+        public int ErxSnapshotId { get; set; }
+        public int PatientAppId { get; set; }
+        public int PatientId { get; set; }
+        public int DoctorId { get; set; }
+        public string Status { get; set; } = "";
+        public DateTime? SignedAt { get; set; }
+        public string? LabOrdersJson { get; set; }
+        public string? DoctorName { get; set; }
+        public int? CasePaperValidity { get; set; }
+        public int RemedyCount { get; set; }
+    }
+
+    private sealed class TimelineDurationRow
+    {
+        public int ErxSnapshotId { get; set; }
+        public string? Duration { get; set; }
     }
 
     private sealed class SnapshotItemRow

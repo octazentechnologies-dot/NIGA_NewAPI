@@ -106,7 +106,12 @@ public interface IS4Week4Service
 
     Task<S4ActionResult> TimelineAsync(int? patientId, S4Caller caller);
     Task<S4ActionResult> ConsultationNoteAsync(int patientAppId, S4Caller caller);
-    Task<S4ActionResult> SavePatientDocumentAsync(IFormFile file, S4Caller caller);
+    Task<S4ActionResult> SavePatientDocumentAsync(
+        IFormFile file,
+        S4Caller caller,
+        int? patientId = null,
+        string? documentType = null,
+        string? description = null);
     Task<S4ActionResult> ListPatientDocumentsAsync(int? patientId, S4Caller caller);
     Task<S4ActionResult> PatientDocumentFileAsync(long documentId, S4Caller caller);
     Task<S4ActionResult> DeletePatientDocumentAsync(long documentId, S4Caller caller);

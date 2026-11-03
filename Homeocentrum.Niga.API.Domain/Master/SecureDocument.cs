@@ -19,6 +19,12 @@ public partial class SecureDocument
 
     public string? Hash { get; set; }
 
+    /// <summary>Patient upload category: Report, Prescription, LabReport, Invoice, Other.</summary>
+    public string? DocumentType { get; set; }
+
+    /// <summary>Optional note from the uploader.</summary>
+    public string? Description { get; set; }
+
     public long? CreatedBy { get; set; }
 
     public DateTime CreatedAt { get; set; }

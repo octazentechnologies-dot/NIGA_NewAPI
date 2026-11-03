@@ -42,10 +42,20 @@ public class PatientRecordsController : ControllerBase
     [HttpGet("/api/Patient/Consultations/{patientAppId:int}/Note")]
     public Task<IActionResult> Note(int patientAppId) => Done(_s4.ConsultationNoteAsync(patientAppId, Caller()));
 
+    /// <summary>
+    /// Upload a patient document (self or household member).
+    /// multipart/form-data: file (required), patientId (optional), documentType (optional), description (optional).
+    /// documentType: Report | Prescription | LabReport | Invoice | Other.
+    /// </summary>
     [HttpPost("/api/Patient/Documents")]
     [RequestSizeLimit(11_000_000)]
     [Consumes("multipart/form-data")]
-    public Task<IActionResult> Document(IFormFile file) => Done(_s4.SavePatientDocumentAsync(file, Caller()));
+    public Task<IActionResult> Document(
+        IFormFile file,
+        [FromForm] int? patientId = null,
+        [FromForm] string? documentType = null,
+        [FromForm] string? description = null)
+        => Done(_s4.SavePatientDocumentAsync(file, Caller(), patientId, documentType, description));
 
     [HttpGet("/api/Patient/Documents")]
     public Task<IActionResult> Documents([FromQuery] int? patientId) => Done(_s4.ListPatientDocumentsAsync(patientId, Caller()));

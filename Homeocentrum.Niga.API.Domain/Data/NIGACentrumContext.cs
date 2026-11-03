@@ -3505,6 +3505,8 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.Property(e => e.FileName).HasMaxLength(255);
             entity.Property(e => e.Mime).HasMaxLength(100);
             entity.Property(e => e.Hash).HasMaxLength(128);
+            entity.Property(e => e.DocumentType).HasMaxLength(40);
+            entity.Property(e => e.Description).HasMaxLength(500);
             entity.Property(e => e.CreatedAt).HasColumnType("datetime");
             entity.HasIndex(e => new { e.OwnerType, e.OwnerId });
         });

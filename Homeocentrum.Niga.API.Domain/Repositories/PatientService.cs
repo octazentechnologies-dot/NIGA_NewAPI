@@ -93,6 +93,7 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                     patientModel.IsWhatsAppOptIn = patientEntity.IsWhatsAppOptIn;
                     patientModel.WhatsAppOptInDate = patientEntity.WhatsAppOptInDate;
                     patientModel.Message = "Patient Saved Successfully";
+                    await PatientDeliveryAddressSeeder.EnsureDefaultFromProfileAsync(context, patientEntity.PatientId);
                 }
             }
             else
@@ -173,6 +174,7 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                     patientModel.IsWhatsAppOptIn = patientEntity.IsWhatsAppOptIn;
                     patientModel.WhatsAppOptInDate = patientEntity.WhatsAppOptInDate;
                     patientModel.Message = "Patient Updated Successfully";
+                    await PatientDeliveryAddressSeeder.EnsureDefaultFromProfileAsync(context, patientEntity.PatientId);
                 }
                 catch (DbUpdateException ex)
                 {

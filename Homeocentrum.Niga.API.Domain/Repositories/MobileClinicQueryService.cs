@@ -643,6 +643,8 @@ public class MobileClinicQueryService
         await EnsureSchemaAsync();
         if (!caller.IsPatient || !caller.PatientId.HasValue)
             return Fail(403, "FORBIDDEN", "Patient context is required.");
+        // Registration / chart address becomes the default delivery address when none exist yet.
+        await PatientDeliveryAddressSeeder.EnsureDefaultFromProfileAsync(_context, caller.PatientId.Value);
         var rows = await _context.Database.SqlQuery<DeliveryAddressRow>($@"
             SELECT DeliveryAddressId, Label, Line1, Line2, City, State, Pincode, Phone,
                    CAST(ISNULL(IsDefault, 0) AS bit) AS IsDefault

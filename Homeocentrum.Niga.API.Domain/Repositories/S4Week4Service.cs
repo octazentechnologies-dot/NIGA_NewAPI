@@ -2020,7 +2020,15 @@ IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
         return (gst, "GST " + gst.ToString("0.00") + " at " + tax.GstRate.ToString("0.##") + "%.");
     }
 
-    private async Task<(string Path, long DocumentId)> StorePdfAsync(byte[] pdf, string fileName, string ownerType, long ownerId, long userId, string mime = "application/pdf")
+    private async Task<(string Path, long DocumentId, DateTime CreatedAt)> StorePdfAsync(
+        byte[] pdf,
+        string fileName,
+        string ownerType,
+        long ownerId,
+        long userId,
+        string mime = "application/pdf",
+        string? documentType = null,
+        string? description = null)
     {
         var ext = Path.GetExtension(fileName);
         if (string.IsNullOrWhiteSpace(ext))
@@ -2035,6 +2043,7 @@ IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
         };
         var relative = await _files.SaveAsync(folder, ext, pdf);
         var hash = Convert.ToHexString(SHA256.HashData(pdf));
+        var createdAt = DateTime.UtcNow;
         var doc = new SecureDocument
         {
             OwnerType = ownerType,
@@ -2043,12 +2052,14 @@ IF COL_LENGTH(N'dbo.PatientAppointment', N'BookedByUserId') IS NULL
             FileName = fileName,
             Mime = mime,
             Hash = hash,
+            DocumentType = string.IsNullOrWhiteSpace(documentType) ? null : documentType.Trim(),
+            Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
             CreatedBy = userId,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = createdAt
         };
         _context.SecureDocuments.Add(doc);
         await _context.SaveChangesAsync();
-        return (relative, doc.SecureDocumentId);
+        return (relative, doc.SecureDocumentId, createdAt);
     }
 
     private async Task AddExceptionAsync(long? orderId, string kind, string detail)
