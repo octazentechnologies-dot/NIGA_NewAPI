@@ -46,6 +46,14 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public int? WaitMinutes { get; set; }
         /// <summary>Latest non-ended tele session for this visit. Null when none / not tele.</summary>
         public int? TeleSessionId { get; set; }
+        /// <summary>Successful RescheduleAppointment count for this visit (max 2).</summary>
+        public int RescheduleCount { get; set; }
+        /// <summary>Remaining RescheduleAppointment calls (0–2).</summary>
+        public int ReschedulesRemaining { get; set; }
+        /// <summary>Server truth for Reschedule CTA (quota + grace + status).</summary>
+        public bool CanReschedule { get; set; }
+        /// <summary>Patient-facing status label key (Booked / Confirmed / CheckedIn / Missed / …).</summary>
+        public string DisplayStatus { get; set; }
     }
 }
 

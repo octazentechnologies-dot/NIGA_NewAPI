@@ -1403,7 +1403,7 @@ public partial class S4Week4Service
         return Ok(new { success = true, data = rows });
     }
 
-    public async Task<S4ActionResult> CloneRefillOrderAsync(int refillId, S4Caller caller, MedicineOrderCreateRequest? request = null)
+    public async Task<S4ActionResult> CloneRefillOrderAsync(int refillId, S4Caller caller, MedicineRefillOrderRequest? request = null)
     {
         if (!caller.IsPatient) return Fail(403, "FORBIDDEN", "The patient starts the refill order.");
         var refill = await _context.Database.SqlQuery<RefillRow>($@"
@@ -1416,6 +1416,8 @@ public partial class S4Week4Service
             return Fail(409, "CONFLICT", "The doctor has not approved this refill.");
         if (!await PatientMayActForAsync(caller, refill.PatientId))
             return Fail(403, "FORBIDDEN", "This refill belongs to another patient.");
+        if (refill.ErxSnapshotId <= 0)
+            return Fail(409, "CONFLICT", "This refill has no linked signed prescription.");
 
         var created = await CreateMedicineOrderAsync(new MedicineOrderCreateRequest
         {
@@ -1975,7 +1977,10 @@ public partial class S4Week4Service
         var slotAt = AppointmentLifecycle.ComputeSlotAt(appointment.AppointmentDate, appointment.AppointmentTime);
         var upcoming = slotAt.HasValue && slotAt.Value > DateTime.Now;
         var paid = IsPaid(appointment.PaymentStatus);
+        var rescheduleCount = AppointmentLifecycle.GetRescheduleCount(appointment);
+        var reschedulesRemaining = AppointmentLifecycle.GetReschedulesRemaining(appointment);
         var canReschedule = AppointmentLifecycle.CanReschedule(appointment);
+        var displayStatus = AppointmentLifecycle.ResolveDisplayStatus(appointment);
         var isOverdue = AppointmentLifecycle.IsOverdue(appointment.Status);
         var isExpiredStatus = AppointmentLifecycle.IsExpired(appointment.Status);
         var graceEndsAt = appointment.GraceEndsAt
@@ -2007,6 +2012,7 @@ public partial class S4Week4Service
                 visit.AppointmentDate,
                 visit.AppointmentTime,
                 visit.Status,
+                displayStatus,
                 visit.ConsultMode,
                 visit.IsTele,
                 IsExpired = isExpiredStatus || IsVisitSlotExpired(visit.AppointmentDate, visit.AppointmentTime),
@@ -2017,6 +2023,9 @@ public partial class S4Week4Service
                 graceHoursRemaining = graceEndsAt.HasValue && DateTime.Now < graceEndsAt.Value
                     ? Math.Round((graceEndsAt.Value - DateTime.Now).TotalHours, 1)
                     : (double?)null,
+                rescheduleCount,
+                reschedulesRemaining,
+                maxReschedules = AppointmentLifecycle.MaxPatientReschedules,
                 appointment.VisitType,
                 appointment.QueuePosition,
                 visit.DoctorId,

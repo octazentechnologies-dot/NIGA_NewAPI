@@ -11,6 +11,8 @@ SQL (Database scripts\) — run in this order:
   04_Verify_And_Ensure_Gap_Schema.sql
   06_Runtime_Dev_Schema_Gaps.sql   << includes BookedByUserId, LabOrdersJson, mobile clinic, etc.
   05_Verify_S6_Objects.sql         (check only; should print PASSED)
+  10_Appointment_Overdue_Grace_Expire.sql
+  12_Appointment_RescheduleCount.sql  << max 2 reschedules per visit (use sqlcmd -I)
 
 Then deploy:
   - New API publish (includes isExpired on Patient/Visits, RealSms, Twilio WhatsApp)

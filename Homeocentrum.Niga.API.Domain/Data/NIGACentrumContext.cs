@@ -2499,6 +2499,7 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.Property(e => e.OverdueAt).HasColumnType("datetime");
             entity.Property(e => e.GraceEndsAt).HasColumnType("datetime");
             entity.Property(e => e.ExpiredAt).HasColumnType("datetime");
+            entity.Property(e => e.RescheduleCount).HasDefaultValue(0);
 
             entity.HasOne(d => d.Doctor).WithMany(p => p.PatientAppointments)
                 .HasForeignKey(d => d.DoctorId)

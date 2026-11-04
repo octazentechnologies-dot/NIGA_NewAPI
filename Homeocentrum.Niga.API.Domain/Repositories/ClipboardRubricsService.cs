@@ -10,6 +10,7 @@ using Homeocentrum.Niga.API.Domain.Business.Interface;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.DTOs;
 using Homeocentrum.Niga.API.Domain.Master;
+using Microsoft.EntityFrameworkCore;
 
 namespace Homeocentrum.Niga.API.Domain.Business.Implementation
 {
@@ -1741,128 +1742,138 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         {
             errorResponseModel = new ErrorResponseModel();
 
-            // Ranking reproduces the Old API exactly: one entry per (input rubric, remedy) row, and the
-            // count/grade/intensity/final positions are taken from lists that still contain those duplicates.
+            if (lstIntensity == null || lstIntensity.Count == 0)
+            {
+                return new ClipboardRemedyNewModel();
+            }
+
+            // Ranking math matches the legacy Final path (name-level totals + MaxIndex positions),
+            // but avoids: second RubricRemedyDetails query, SubSectionMaster join, MM text blobs,
+            // and allocating one ViewModel per (input rubric × remedy) row.
             var subsectionIds = lstIntensity.Select(c => c.SubSectionId).ToList();
             var distinctIds = subsectionIds.Distinct().ToList();
+            var inputCount = subsectionIds.Count;
 
-            var rubricRemedyDetails = context.RubricRemedyDetails
-                .Where(x => distinctIds.Contains(x.SubSectionId) && x.DeletedStatus == false)
-                .Select(x => new { x.SubSectionId, x.RemedyId })
-                .ToList();
-
-            var remedyCounts = rubricRemedyDetails
-                .GroupBy(x => x.SubSectionId)
-                .ToDictionary(g => g.Key ?? 0, g => g.Count());
-
-            var clipboardRubricsRemedyInputs = lstIntensity
-                .Select(item => new ClipboardRubricsRemedyInput
+            var rows = (
+                from rrd in context.RubricRemedyDetails.AsNoTracking()
+                join rm in context.RemedyMasters.AsNoTracking() on rrd.RemedyId equals rm.RemedyId
+                join rg in context.RemedyGradeMaster.AsNoTracking() on rrd.GradeId equals rg.GradeId
+                where distinctIds.Contains(rrd.SubSectionId)
+                      && rrd.DeletedStatus == false
+                      && rm.DeleteStatus == false
+                select new
                 {
-                    SubsectionID = (int)item.SubSectionId,
-                    Intensity = item.Intensity,
-                    RemedyCount = remedyCounts.TryGetValue((int)item.SubSectionId, out var count) ? count : 0
+                    SubSectionId = rrd.SubSectionId ?? 0,
+                    RemedyId = rrd.RemedyId ?? 0,
+                    rm.RemedyName,
+                    rm.RemedyAlias,
+                    rg.GradeNo,
+                    rm.ThermalId,
+                    rm.CommonOrUncommon
                 })
                 .ToList();
 
-            var smallRubricItem = clipboardRubricsRemedyInputs.OrderBy(x => x.RemedyCount).FirstOrDefault();
+            var remedyCounts = rows
+                .GroupBy(x => x.SubSectionId)
+                .ToDictionary(g => g.Key, g => g.Count());
 
-            var subsectionsByRemedy = rubricRemedyDetails
-                .GroupBy(x => x.RemedyId)
-                .ToDictionary(g => g.Key ?? 0, g => g.Select(r => r.SubSectionId).Distinct().ToList());
-
-            var remedyData =
-                (from rrd in context.RubricRemedyDetails
-                 join sm in context.SubSectionMasters on rrd.SubSectionId equals sm.SubSectionId
-                 join rm in context.RemedyMasters on rrd.RemedyId equals rm.RemedyId
-                 join rg in context.RemedyGradeMaster on rrd.GradeId equals rg.GradeId
-                 where distinctIds.Contains(rrd.SubSectionId)
-                       && rrd.DeletedStatus == false
-                       && rm.DeleteStatus == false
-                 select new
-                 {
-                     sm.SubSectionId,
-                     sm.SubSectionName,
-                     rrd.RemedyId,
-                     rm.RemedyName,
-                     rm.RemedyAlias,
-                     rg.GradeNo,
-                     rg.FontName,
-                     rg.FontStyle,
-                     rg.FontColor,
-                     rm.ThermalId,
-                     rm.CommonOrUncommon,
-                     rm.ThemesOrCharacteristics,
-                     rm.Particulars,
-                     rm.Generals,
-                     rm.Modalities
-                 })
-                .ToList()
-                .ToLookup(x => x.SubSectionId);
-
-            var remedyArrayList = new List<ClipboardRubricsRemedyViewModel>();
-            foreach (var item in clipboardRubricsRemedyInputs)
-            {
-                remedyArrayList.AddRange(remedyData[item.SubsectionID]
-                    .Select(x => new ClipboardRubricsRemedyViewModel
+            var inputs = lstIntensity
+                .Select(item =>
+                {
+                    var subsectionId = (int)item.SubSectionId;
+                    return new
                     {
-                        SubSectionId = x.SubSectionId,
-                        SubSectionName = x.SubSectionName,
-                        RemedyId = x.RemedyId,
-                        RemedyName = x.RemedyName,
-                        RemedyAlias = x.RemedyAlias,
-                        GradeNo = x.GradeNo,
-                        FontName = x.FontName,
-                        FontStyle = x.FontStyle,
-                        FontColor = x.FontColor,
+                        SubsectionId = subsectionId,
                         Intensity = item.Intensity,
-                        total = item.Intensity * x.GradeNo,
-                        ThermalId = x.ThermalId,
-                        CommonOrUncommon = x.CommonOrUncommon,
-                        ThemesOrCharacteristics = x.ThemesOrCharacteristics,
-                        Particulars = x.Particulars,
-                        Generals = x.Generals,
-                        Modalities = x.Modalities,
-                        score = subsectionsByRemedy.TryGetValue(x.RemedyId ?? 0, out var present) ? present.Count : 0,
-                        SmallRubric = item.SubsectionID == smallRubricItem.SubsectionID ? 1 : 0,
-                    })
-                    .OrderBy(rem => rem.RemedyId));
+                        RemedyCount = remedyCounts.TryGetValue(subsectionId, out var count) ? count : 0
+                    };
+                })
+                .ToList();
+
+            var smallSubsectionId = inputs
+                .OrderBy(x => x.RemedyCount)
+                .Select(x => x.SubsectionId)
+                .FirstOrDefault();
+
+            var bySubsection = rows.ToLookup(x => x.SubSectionId);
+
+            var subsectionsByRemedy = rows
+                .GroupBy(x => x.RemedyId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(r => (int?)r.SubSectionId).Distinct().ToList());
+
+            var aggregates = new Dictionary<int, RemedyRankAggregate>(capacity: Math.Max(16, rows.Count / 2));
+            foreach (var input in inputs)
+            {
+                foreach (var row in bySubsection[input.SubsectionId])
+                {
+                    if (!aggregates.TryGetValue(row.RemedyId, out var agg))
+                    {
+                        agg = new RemedyRankAggregate
+                        {
+                            RemedyId = row.RemedyId,
+                            RemedyName = row.RemedyName,
+                            RemedyAlias = row.RemedyAlias,
+                            ThermalId = row.ThermalId,
+                            CommonUncommon = row.CommonOrUncommon,
+                            LastIntensity = input.Intensity
+                        };
+                        aggregates[row.RemedyId] = agg;
+                    }
+
+                    agg.Count += 1;
+                    agg.IntensitySum += input.Intensity;
+                    agg.Grade += row.GradeNo;
+                    agg.Final += input.Intensity * row.GradeNo;
+                    agg.LastIntensity = input.Intensity;
+                    if (input.SubsectionId == smallSubsectionId)
+                    {
+                        agg.SmallRubric = 1;
+                    }
+                }
             }
 
-            var totalsByName = remedyArrayList
+            // Legacy totals were summed over (input × remedy) rows grouped by RemedyName.
+            var totalsByName = aggregates.Values
                 .GroupBy(x => x.RemedyName ?? string.Empty)
-                .ToDictionary(g => g.Key, g => new
-                {
-                    IntensitySum = g.Sum(x => x.Intensity),
-                    Count = g.Count(),
-                    Grade = g.Sum(x => x.GradeNo),
-                    Final = g.Sum(x => x.total)
-                });
+                .ToDictionary(
+                    g => g.Key,
+                    g => new
+                    {
+                        IntensitySum = g.Sum(x => x.IntensitySum),
+                        Count = g.Sum(x => x.Count),
+                        Grade = g.Sum(x => x.Grade),
+                        Final = g.Sum(x => x.Final)
+                    });
 
-            var objRemedyList = remedyArrayList.Select(item1 =>
+            var objRemedyList = new List<RemedyArrayModel>(aggregates.Count);
+            foreach (var agg in aggregates.Values)
             {
-                var totals = totalsByName[item1.RemedyName ?? string.Empty];
-                return new RemedyArrayModel
+                var name = agg.RemedyName ?? string.Empty;
+                var totals = totalsByName[name];
+                subsectionsByRemedy.TryGetValue(agg.RemedyId, out var present);
+                var matched = present?.Count ?? 0;
+
+                objRemedyList.Add(new RemedyArrayModel
                 {
-                    RemedyId = item1.RemedyId,
-                    RemedyName = item1.RemedyName,
-                    RemedyAlies = item1.RemedyAlias,
-                    Intensity = item1.Intensity,
+                    RemedyId = agg.RemedyId,
+                    RemedyName = agg.RemedyName,
+                    RemedyAlies = agg.RemedyAlias,
+                    Intensity = agg.LastIntensity,
                     IntensitySum = totals.IntensitySum,
                     Count = totals.Count,
                     Grade = totals.Grade,
                     final = totals.Final,
-                    Generals = item1.Generals,
-                    Particulars = item1.Particulars,
-                    Modalities = item1.Modalities,
-                    ThemesOrCharacteristics = item1.ThemesOrCharacteristics,
-                    ThermalId = item1.ThermalId,
-                    CommonUncommon = item1.CommonOrUncommon,
-                    score = item1.score + "/" + subsectionIds.Count,
-                    scoreCount = item1.score,
-                    PresentSubSection = subsectionsByRemedy.TryGetValue(item1.RemedyId ?? 0, out var present) ? present : new List<int?>(),
-                    SmallRubric = item1.SmallRubric,
-                };
-            }).ToList();
+                    ThermalId = agg.ThermalId,
+                    CommonUncommon = agg.CommonUncommon,
+                    // Slim payload: tooltip API supplies themes/generals/modalities/particulars on demand.
+                    score = matched + "/" + inputCount,
+                    scoreCount = matched,
+                    PresentSubSection = present ?? new List<int?>(),
+                    SmallRubric = agg.SmallRubric
+                });
+            }
 
             Dictionary<string, int> FirstPositions(IEnumerable<RemedyArrayModel> ordered)
             {
@@ -1876,17 +1887,20 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 return positions;
             }
 
+            // Positions on unique-by-remedy rows with name-level totals match legacy TryAdd-on-duplicates.
             var countPositions = FirstPositions(objRemedyList.OrderByDescending(x => x.Count));
             var gradePositions = FirstPositions(objRemedyList.OrderByDescending(x => x.Grade));
             var intensityPositions = FirstPositions(objRemedyList.OrderByDescending(x => x.IntensitySum));
             var finalPositions = FirstPositions(objRemedyList.OrderByDescending(x => x.final));
 
-            var sortedRemedyList = objRemedyList.Select(remedyItem =>
+            var sortedRemedyList = new List<SortedRemedyArrayModel>(objRemedyList.Count);
+            foreach (var remedyItem in objRemedyList)
             {
                 var name = remedyItem.RemedyName ?? string.Empty;
-                int maxIndex = countPositions[name] + 1 + gradePositions[name] + 1
+                var maxIndex = countPositions[name] + 1 + gradePositions[name] + 1
                     + intensityPositions[name] + 1 + finalPositions[name] + 1;
-                return new SortedRemedyArrayModel
+
+                sortedRemedyList.Add(new SortedRemedyArrayModel
                 {
                     RemedyId = remedyItem.RemedyId,
                     RemedyName = remedyItem.RemedyName,
@@ -1896,10 +1910,6 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                     Count = remedyItem.Count,
                     Grade = remedyItem.Grade,
                     final = remedyItem.final,
-                    Generals = remedyItem.Generals,
-                    Particulars = remedyItem.Particulars,
-                    Modalities = remedyItem.Modalities,
-                    ThemesOrCharacteristics = remedyItem.ThemesOrCharacteristics,
                     ThermalId = remedyItem.ThermalId,
                     CommonUncommon = remedyItem.CommonUncommon,
                     score = remedyItem.score,
@@ -1908,8 +1918,8 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                     PresentSubSection = remedyItem.PresentSubSection,
                     SmallRubric = remedyItem.SmallRubric,
                     progressBar = (1000 - maxIndex) / 10
-                };
-            }).ToList();
+                });
+            }
 
             var rawOrderGroupBy = sortedRemedyList
                 .OrderByDescending(x => x.final)
@@ -1923,6 +1933,21 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 CommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon == true).ToList(),
                 UnCommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon == false).ToList()
             };
+        }
+
+        private sealed class RemedyRankAggregate
+        {
+            public int RemedyId;
+            public string? RemedyName;
+            public string? RemedyAlias;
+            public int? ThermalId;
+            public bool? CommonUncommon;
+            public int Count;
+            public int IntensitySum;
+            public int Grade;
+            public int Final;
+            public int LastIntensity;
+            public int SmallRubric;
         }
 
         public ClipboardRemedyNewModel GetCommanUnCommanEliminationData(

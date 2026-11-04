@@ -4,11 +4,58 @@ namespace Homeocentrum.Niga.API.Domain.Helpers;
 
 /// <summary>
 /// Missed-slot grace: OVERDUE for 24h (reschedule allowed), then EXPIRED (no reschedule, no refund).
+/// Patient reschedule cap: MaxPatientReschedules successful RescheduleAppointment calls per visit.
 /// </summary>
 public static class AppointmentLifecycle
 {
     public const int GraceHours = 24;
     public const int GraceWarningHoursBeforeEnd = 4;
+    /// <summary>Hard cap on patient/clinic RescheduleAppointment for one PatientAppId.</summary>
+    public const int MaxPatientReschedules = 2;
+
+    public static int GetRescheduleCount(PatientAppointment? appointment)
+        => appointment == null ? 0 : Math.Max(0, appointment.RescheduleCount);
+
+    public static int GetReschedulesRemaining(PatientAppointment? appointment)
+        => Math.Max(0, MaxPatientReschedules - GetRescheduleCount(appointment));
+
+    public static bool HasRescheduleQuota(PatientAppointment? appointment)
+        => GetReschedulesRemaining(appointment) > 0;
+
+    /// <summary>
+    /// Patient-facing status label key for apps (stored Status stays WAITING/EARLY/…).
+    /// </summary>
+    public static string ResolveDisplayStatus(PatientAppointment appointment, DateTime? now = null)
+    {
+        var clock = now ?? DateTime.Now;
+        var status = (appointment.Status ?? "").Trim().ToUpperInvariant();
+        if (S3AppointmentRules.IsCompleted(status)) return "Completed";
+        if (S3AppointmentRules.IsCancelled(status)) return "Cancelled";
+        if (IsExpired(status)) return "Expired";
+        if (IsOverdue(status)) return "Missed";
+
+        return status switch
+        {
+            "EARLY" => "ArrivedEarly",
+            "READY" => "Ready",
+            "REMAINING" => "InProgress",
+            "WALK-IN" => "AtClinic",
+            "E-CONSULT" => "Tele",
+            "WAITING" => ResolveWaitingDisplay(appointment, clock),
+            _ => string.IsNullOrWhiteSpace(appointment.Status) ? "Booked" : appointment.Status!
+        };
+    }
+
+    private static string ResolveWaitingDisplay(PatientAppointment appointment, DateTime clock)
+    {
+        var slotAt = ComputeSlotAt(appointment.AppointmentDate, appointment.AppointmentTime);
+        var upcoming = slotAt.HasValue && slotAt.Value > clock;
+        var paid = S3AppointmentRules.IsPaid(appointment.PaymentStatus);
+        if (upcoming)
+            return paid ? "Confirmed" : "Booked";
+        // Same calendar day / past slot but still WAITING — treat as checked-in queue.
+        return "CheckedIn";
+    }
 
     public static DateTime? ComputeSlotAt(DateTime? appointmentDate, TimeOnly? appointmentTime)
     {
@@ -62,6 +109,9 @@ public static class AppointmentLifecycle
             return false;
 
         if (IsExpired(appointment.Status))
+            return false;
+
+        if (!HasRescheduleQuota(appointment))
             return false;
 
         var slotAt = ComputeSlotAt(appointment.AppointmentDate, appointment.AppointmentTime);

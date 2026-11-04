@@ -346,6 +346,20 @@ public class MedicineOrderCreateRequest
     public int? AddressId { get; set; }
 }
 
+/// <summary>
+/// Body for POST /api/MedicineOrders/Refill/{refillId}.
+/// ErxSnapshotId comes from the refill row — do not require it in the body
+/// (binding MedicineOrderCreateRequest caused ErxSnapshotId=0 Range validation failures).
+/// </summary>
+public class MedicineRefillOrderRequest
+{
+    /// <summary>Omit for auto-route (nearest pharmacy with stock).</summary>
+    public int? PharmacyPartnerId { get; set; }
+
+    /// <summary>Optional delivery address from GET /api/Patient/Addresses.</summary>
+    public int? AddressId { get; set; }
+}
+
 public class MedicineRejectRequest
 {
     [Required]

@@ -68,6 +68,11 @@ public partial class PatientAppointment
     /// <summary>False after EXPIRED (missed grace) — blocks refunds. Null = use default cancel policy.</summary>
     public bool? RefundEligible { get; set; }
 
+    /// <summary>
+    /// Successful RescheduleAppointment calls for this visit (hard max 2 via AppointmentLifecycle).
+    /// </summary>
+    public int RescheduleCount { get; set; }
+
     public virtual ICollection<AppointmentHistoryNote> AppointmentHistoryNotes { get; set; } = new List<AppointmentHistoryNote>();
 
     public virtual Doctor Doctor { get; set; } = null!;

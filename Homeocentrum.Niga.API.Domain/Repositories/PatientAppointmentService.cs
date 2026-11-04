@@ -1127,6 +1127,10 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             model.BookingChannel = entity.BookingChannel;
             model.CalledAt = entity.CalledAt;
             model.QueuePosition = entity.QueuePosition;
+            model.RescheduleCount = AppointmentLifecycle.GetRescheduleCount(entity);
+            model.ReschedulesRemaining = AppointmentLifecycle.GetReschedulesRemaining(entity);
+            model.CanReschedule = AppointmentLifecycle.CanReschedule(entity);
+            model.DisplayStatus = AppointmentLifecycle.ResolveDisplayStatus(entity);
         }
 
         public async Task<AppointmentMutationResult> RescheduleAppointmentAsync(
@@ -1164,6 +1168,14 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             {
                 result.StatusCode = 409;
                 result.Message = "This appointment has expired. Reschedule is closed; please book a new visit.";
+                return result;
+            }
+
+            if (!AppointmentLifecycle.HasRescheduleQuota(appointment))
+            {
+                result.StatusCode = 409;
+                result.Message =
+                    $"You have reached the maximum of {AppointmentLifecycle.MaxPatientReschedules} reschedules for this appointment. Please book a new visit.";
                 return result;
             }
 
@@ -1239,8 +1251,9 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 return result;
             }
 
-            // Clear grace lifecycle after a successful reschedule from OVERDUE / NOT ARRIVED.
+            // Count this successful reschedule; clear grace lifecycle after OVERDUE / NOT ARRIVED.
             await _context.Entry(appointment).ReloadAsync();
+            appointment.RescheduleCount = Math.Max(0, appointment.RescheduleCount) + 1;
             if (AppointmentLifecycle.IsOverdue(appointment.Status)
                 || AppointmentLifecycle.IsExpired(appointment.Status))
             {
@@ -1250,8 +1263,8 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 appointment.ExpiredAt = null;
                 if (appointment.RefundEligible == false)
                     appointment.RefundEligible = null;
-                await _context.SaveChangesAsync();
             }
+            await _context.SaveChangesAsync();
 
             await WriteChangeLogAsync(appointment.PatientAppId, "Reschedule", oldValue, newValue, byUserId, byRole, request.Reason);
 
