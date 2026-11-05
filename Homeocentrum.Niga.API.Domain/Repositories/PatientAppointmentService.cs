@@ -938,6 +938,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             response.IntervalMinutes = schedule.SlotIntervalMinutes;
             response.WorkStartTime = schedule.WorkStartTime;
             response.WorkEndTime = schedule.WorkEndTime;
+            response.ScheduleUpdatedAt = schedule.CreatedAt;
 
             var bookedAppointments = await _context.PatientAppointments
                 .AsNoTracking()

@@ -219,6 +219,8 @@ namespace Homeocentrum.Niga.API.Controllers
                 existing.SlotIntervalMinutes = interval;
                 existing.WorkStartTime = request.WorkStartTime.Value;
                 existing.WorkEndTime = request.WorkEndTime.Value;
+                // Bump so Slots scheduleUpdatedAt moves after hours edit.
+                existing.CreatedAt = DateTime.UtcNow;
             }
 
             return null;
@@ -282,6 +284,7 @@ namespace Homeocentrum.Niga.API.Controllers
                         existing.BreakStartTime = null;
                         existing.BreakEndTime = null;
                     }
+                    existing.CreatedAt = DateTime.UtcNow;
                 }
             }
 

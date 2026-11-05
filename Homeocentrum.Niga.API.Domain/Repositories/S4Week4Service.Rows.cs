@@ -181,6 +181,7 @@ public partial class S4Week4Service
         public string Status { get; set; } = "";
         public bool ConsentGranted { get; set; }
         public decimal? QuoteAmount { get; set; }
+        public decimal? DeliveryFee { get; set; }
         public string? PayMode { get; set; }
     }
 

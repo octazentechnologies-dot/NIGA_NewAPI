@@ -89,6 +89,12 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
 
         public bool HasSchedule { get; set; }
 
+        /// <summary>
+        /// When the DoctorDailySchedule row was last written (CreatedAt; bumped on Availability upsert).
+        /// Clients may compare to skip redundant UI work after refetch.
+        /// </summary>
+        public DateTime? ScheduleUpdatedAt { get; set; }
+
         public List<AppointmentSlotModel> Slots { get; set; } = new List<AppointmentSlotModel>();
     }
 }

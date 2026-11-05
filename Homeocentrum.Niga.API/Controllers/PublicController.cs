@@ -263,6 +263,11 @@ namespace Homeocentrum.Niga.API.Controllers
         [HttpGet("Doctors/{id:int}/Slots")]
         public async Task<IActionResult> GetDoctorSlots(int id, [FromQuery] DateTime date)
         {
+            // Fresh after admin/doctor schedule upsert — never CDN/proxy/browser cache.
+            Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+            Response.Headers["Pragma"] = "no-cache";
+            Response.Headers["Vary"] = "Authorization";
+
             await EnsureBookedByUserIdColumnAsync();
             if (date == default)
                 date = DateTime.Today;
@@ -288,6 +293,7 @@ namespace Homeocentrum.Niga.API.Controllers
                     appointmentDate = engine.AppointmentDate,
                     hasSchedule = engine.HasSchedule,
                     intervalMinutes = engine.IntervalMinutes,
+                    scheduleUpdatedAt = engine.ScheduleUpdatedAt,
                     slots = engine.Slots.Select(s => new { time = s.Time, label = s.Label, status = s.Status })
                 }
             });

@@ -368,8 +368,18 @@ public class MedicineRejectRequest
 
 public class MedicineQuoteRequest
 {
+    /// <summary>
+    /// Total payable (medicines + delivery). Existing clients keep this meaning.
+    /// </summary>
     [Range(0.01, 1000000)]
     public decimal Amount { get; set; }
+
+    /// <summary>
+    /// Optional delivery portion. When set: subtotalMedicines = Amount - DeliveryFee.
+    /// Omit or null = unknown (stored NULL; FE must not invent 0).
+    /// </summary>
+    [Range(0, 1000000)]
+    public decimal? DeliveryFee { get; set; }
 
     [StringLength(500)]
     public string? Note { get; set; }

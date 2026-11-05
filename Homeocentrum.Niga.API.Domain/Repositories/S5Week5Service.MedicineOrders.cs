@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Homeocentrum.Niga.API.Domain.Interfaces;
@@ -16,20 +17,35 @@ public partial class S5Week5Service
         var householdIds = await HouseholdPatientIdsAsync(caller.UserId, patientId);
         var idList = string.Join(",", householdIds);
         var orders = await _context.Database.SqlQuery<PatientOrderRow>($@"
-            SELECT o.MedicineOrderId, o.ErxSnapshotId, o.Status, o.QuoteAmount,
+            SELECT o.MedicineOrderId, o.ErxSnapshotId, o.Status, o.QuoteAmount, o.DeliveryFee AS OrderDeliveryFee,
                    COALESCE(NULLIF(o.PayMode, N''), pay.Method) AS PayMode, o.CreatedAt,
-                   o.PharmacyPartnerId, pp.Name AS PharmacyName, pp.Area AS PharmacyArea,
+                   o.PharmacyPartnerId, pp.Name AS PharmacyName, pp.Area AS PharmacyArea, pp.Mobile AS PharmacyMobile,
                    NULLIF(LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))), N'Dr.') AS DoctorName,
-                   q.Note AS QuoteNote
+                   q.Note AS QuoteNote, q.DeliveryFee AS QuoteDeliveryFee,
+                   del.At AS DeliveredAt,
+                   lic.LicenceNumber AS PharmacyLicenceNumber,
+                   CAST(CASE WHEN lic.LicenceNumber IS NOT NULL THEN 1 ELSE 0 END AS bit) AS PharmacyLicensed,
+                   pay.PaymentOrderId, pay.Amount AS PaymentAmount, pay.Status AS PaymentStatus,
+                   inv.InvoiceId, inv.Number AS InvoiceNumber, inv.PdfPath, inv.SecureDocumentId
             FROM dbo.MedicineOrder o
             LEFT JOIN dbo.PharmacyPartner pp ON pp.PharmacyPartnerId = o.PharmacyPartnerId
             LEFT JOIN dbo.ErxSnapshot e ON e.ErxSnapshotId = o.ErxSnapshotId
             LEFT JOIN dbo.Doctor d ON d.DoctorID = e.DoctorId
-            OUTER APPLY (SELECT TOP 1 mq.Note FROM dbo.MedicineQuote mq
+            OUTER APPLY (SELECT TOP 1 mq.Note, mq.DeliveryFee FROM dbo.MedicineQuote mq
                          WHERE mq.MedicineOrderId = o.MedicineOrderId ORDER BY mq.At DESC) q
-            OUTER APPLY (SELECT TOP 1 NULLIF(po.Method, N'') AS Method FROM dbo.PaymentOrder po
+            OUTER APPLY (SELECT TOP 1 ev.At FROM dbo.MedicineOrderEvent ev
+                         WHERE ev.MedicineOrderId = o.MedicineOrderId AND ev.Status = N'DELIVERED'
+                         ORDER BY ev.At DESC) del
+            OUTER APPLY (SELECT TOP 1 l.LicenceNumber FROM dbo.PharmacyLicence l
+                         WHERE l.PharmacyPartnerId = o.PharmacyPartnerId
+                           AND l.Status = N'ACTIVE' AND l.ExpiryDate >= CONVERT(date, GETDATE())
+                         ORDER BY l.ExpiryDate DESC) lic
+            OUTER APPLY (SELECT TOP 1 po.PaymentOrderId, NULLIF(po.Method, N'') AS Method, po.Amount, po.Status
+                         FROM dbo.PaymentOrder po
                          WHERE po.MedicineOrderId = o.MedicineOrderId AND po.Stream = N'MEDICINE'
                          ORDER BY po.PaymentOrderId DESC) pay
+            OUTER APPLY (SELECT TOP 1 i.InvoiceId, i.Number, i.PdfPath, i.SecureDocumentId
+                         FROM dbo.Invoice i WHERE i.PaymentOrderId = pay.PaymentOrderId) inv
             WHERE o.PatientId IN ({idList})
             ORDER BY o.MedicineOrderId DESC").ToListAsync();
         var items = await _context.Database.SqlQuery<PatientOrderItemRow>($@"
@@ -51,19 +67,39 @@ public partial class S5Week5Service
         var data = orders.Select(o =>
         {
             reviews.TryGetValue(o.MedicineOrderId, out var review);
+            var deliveryFee = o.QuoteDeliveryFee ?? o.OrderDeliveryFee;
+            var subtotalMedicines = o.QuoteAmount.HasValue && deliveryFee.HasValue
+                ? o.QuoteAmount.Value - deliveryFee.Value
+                : (decimal?)null;
+            var totalPaid = ResolveHistoryTotalPaid(o.QuoteAmount, o.PaymentAmount, o.PaymentStatus, o.PayMode, o.Status);
+            var contactMasked = MaskHistoryContact(o.PharmacyMobile);
             return new
             {
                 o.MedicineOrderId,
                 o.ErxSnapshotId,
+                rxLabel = o.ErxSnapshotId is > 0 ? $"eRx #{o.ErxSnapshotId}" : null,
                 o.Status,
                 o.QuoteAmount,
+                subtotalMedicines,
+                deliveryFee,
+                totalPaid,
+                currency = o.QuoteAmount.HasValue || totalPaid.HasValue ? "INR" : null,
                 o.QuoteNote,
                 o.PayMode,
                 o.CreatedAt,
+                deliveredAt = o.DeliveredAt,
                 o.PharmacyPartnerId,
                 o.PharmacyName,
                 o.PharmacyArea,
+                pharmacyLicenceNumber = o.PharmacyLicenceNumber,
+                pharmacyLicensed = o.PharmacyLicensed,
+                pharmacyContactMasked = contactMasked,
                 o.DoctorName,
+                paymentOrderId = o.PaymentOrderId,
+                invoiceId = o.InvoiceId,
+                invoiceNumber = o.InvoiceNumber,
+                invoicePdfAvailable = o.InvoiceId.HasValue
+                    && (o.SecureDocumentId.HasValue || !string.IsNullOrWhiteSpace(o.PdfPath)),
                 items = itemsByOrder[o.MedicineOrderId].Select(i => new { i.RemedyCode, i.RemedyName }),
                 events = eventsByOrder[o.MedicineOrderId].Select(e => new { e.Status, e.Detail, e.At }),
                 review = review == null ? null : new { review.Rating, review.Comment, review.CreatedAt },
@@ -71,6 +107,30 @@ public partial class S5Week5Service
         });
         return S4ActionResult.Ok(new { success = true, data });
     });
+
+    private static string? MaskHistoryContact(string? mobile)
+    {
+        var digits = new string((mobile ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length < 4) return null;
+        return "******" + digits[^4..];
+    }
+
+    private static decimal? ResolveHistoryTotalPaid(
+        decimal? quoteAmount,
+        decimal? paymentAmount,
+        string? paymentStatus,
+        string? payMode,
+        string? orderStatus)
+    {
+        var ps = (paymentStatus ?? "").Trim().ToUpperInvariant();
+        if (paymentAmount.HasValue && ps is "CAPTURED" or "COLLECTED" or "PAID" or "SUCCESS" or "COD_COLLECTED")
+            return paymentAmount;
+        var st = (orderStatus ?? "").Trim().ToUpperInvariant();
+        var pm = (payMode ?? "").Trim().ToUpperInvariant();
+        if (pm is "COD" or "CASH" || st is "PAID" or "COD_PENDING" or "READY" or "DISPATCHED" or "DELIVERED")
+            return quoteAmount;
+        return null;
+    }
 
     public Task<S4ActionResult> ReviewMedicineOrderAsync(int orderId, MedicineOrderReviewWrite request, S4Caller caller) => Guard(async () =>
     {
@@ -147,13 +207,26 @@ public partial class S5Week5Service
         public int? ErxSnapshotId { get; set; }
         public string? Status { get; set; }
         public decimal? QuoteAmount { get; set; }
+        public decimal? OrderDeliveryFee { get; set; }
+        public decimal? QuoteDeliveryFee { get; set; }
         public string? PayMode { get; set; }
         public DateTime? CreatedAt { get; set; }
+        public DateTime? DeliveredAt { get; set; }
         public int? PharmacyPartnerId { get; set; }
         public string? PharmacyName { get; set; }
         public string? PharmacyArea { get; set; }
+        public string? PharmacyMobile { get; set; }
+        public string? PharmacyLicenceNumber { get; set; }
+        public bool PharmacyLicensed { get; set; }
         public string? DoctorName { get; set; }
         public string? QuoteNote { get; set; }
+        public long? PaymentOrderId { get; set; }
+        public decimal? PaymentAmount { get; set; }
+        public string? PaymentStatus { get; set; }
+        public long? InvoiceId { get; set; }
+        public string? InvoiceNumber { get; set; }
+        public string? PdfPath { get; set; }
+        public long? SecureDocumentId { get; set; }
     }
 
     private sealed class PatientOrderItemRow

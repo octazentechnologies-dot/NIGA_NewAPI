@@ -1309,19 +1309,44 @@ public partial class S4Week4Service
             return Fail(403, "FORBIDDEN", "Only the pharmacy can quote.");
         if (request == null || request.Amount <= 0 || request.Amount > 1000000)
             return Fail(400, "VALIDATION", "Quote amount must be greater than 0 and at most 1000000.");
+        decimal? deliveryFee = request.DeliveryFee;
+        if (deliveryFee.HasValue)
+        {
+            if (deliveryFee.Value < 0 || deliveryFee.Value > 1000000)
+                return Fail(400, "VALIDATION", "deliveryFee must be between 0 and 1000000.");
+            if (deliveryFee.Value > request.Amount)
+                return Fail(400, "VALIDATION", "deliveryFee cannot exceed amount.");
+        }
         var order = await LoadMedicineAsync(orderId);
         if (order == null) return Fail(404, "NOT_FOUND", "Medicine order not found.");
         var denied = await EnsurePharmacyOwnsOrderAsync(order, caller);
         if (denied != null) return denied;
         if (!string.Equals(order.Status, "ACCEPTED", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "Quote is allowed only after accept.");
+        // amount = total payable; deliveryFee optional (NULL = unknown).
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO dbo.MedicineQuote (MedicineOrderId, Amount, Note, Status, At)
-            VALUES ({orderId}, {request.Amount}, {request.Note}, N'OPEN', {DateTime.Now})");
+            INSERT INTO dbo.MedicineQuote (MedicineOrderId, Amount, DeliveryFee, Note, Status, At)
+            VALUES ({orderId}, {request.Amount}, {deliveryFee}, {request.Note}, N'OPEN', {DateTime.Now})");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            UPDATE dbo.MedicineOrder SET QuoteAmount = {request.Amount}, Status = N'QUOTED' WHERE MedicineOrderId = {orderId}");
+            UPDATE dbo.MedicineOrder
+            SET QuoteAmount = {request.Amount}, DeliveryFee = {deliveryFee}, Status = N'QUOTED'
+            WHERE MedicineOrderId = {orderId}");
         await AddMedicineEventAsync(orderId, "QUOTED", request.Amount.ToString("0.00"));
-        return Ok(new { success = true, data = new { orderId, status = "QUOTED", amount = request.Amount } });
+        decimal? subtotalMedicines = deliveryFee.HasValue
+            ? request.Amount - deliveryFee.Value
+            : (decimal?)null;
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                orderId,
+                status = "QUOTED",
+                amount = request.Amount,
+                deliveryFee,
+                subtotalMedicines
+            }
+        });
     }
 
     public async Task<S4ActionResult> AcceptQuoteAsync(int orderId, S4Caller caller)
@@ -1361,12 +1386,66 @@ public partial class S4Week4Service
             SELECT RemedyCode, RemedyName FROM dbo.MedicineOrderItem WHERE MedicineOrderId = {orderId}").ToListAsync();
         var events = await _context.Database.SqlQuery<MedicineEventRow>($@"
             SELECT Status, Detail, At FROM dbo.MedicineOrderEvent WHERE MedicineOrderId = {orderId} ORDER BY At").ToListAsync();
+        var enrich = await _context.Database.SqlQuery<MedicineOrderEnrichRow>($@"
+            SELECT o.MedicineOrderId, o.ErxSnapshotId, o.QuoteAmount, o.DeliveryFee AS OrderDeliveryFee, o.PayMode, o.PharmacyPartnerId, o.Status,
+                   q.DeliveryFee AS QuoteDeliveryFee,
+                   del.At AS DeliveredAt,
+                   pp.Name AS PharmacyName, pp.Area AS PharmacyArea, pp.Mobile AS PharmacyMobile,
+                   lic.LicenceNumber AS PharmacyLicenceNumber,
+                   CAST(CASE WHEN lic.LicenceNumber IS NOT NULL THEN 1 ELSE 0 END AS bit) AS PharmacyLicensed,
+                   NULLIF(LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))), N'Dr.') AS DoctorName,
+                   e.Status AS ErxStatus,
+                   pay.PaymentOrderId, pay.Method AS PaymentMethod, pay.Status AS PaymentStatus,
+                   pay.Amount AS PaymentAmount, pay.GatewayPaymentId,
+                   inv.InvoiceId, inv.Number AS InvoiceNumber, inv.PdfPath, inv.SecureDocumentId
+            FROM dbo.MedicineOrder o
+            LEFT JOIN dbo.PharmacyPartner pp ON pp.PharmacyPartnerId = o.PharmacyPartnerId
+            LEFT JOIN dbo.ErxSnapshot e ON e.ErxSnapshotId = o.ErxSnapshotId
+            LEFT JOIN dbo.Doctor d ON d.DoctorID = e.DoctorId
+            OUTER APPLY (SELECT TOP 1 mq.DeliveryFee FROM dbo.MedicineQuote mq
+                         WHERE mq.MedicineOrderId = o.MedicineOrderId ORDER BY mq.At DESC) q
+            OUTER APPLY (SELECT TOP 1 ev.At FROM dbo.MedicineOrderEvent ev
+                         WHERE ev.MedicineOrderId = o.MedicineOrderId AND ev.Status = N'DELIVERED'
+                         ORDER BY ev.At DESC) del
+            OUTER APPLY (SELECT TOP 1 l.LicenceNumber FROM dbo.PharmacyLicence l
+                         WHERE l.PharmacyPartnerId = o.PharmacyPartnerId
+                           AND l.Status = N'ACTIVE' AND l.ExpiryDate >= CONVERT(date, GETDATE())
+                         ORDER BY l.ExpiryDate DESC) lic
+            OUTER APPLY (SELECT TOP 1 po.PaymentOrderId, po.Method, po.Status, po.Amount, po.GatewayPaymentId
+                         FROM dbo.PaymentOrder po
+                         WHERE po.MedicineOrderId = o.MedicineOrderId AND po.Stream = N'MEDICINE'
+                         ORDER BY po.PaymentOrderId DESC) pay
+            OUTER APPLY (SELECT TOP 1 i.InvoiceId, i.Number, i.PdfPath, i.SecureDocumentId
+                         FROM dbo.Invoice i WHERE i.PaymentOrderId = pay.PaymentOrderId) inv
+            WHERE o.MedicineOrderId = {orderId}").FirstOrDefaultAsync();
+
+        var deliveryFee = enrich?.QuoteDeliveryFee ?? enrich?.OrderDeliveryFee ?? order.DeliveryFee;
+        var quoteAmount = enrich?.QuoteAmount ?? order.QuoteAmount;
+        decimal? subtotalMedicines = quoteAmount.HasValue && deliveryFee.HasValue
+            ? quoteAmount.Value - deliveryFee.Value
+            : (decimal?)null;
+        var totalPaid = ResolveMedicineTotalPaid(quoteAmount, enrich?.PaymentAmount, enrich?.PaymentStatus, enrich?.PayMode ?? order.PayMode, order.Status);
+        var payMode = string.IsNullOrWhiteSpace(enrich?.PayMode)
+            ? (string.IsNullOrWhiteSpace(enrich?.PaymentMethod) ? order.PayMode : enrich!.PaymentMethod)
+            : enrich!.PayMode;
+        var erxId = enrich?.ErxSnapshotId > 0 ? enrich.ErxSnapshotId : (order.ErxSnapshotId > 0 ? order.ErxSnapshotId : (int?)null);
+        var canRequestRefill = false;
+        if (erxId is > 0
+            && string.Equals(enrich?.ErxStatus, "SIGNED", StringComparison.OrdinalIgnoreCase))
+        {
+            var pending = await _context.Database.SqlQuery<CountRow>($@"
+                SELECT COUNT(1) AS Value FROM dbo.RefillRequest
+                WHERE ErxSnapshotId = {erxId.Value} AND Status = N'PENDING'").FirstAsync();
+            canRequestRefill = pending.Value == 0;
+        }
+
         // B-028 — quoteAmount null when not stored (never invent 0). lines + events always arrays.
         var lines = items.Select(i => new
         {
             remedyName = reveal ? i.RemedyName : null,
             potencyCode = (string?)null,
-            quantityLabel = (string?)null
+            quantityLabel = (string?)null,
+            lineAmount = (decimal?)null
         }).ToList();
         var eventList = events.Select(e => new
         {
@@ -1381,8 +1460,29 @@ public partial class S4Week4Service
             {
                 medicineOrderId = order.MedicineOrderId,
                 status = order.Status,
-                quoteAmount = order.QuoteAmount,
-                currency = order.QuoteAmount.HasValue ? "INR" : null,
+                deliveredAt = enrich?.DeliveredAt,
+                quoteAmount,
+                subtotalMedicines,
+                deliveryFee,
+                totalPaid,
+                currency = quoteAmount.HasValue || totalPaid.HasValue ? "INR" : null,
+                payMode,
+                paymentReference = string.IsNullOrWhiteSpace(enrich?.GatewayPaymentId) ? null : enrich!.GatewayPaymentId,
+                paymentOrderId = enrich?.PaymentOrderId,
+                erxSnapshotId = erxId,
+                rxLabel = erxId is > 0 ? $"eRx #{erxId}" : null,
+                doctorName = string.IsNullOrWhiteSpace(enrich?.DoctorName) ? null : enrich!.DoctorName,
+                pharmacyPartnerId = enrich?.PharmacyPartnerId ?? order.PharmacyPartnerId,
+                pharmacyName = string.IsNullOrWhiteSpace(enrich?.PharmacyName) ? null : enrich!.PharmacyName,
+                pharmacyArea = string.IsNullOrWhiteSpace(enrich?.PharmacyArea) ? null : enrich!.PharmacyArea,
+                pharmacyLicenceNumber = string.IsNullOrWhiteSpace(enrich?.PharmacyLicenceNumber) ? null : enrich!.PharmacyLicenceNumber,
+                pharmacyLicensed = enrich?.PharmacyLicensed == true,
+                pharmacyContactMasked = MaskPharmacyContact(enrich?.PharmacyMobile),
+                invoiceId = enrich?.InvoiceId,
+                invoiceNumber = string.IsNullOrWhiteSpace(enrich?.InvoiceNumber) ? null : enrich!.InvoiceNumber,
+                invoicePdfAvailable = enrich != null
+                    && (enrich.SecureDocumentId.HasValue || !string.IsNullOrWhiteSpace(enrich.PdfPath)),
+                canRequestRefill,
                 lines,
                 events = eventList,
                 // Keep items for older clients.
@@ -1397,10 +1497,41 @@ public partial class S4Week4Service
             return await PharmacyQueueAsync(caller);
         if (caller.PatientId is null) return Fail(403, "FORBIDDEN", "A patient profile is required.");
         var patientId = caller.PatientId.Value;
-        var rows = await _context.Database.SqlQuery<MedicineRow>($@"
-            SELECT MedicineOrderId, ErxSnapshotId, PatientId, PharmacyPartnerId, Status, ConsentGranted, QuoteAmount, PayMode
-            FROM dbo.MedicineOrder WHERE PatientId = {patientId} ORDER BY MedicineOrderId DESC").ToListAsync();
-        return Ok(new { success = true, data = rows });
+        var rows = await _context.Database.SqlQuery<PatientMedicineListRow>($@"
+            SELECT o.MedicineOrderId, o.ErxSnapshotId, o.PatientId, o.PharmacyPartnerId, o.Status, o.ConsentGranted,
+                   o.QuoteAmount, o.DeliveryFee, o.PayMode,
+                   pp.Name AS PharmacyName,
+                   del.At AS DeliveredAt,
+                   pay.PaymentOrderId
+            FROM dbo.MedicineOrder o
+            LEFT JOIN dbo.PharmacyPartner pp ON pp.PharmacyPartnerId = o.PharmacyPartnerId
+            OUTER APPLY (SELECT TOP 1 ev.At FROM dbo.MedicineOrderEvent ev
+                         WHERE ev.MedicineOrderId = o.MedicineOrderId AND ev.Status = N'DELIVERED'
+                         ORDER BY ev.At DESC) del
+            OUTER APPLY (SELECT TOP 1 po.PaymentOrderId FROM dbo.PaymentOrder po
+                         WHERE po.MedicineOrderId = o.MedicineOrderId AND po.Stream = N'MEDICINE'
+                         ORDER BY po.PaymentOrderId DESC) pay
+            WHERE o.PatientId = {patientId}
+            ORDER BY o.MedicineOrderId DESC").ToListAsync();
+        return Ok(new
+        {
+            success = true,
+            data = rows.Select(r => new
+            {
+                r.MedicineOrderId,
+                r.ErxSnapshotId,
+                r.PatientId,
+                r.PharmacyPartnerId,
+                r.Status,
+                r.ConsentGranted,
+                r.QuoteAmount,
+                r.PayMode,
+                pharmacyName = r.PharmacyName,
+                deliveredAt = r.DeliveredAt,
+                deliveryFee = r.DeliveryFee,
+                paymentOrderId = r.PaymentOrderId
+            })
+        });
     }
 
     public async Task<S4ActionResult> CloneRefillOrderAsync(int refillId, S4Caller caller, MedicineRefillOrderRequest? request = null)
@@ -2799,8 +2930,43 @@ public partial class S4Week4Service
 
     private async Task<MedicineRow?> LoadMedicineAsync(int id)
         => await _context.Database.SqlQuery<MedicineRow>($@"
-            SELECT MedicineOrderId, ErxSnapshotId, PatientId, PharmacyPartnerId, Status, ConsentGranted, QuoteAmount, PayMode
+            SELECT MedicineOrderId, ErxSnapshotId, PatientId, PharmacyPartnerId, Status, ConsentGranted, QuoteAmount, DeliveryFee, PayMode
             FROM dbo.MedicineOrder WHERE MedicineOrderId = {id}").FirstOrDefaultAsync();
+
+    private static string? MaskPharmacyContact(string? mobile)
+    {
+        var digits = new string((mobile ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length < 4) return null;
+        return "******" + digits[^4..];
+    }
+
+    private static decimal? ResolveMedicineTotalPaid(
+        decimal? quoteAmount,
+        decimal? paymentAmount,
+        string? paymentStatus,
+        string? payMode,
+        string? orderStatus)
+    {
+        if (paymentAmount.HasValue && IsMedicinePaymentSettled(paymentStatus))
+            return paymentAmount;
+        if (IsMedicinePaidOrCod(orderStatus, payMode))
+            return quoteAmount;
+        return null;
+    }
+
+    private static bool IsMedicinePaymentSettled(string? status)
+    {
+        var s = (status ?? "").Trim().ToUpperInvariant();
+        return s is "CAPTURED" or "COLLECTED" or "PAID" or "SUCCESS" or "COD_COLLECTED";
+    }
+
+    private static bool IsMedicinePaidOrCod(string? orderStatus, string? payMode)
+    {
+        var st = (orderStatus ?? "").Trim().ToUpperInvariant();
+        var pm = (payMode ?? "").Trim().ToUpperInvariant();
+        if (pm is "COD" or "CASH") return true;
+        return st is "PAID" or "COD_PENDING" or "READY" or "DISPATCHED" or "DELIVERED";
+    }
 
     private async Task SetMedicineStatusAsync(int id, string status, string? detail)
     {
@@ -3189,6 +3355,51 @@ public partial class S4Week4Service
         public string Status { get; set; } = "";
         public string? Detail { get; set; }
         public DateTime At { get; set; }
+    }
+
+    private sealed class MedicineOrderEnrichRow
+    {
+        public int MedicineOrderId { get; set; }
+        public int ErxSnapshotId { get; set; }
+        public decimal? QuoteAmount { get; set; }
+        public decimal? OrderDeliveryFee { get; set; }
+        public decimal? QuoteDeliveryFee { get; set; }
+        public string? PayMode { get; set; }
+        public int? PharmacyPartnerId { get; set; }
+        public string? Status { get; set; }
+        public DateTime? DeliveredAt { get; set; }
+        public string? PharmacyName { get; set; }
+        public string? PharmacyArea { get; set; }
+        public string? PharmacyMobile { get; set; }
+        public string? PharmacyLicenceNumber { get; set; }
+        public bool PharmacyLicensed { get; set; }
+        public string? DoctorName { get; set; }
+        public string? ErxStatus { get; set; }
+        public long? PaymentOrderId { get; set; }
+        public string? PaymentMethod { get; set; }
+        public string? PaymentStatus { get; set; }
+        public decimal? PaymentAmount { get; set; }
+        public string? GatewayPaymentId { get; set; }
+        public long? InvoiceId { get; set; }
+        public string? InvoiceNumber { get; set; }
+        public string? PdfPath { get; set; }
+        public long? SecureDocumentId { get; set; }
+    }
+
+    private sealed class PatientMedicineListRow
+    {
+        public int MedicineOrderId { get; set; }
+        public int ErxSnapshotId { get; set; }
+        public int PatientId { get; set; }
+        public int? PharmacyPartnerId { get; set; }
+        public string Status { get; set; } = "";
+        public bool ConsentGranted { get; set; }
+        public decimal? QuoteAmount { get; set; }
+        public decimal? DeliveryFee { get; set; }
+        public string? PayMode { get; set; }
+        public string? PharmacyName { get; set; }
+        public DateTime? DeliveredAt { get; set; }
+        public long? PaymentOrderId { get; set; }
     }
 
     private sealed class NoteRow

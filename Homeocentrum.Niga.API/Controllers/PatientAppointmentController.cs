@@ -443,6 +443,11 @@ namespace Homeocentrum.Niga.API.Controllers
         {
             try
             {
+                // Same freshness contract as public Doctors/{id}/Slots.
+                Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+                Response.Headers["Pragma"] = "no-cache";
+                Response.Headers["Vary"] = "Authorization";
+
                 if (request.DoctorId <= 0)
                 {
                     return BadRequest("DoctorId is required");
