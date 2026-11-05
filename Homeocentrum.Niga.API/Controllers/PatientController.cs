@@ -761,23 +761,12 @@ namespace Homeocentrum.Niga.API.Controllers
             if (doctor == null)
                 return;
 
-            var hasCase = await _context.CaseEntryDetails.AnyAsync(c =>
-                c.PatientId == model.PatientID
-                && c.DoctorId == doctor.DoctorId
-                && c.DeleteStatus != true);
-            if (hasCase)
-                return;
-
-            _context.CaseEntryDetails.Add(new Homeocentrum.Niga.API.Domain.Master.CaseEntryDetail
-            {
-                PatientId = model.PatientID,
-                DoctorId = doctor.DoctorId,
-                UserId = doctor.UserId ?? model.LoggedInUser,
-                DateodFirstVisit = model.DateodFirstVisit ?? DateTime.Now,
-                RefBy = model.RefBy,
-                DeleteStatus = false
-            });
-            await _context.SaveChangesAsync();
+            await Homeocentrum.Niga.API.Domain.Helpers.ClinicPatientRoster.EnsureCaseAsync(
+                _context,
+                doctor.DoctorId,
+                model.PatientID,
+                doctor.UserId ?? model.LoggedInUser,
+                linkedVia: Homeocentrum.Niga.API.Domain.Helpers.RegistrationChannels.FromEntityType(model.EntityType));
         }
 
     }

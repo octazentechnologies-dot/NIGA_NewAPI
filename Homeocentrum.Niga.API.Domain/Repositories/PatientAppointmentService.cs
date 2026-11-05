@@ -163,6 +163,21 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 };
                 _context.PatientAppointments.Add(patientAppEntity);
                 _context.SaveChanges();
+                // Clinic patient roster is CaseEntryDetail-based — ensure on every new booking.
+                try
+                {
+                    ClinicPatientRoster.EnsureCase(
+                        _context,
+                        patientAppEntity.DoctorId,
+                        patientAppEntity.PatientId,
+                        patientAppEntity.UserId,
+                        linkedVia: patientAppEntity.BookingChannel ?? RegistrationChannels.Staff);
+                }
+                catch (Exception linkEx)
+                {
+                    System.Diagnostics.Trace.TraceWarning(
+                        "ClinicPatientRoster after SavePatientApp failed: {0}", linkEx.Message);
+                }
                 try
                 {
                     var patient = _context.Patients.AsNoTracking()
@@ -441,6 +456,24 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
             }
 
             _context.SaveChanges();
+
+            if (S3AppointmentRules.IsCompleted(appointment.Status))
+            {
+                try
+                {
+                    ClinicPatientRoster.EnsureCase(
+                        _context,
+                        appointment.DoctorId,
+                        appointment.PatientId,
+                        appointment.UserId,
+                        linkedVia: "CompletedVisit");
+                }
+                catch (Exception linkEx)
+                {
+                    System.Diagnostics.Trace.TraceWarning(
+                        "ClinicPatientRoster after complete failed: {0}", linkEx.Message);
+                }
+            }
 
             if (AppointmentLifecycle.IsOverdue(appointment.Status)
                 && !AppointmentLifecycle.IsOverdue(previousStatus))

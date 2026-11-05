@@ -58,6 +58,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 return locationError;
             }
 
+            var regChannel = RegistrationChannels.WebPortal;
             var userEntity = new UserMaster
             {
                 UserName = model.UserName.Trim(),
@@ -72,6 +73,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 DeleteStatus = false,
                 EnteredBy = model.UserName.Trim(),
                 EnteredDate = DateTime.Now,
+                RegistrationChannel = regChannel,
                 RoleId = 3,
                 UserStatus = true,
                 IsUserActivated = false
@@ -108,6 +110,7 @@ namespace Homeocentrum.Niga.API.Domain.Repositories
                 IsOnline = false,
                 EnteredBy = model.UserName.Trim(),
                 EnteredDate = DateTime.Now,
+                RegistrationChannel = regChannel,
                 DeleteStatus = false
             };
 

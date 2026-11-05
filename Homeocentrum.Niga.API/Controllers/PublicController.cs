@@ -418,9 +418,16 @@ namespace Homeocentrum.Niga.API.Controllers
                     Email = request.Email,
                     DeleteStatus = false,
                     EnteredDate = DateTime.UtcNow,
+                    EnteredBy = Homeocentrum.Niga.API.Domain.Helpers.RegistrationChannels.PatientApp,
+                    RegistrationChannel = Homeocentrum.Niga.API.Domain.Helpers.RegistrationChannels.PatientApp,
                     IsWhatsAppOptIn = false
                 };
                 _context.Patients.Add(patient);
+                await _context.SaveChangesAsync();
+            }
+            else if (string.IsNullOrWhiteSpace(patient.RegistrationChannel))
+            {
+                patient.RegistrationChannel = Homeocentrum.Niga.API.Domain.Helpers.RegistrationChannels.PatientApp;
                 await _context.SaveChangesAsync();
             }
 
@@ -466,6 +473,14 @@ namespace Homeocentrum.Niga.API.Controllers
             };
             _context.PatientAppointments.Add(appt);
             await _context.SaveChangesAsync();
+
+            // Clinic patient roster — All Patients / New Appointment dropdown needs CaseEntryDetail.
+            await Homeocentrum.Niga.API.Domain.Helpers.ClinicPatientRoster.EnsureCaseAsync(
+                _context,
+                id,
+                patient.PatientId,
+                doctor.UserId,
+                linkedVia: Homeocentrum.Niga.API.Domain.Helpers.RegistrationChannels.PatientApp);
 
             if (!string.IsNullOrEmpty(idemKey) && bodyFingerprint != null)
             {

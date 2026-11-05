@@ -1080,6 +1080,7 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.Property(e => e.EmailId).HasMaxLength(100);
             entity.Property(e => e.EnteredBy).HasMaxLength(50);
             entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            entity.Property(e => e.RegistrationChannel).HasMaxLength(40);
             entity.Property(e => e.FirstName).HasMaxLength(50);
             entity.Property(e => e.LastName).HasMaxLength(50);
             entity.Property(e => e.MiddleName).HasMaxLength(50);
@@ -2467,6 +2468,7 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.Property(e => e.WhatsAppOptInDate)
                 .HasColumnName("WhatsAppOptInDate")
                 .HasColumnType("datetime");
+            entity.Property(e => e.RegistrationChannel).HasMaxLength(40);
 
             entity.HasOne(d => d.Country).WithMany(p => p.Patients)
                 .HasForeignKey(d => d.CountryId)
@@ -3355,6 +3357,7 @@ namespace Homeocentrum.Niga.API.Domain.Data
             entity.Property(e => e.EmailId).HasMaxLength(50);
             entity.Property(e => e.EnteredBy).HasMaxLength(50);
             entity.Property(e => e.EnteredDate).HasColumnType("datetime");
+            entity.Property(e => e.RegistrationChannel).HasMaxLength(40);
             entity.Property(e => e.FirstName).HasMaxLength(250);
             entity.Property(e => e.LastName).HasMaxLength(250);
             entity.Property(e => e.MobileNo).HasMaxLength(20);

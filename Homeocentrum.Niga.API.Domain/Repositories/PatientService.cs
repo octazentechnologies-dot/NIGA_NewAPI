@@ -54,6 +54,12 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                 patientEntity.DeleteStatus = false;
                 patientEntity.IsWhatsAppOptIn = patientModel.IsWhatsAppOptIn;
                 patientEntity.WhatsAppOptInDate = patientModel.IsWhatsAppOptIn ? CurrentDate : null;
+                patientEntity.RegistrationChannel = RegistrationChannels.FromEntityType(
+                    string.IsNullOrWhiteSpace(patientModel.RegistrationChannel)
+                        ? patientModel.EntityType
+                        : patientModel.RegistrationChannel);
+                patientEntity.EnteredBy = patientEntity.RegistrationChannel;
+                patientEntity.EnteredDate = CurrentDate;
                 if (patientModel.DateOfBirth.HasValue)
                 {
                     var today = DateTime.Today;
@@ -345,6 +351,7 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
                     Age = p.Age,
                     IsWhatsAppOptIn = p.IsWhatsAppOptIn,
                     WhatsAppOptInDate = p.WhatsAppOptInDate,
+                    RegistrationChannel = p.RegistrationChannel,
                     LastVisitAt = context.PatientAppointments
                         .Where(a => a.PatientId == p.PatientId && a.DeleteStatus != true)
                         .Max(a => (DateTime?)a.AppointmentDate),
@@ -395,7 +402,10 @@ namespace Homeocentrum.Niga.API.Domain.Implementation
             var page = await PagedList<PatientModel>.CreateAsync(patientModelList.AsNoTracking(), parameter.PageNumber,
                 parameter.PageSize);
             foreach (var row in page)
+            {
                 row.Age ??= AgeFromDateOfBirth(row.DateOfBirth);
+                row.RegistrationChannelLabel = RegistrationChannels.DisplayLabel(row.RegistrationChannel);
+            }
             return page;
 
         }

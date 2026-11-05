@@ -48,6 +48,9 @@ public partial class Patient:AuditableEntities
 
     public DateTime? WhatsAppOptInDate { get; set; }
 
+    /// <summary>Platform of first create: PatientApp | DoctorApp | WebPortal | Reception | PublicBooking | Admin.</summary>
+    public string? RegistrationChannel { get; set; }
+
     public virtual ICollection<CaseEntryDetail> CaseEntryDetails { get; set; } = new List<CaseEntryDetail>();
 
     public virtual CountryMaster? Country { get; set; }

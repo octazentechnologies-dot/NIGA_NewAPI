@@ -33,6 +33,9 @@ public partial class Doctor
 
     public string? EnteredBy { get; set; }
 
+    /// <summary>Platform of first create: DoctorApp | WebPortal | Admin.</summary>
+    public string? RegistrationChannel { get; set; }
+
     public DateTime? EnteredDate { get; set; }
 
     public string? ChangedBy { get; set; }

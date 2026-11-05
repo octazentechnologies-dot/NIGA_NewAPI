@@ -27,6 +27,9 @@ public partial class UserMaster
 
     public string? EnteredBy { get; set; }
 
+    /// <summary>Platform of first signup: PatientApp | DoctorApp | WebPortal | Admin.</summary>
+    public string? RegistrationChannel { get; set; }
+
     public DateTime? EnteredDate { get; set; }
 
     public string? ChangedBy { get; set; }

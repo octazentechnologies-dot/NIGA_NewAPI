@@ -1,19 +1,28 @@
 # 08 — Dev / Stage / Production Schema Comparison
 
-**Last verified:** 2026-11-04
+**Last verified:** 2026-11-05
 
 | Kind | Dev | Stage | Production |
 |------|----:|------:|-----------:|
 | Tables | 293 | 293 | 293 |
-| Columns | 2614 | 2614 | 2614 |
-| Named indexes (excl. system `PK__%`) | aligned | aligned | aligned |
+| Columns | 2619 | 2619 | 2619 |
+| Named indexes (excl. system `PK__%`) | 205 | 205 | 205 |
 
-Missing-in-Stage vs Dev: **none**  
-Missing-in-Production vs Dev (2026-11-04): applied  
-- `12_Appointment_RescheduleCount.sql` → `PatientAppointment.RescheduleCount`  
-- `11_RubricRemedyDetails_Repertorize_Index.sql` → `IX_RubricRemedyDetails_SubSection_Active`  
+Missing-in-Stage vs Dev: **none** (0 column / 0 table diffs)  
+Missing-in-Production vs Dev: **none** (0 column / 0 table diffs)
 
-Pre-sync Production backup:  
+### Recent markers (all OK on Dev / Stage / Production)
+
+| Marker | Script |
+|--------|--------|
+| `PatientAppointment.RescheduleCount` | `12_Appointment_RescheduleCount.sql` |
+| `MedicineOrder.DeliveryFee` / `MedicineQuote.DeliveryFee` | `13_MedicineOrder_DeliveryFee.sql` |
+| `UserMaster` / `Patient` / `Doctor`.`RegistrationChannel` | `14_ClinicPatientRoster_And_RegistrationChannel.sql` |
+| `PatientAppointment.BookingChannel` / `BookedByUserId` | earlier S6 runtime gaps |
+
+`14_ClinicPatientRoster_And_RegistrationChannel.sql` re-applied 2026-11-05 on all three (idempotent; 0 new backfill rows — prior backfill already complete). Remaining appointment pairs without an active case are deleted/missing patients only — intentionally skipped.
+
+Pre-sync Production backup (prior full sync):  
 `D:\SQL_Backups\HomeoCentrum_Production\HomeoCentrum_Production_PreSchemaSync_2026-11-04_203724.bak`
 
 Business row data intentionally not synchronized.
