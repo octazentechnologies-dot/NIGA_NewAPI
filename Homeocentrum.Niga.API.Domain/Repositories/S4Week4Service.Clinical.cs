@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
@@ -505,7 +506,8 @@ public partial class S4Week4Service
         if (snapshot == null) return Fail(404, "NOT_FOUND", await UnsignedErxReasonAsync(patientAppId));
         var access = await EnsureSnapshotAccessAsync(snapshot, caller, patientView);
         if (access != null) return access;
-        var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, revealNames: !patientView);
+        // Always reveal remedy names (patient / doctor / pharmacy). Name-lock deferred to future scope.
+        var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, revealNames: true);
         object itemPayload = items;
         if (!string.Equals(snapshot.Status, "SIGNED", StringComparison.OrdinalIgnoreCase) && items.Count == 0)
         {
@@ -525,7 +527,7 @@ public partial class S4Week4Service
                     prescriptionRemedyDetailId = line.PrescriptionRemedyId,
                     remedyId = line.RemedyId,
                     remedyCode = "R" + sequence.ToString("D4"),
-                    remedyName = patientView ? "" : line.RemedyName,
+                    remedyName = line.RemedyName,
                     potencyCode = line.PotencyCode,
                     dose = line.Dose,
                     frequency = line.Frequency,
@@ -812,8 +814,8 @@ public partial class S4Week4Service
         if (snapshot.Status != "SIGNED")
             return Fail(409, "CONFLICT", "Only a signed prescription can be printed.");
 
-        var reveal = !caller.IsPatient || await PharmacyAcceptedAsync(snapshot.ErxSnapshotId);
-        var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, reveal);
+        // Always show remedy names on PDF (name-lock deferred).
+        var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, revealNames: true);
         var fileName = "eRx-" + snapshot.ErxSnapshotId + ".pdf";
 
         var doctor = await _context.Doctors.AsNoTracking()
@@ -839,7 +841,7 @@ public partial class S4Week4Service
         };
         var lines = items.Select(i => new Helpers.ErxPdfLine
         {
-            Remedy = reveal && !string.IsNullOrWhiteSpace(i.RemedyName) ? i.RemedyName : i.RemedyCode,
+            Remedy = !string.IsNullOrWhiteSpace(i.RemedyName) ? i.RemedyName! : i.RemedyCode,
             Potency = i.PotencyCode,
             Dose = i.Dose,
             Frequency = i.Frequency,
@@ -848,7 +850,7 @@ public partial class S4Week4Service
         }).ToList();
         var labLabels = ParseLabOrderLabels(snapshot.LabOrdersJson);
         var pdf = Helpers.ErxPdfBuilder.Build(header, lines, labLabels);
-        if (reveal && !await _context.SecureDocuments.AnyAsync(d => d.OwnerType == "ErxPdf" && d.OwnerId == snapshot.ErxSnapshotId))
+        if (!await _context.SecureDocuments.AnyAsync(d => d.OwnerType == "ErxPdf" && d.OwnerId == snapshot.ErxSnapshotId))
             await StorePdfAsync(pdf, fileName, "ErxPdf", snapshot.ErxSnapshotId, caller.UserId);
         return S4ActionResult.File(pdf, fileName, "application/pdf");
     }
@@ -898,10 +900,11 @@ public partial class S4Week4Service
         {
             if (caller.PatientId is null || caller.UserId <= 0)
                 return Fail(403, "FORBIDDEN", "A patient profile is required.");
-            var household = await ListAccessiblePatientIdsForVisitsAsync(caller.UserId, caller.PatientId.Value);
+            var household = SqlIntIdList.Normalize(
+                await ListAccessiblePatientIdsForVisitsAsync(caller.UserId, caller.PatientId.Value));
             if (household.Count == 0) household.Add(caller.PatientId.Value);
-            var idList = string.Join(",", household);
-            var mine = await _context.Database.SqlQueryRaw<RefillListRow>($@"
+            var idsJson = SqlIntIdList.ToJsonArray(household);
+            var mine = await _context.Database.SqlQuery<RefillListRow>($@"
                 SELECT r.RefillRequestId, r.ErxSnapshotId, r.PatientId, r.DoctorId, r.Status, r.Reason, r.CreatedAt, r.DecidedAt,
                        p.PatientName, LTRIM(RTRIM(CONCAT(N'Dr. ', d.FirstName, N' ', d.LastName))) AS DoctorName, s.PatientAppId,
                        s.SignedAt,
@@ -911,7 +914,7 @@ public partial class S4Week4Service
                 LEFT JOIN dbo.Patient p ON p.PatientId = r.PatientId
                 LEFT JOIN dbo.Doctor d ON d.DoctorID = r.DoctorId
                 LEFT JOIN dbo.ErxSnapshot s ON s.ErxSnapshotId = r.ErxSnapshotId
-                WHERE r.PatientId IN ({idList})
+                WHERE r.PatientId IN (SELECT CAST([value] AS int) FROM OPENJSON({idsJson}))
                 ORDER BY r.CreatedAt DESC").ToListAsync();
             return Ok(new { success = true, data = mine });
         }
@@ -962,7 +965,7 @@ public partial class S4Week4Service
         {
             return Fail(403, "FORBIDDEN", "This refill is for another clinic.");
         }
-        var items = await LoadSnapshotItemsAsync(row.ErxSnapshotId, revealNames: !caller.IsPatient);
+        var items = await LoadSnapshotItemsAsync(row.ErxSnapshotId, revealNames: true);
         var snapshot = await LoadSnapshotAsync(row.ErxSnapshotId);
         return Ok(new { success = true, data = new { refill = row, signedAt = snapshot?.SignedAt, items } });
     }
@@ -1009,6 +1012,8 @@ public partial class S4Week4Service
         if (request == null) return Fail(400, "VALIDATION", "Body is required.");
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length < 2)
             return Fail(400, "VALIDATION", "Pharmacy name is required.");
+        if (string.IsNullOrWhiteSpace(request.OwnerName) || request.OwnerName.Trim().Length < 2)
+            return Fail(400, "VALIDATION", "Owner name is required.");
         var mobile = Digits(request.Mobile);
         if (mobile.Length is < 8 or > 15)
             return Fail(400, "VALIDATION", "A valid mobile is required.");
@@ -1016,47 +1021,363 @@ public partial class S4Week4Service
             return Fail(400, "VALIDATION", "Licence number is required.");
         if (request.ExpiryDate == null || request.ExpiryDate.Value.Date < DateTime.Today)
             return Fail(400, "VALIDATION", "Licence expiry must be today or later.");
+        if (request.CountryId is null or <= 0)
+            return Fail(400, "VALIDATION", "Country is required.");
+        if (string.IsNullOrWhiteSpace(request.AddressLine1) || request.AddressLine1.Trim().Length < 3)
+            return Fail(400, "VALIDATION", "Address line 1 is required.");
         if (!caller.IsAdmin && !caller.IsPharmacy)
             return Fail(403, "FORBIDDEN", "Pharmacy onboarding is for a pharmacy partner or admin.");
 
+        await EnsurePharmacyOnboardingSchemaAsync();
+
+        var postal = TrimOrNull(request.PostalCode, 20);
         var id = (int)await InsertAsync(
-            @"INSERT INTO dbo.PharmacyPartner (UserId, Name, Mobile, Area, Status, CreatedAt)
-              VALUES (@User, @Name, @Mobile, @Area, N'PENDING', @At);
+            @"INSERT INTO dbo.PharmacyPartner
+                (UserId, Name, OwnerName, Mobile, Area, Status, CreatedAt, UpdatedAt,
+                 CountryId, StateId, DistrictId, CityId, PinCodeId,
+                 AddressLine1, AddressLine2, Landmark, PostalCode)
+              VALUES
+                (@User, @Name, @Owner, @Mobile, @Area, N'PENDING', @At, @At,
+                 @CountryId, @StateId, @DistrictId, @CityId, @PinCodeId,
+                 @Line1, @Line2, @Landmark, @Postal);
               SELECT CAST(SCOPE_IDENTITY() AS bigint);",
             P("@User", caller.IsPharmacy ? caller.UserId : null),
             P("@Name", request.Name.Trim(), 200),
+            P("@Owner", request.OwnerName.Trim(), 200),
             P("@Mobile", mobile, 20),
             P("@Area", TrimOrNull(request.Area, 120), 120),
-            P("@At", DateTime.Now));
-        await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO dbo.PharmacyLicence (PharmacyPartnerId, LicenceNumber, ExpiryDate, Status)
-            VALUES ({id}, {request.LicenceNumber.Trim()}, {request.ExpiryDate.Value.Date}, N'ACTIVE')");
-        return Ok(new { success = true, message = "Pharmacy stored as pending until admin activation.", data = new { pharmacyPartnerId = id, status = "PENDING" } });
+            P("@At", DateTime.Now),
+            P("@CountryId", request.CountryId),
+            P("@StateId", request.StateId),
+            P("@DistrictId", request.DistrictId),
+            P("@CityId", request.CityId),
+            P("@PinCodeId", request.PinCodeId),
+            P("@Line1", request.AddressLine1.Trim(), 250),
+            P("@Line2", TrimOrNull(request.AddressLine2, 250), 250),
+            P("@Landmark", TrimOrNull(request.Landmark, 200), 200),
+            P("@Postal", postal, 20));
+
+        var licenceId = (int)await InsertAsync(
+            @"INSERT INTO dbo.PharmacyLicence (PharmacyPartnerId, LicenceNumber, ExpiryDate, Status)
+              VALUES (@Partner, @Licence, @Expiry, N'ACTIVE');
+              SELECT CAST(SCOPE_IDENTITY() AS bigint);",
+            P("@Partner", id),
+            P("@Licence", request.LicenceNumber.Trim(), 80),
+            P("@Expiry", request.ExpiryDate.Value.Date));
+
+        if (request.DocumentIds is { Count: > 0 })
+        {
+            foreach (var docId in request.DocumentIds.Where(x => x > 0).Distinct())
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dbo.PharmacyLicenceDocument
+                        (PharmacyPartnerId, PharmacyLicenceId, SecureDocumentId, DocumentType, CreatedAt, CreatedBy)
+                    VALUES ({id}, {licenceId}, {docId}, N'Licence', {DateTime.Now}, {caller.UserId})");
+            }
+        }
+
+        try
+        {
+            await _clinicInbox.NotifyAdminUsersAsync(
+                "New pharmacy pending activation",
+                $"{request.Name.Trim()} (owner {request.OwnerName.Trim()}) submitted onboarding.",
+                $"/admin/pharmacy-partners?id={id}");
+            await _clinicInbox.NotifyPharmacyLifecycleAsync(
+                id,
+                "Pharmacy submitted",
+                "Your pharmacy is pending admin verification and activation.",
+                "/pharmacy/onboarding");
+        }
+        catch
+        {
+            /* onboard saved */
+        }
+
+        return Ok(new
+        {
+            success = true,
+            message = "Pharmacy stored as pending until admin activation.",
+            data = new { pharmacyPartnerId = id, pharmacyLicenceId = licenceId, status = "PENDING" }
+        });
     }
 
     public async Task<S4ActionResult> ActivatePharmacyAsync(int pharmacyId, S4Caller caller)
     {
         if (!caller.IsAdmin) return Fail(403, "FORBIDDEN", "Only admin can activate a pharmacy.");
-        var count = await _context.Database.SqlQuery<CountRow>($@"
-            SELECT COUNT(1) AS Value FROM dbo.PharmacyPartner WHERE PharmacyPartnerId = {pharmacyId}").FirstAsync();
-        if (count.Value == 0) return Fail(404, "NOT_FOUND", "Pharmacy not found.");
+        await EnsurePharmacyOnboardingSchemaAsync();
+        var row = await LoadPartnerRowAsync(pharmacyId);
+        if (row == null) return Fail(404, "NOT_FOUND", "Pharmacy not found.");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            UPDATE dbo.PharmacyPartner SET Status = N'ACTIVE' WHERE PharmacyPartnerId = {pharmacyId}");
+            UPDATE dbo.PharmacyPartner
+            SET Status = N'ACTIVE', DecisionReason = NULL, DecidedAt = {DateTime.Now}, UpdatedAt = {DateTime.Now}
+            WHERE PharmacyPartnerId = {pharmacyId}");
+        try
+        {
+            await _clinicInbox.NotifyPharmacyLifecycleAsync(
+                pharmacyId,
+                "Pharmacy activated",
+                $"{row.Name} is now active and can receive medicine orders.",
+                "/pharmacy/orders");
+        }
+        catch { /* status saved */ }
         return Ok(new { success = true, data = new { pharmacyId, status = "ACTIVE" } });
+    }
+
+    public async Task<S4ActionResult> RejectPharmacyAsync(int pharmacyId, string? reason, S4Caller caller)
+    {
+        if (!caller.IsAdmin) return Fail(403, "FORBIDDEN", "Only admin can reject a pharmacy.");
+        await EnsurePharmacyOnboardingSchemaAsync();
+        var row = await LoadPartnerRowAsync(pharmacyId);
+        if (row == null) return Fail(404, "NOT_FOUND", "Pharmacy not found.");
+        if (!string.Equals(row.Status, "PENDING", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(row.Status, "CLOSE_REQUESTED", StringComparison.OrdinalIgnoreCase))
+            return Fail(409, "CONFLICT", "Only pending (or close-requested) pharmacies can be rejected.");
+        var note = TrimOrNull(reason, 500) ?? "Rejected by admin.";
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.PharmacyPartner
+            SET Status = N'REJECTED', DecisionReason = {note}, DecidedAt = {DateTime.Now}, UpdatedAt = {DateTime.Now}
+            WHERE PharmacyPartnerId = {pharmacyId}");
+        try
+        {
+            await _clinicInbox.NotifyPharmacyLifecycleAsync(
+                pharmacyId,
+                "Pharmacy rejected",
+                $"Admin rejected {row.Name}. Reason: {note}",
+                "/pharmacy/onboarding");
+        }
+        catch { /* status saved */ }
+        return Ok(new { success = true, data = new { pharmacyId, status = "REJECTED", reason = note } });
     }
 
     public async Task<S4ActionResult> SuspendPharmacyAsync(int pharmacyId, S4Caller caller)
     {
         if (!caller.IsAdmin) return Fail(403, "FORBIDDEN", "Only admin can suspend a pharmacy.");
-        var row = await _context.Database.SqlQuery<SellerRow>($@"
-            SELECT PharmacyPartnerId, Name, Area, Status
-            FROM dbo.PharmacyPartner WHERE PharmacyPartnerId = {pharmacyId}").FirstOrDefaultAsync();
+        await EnsurePharmacyOnboardingSchemaAsync();
+        var row = await LoadPartnerRowAsync(pharmacyId);
         if (row == null) return Fail(404, "NOT_FOUND", "Pharmacy not found.");
         if (string.Equals(row.Status, "SUSPENDED", StringComparison.OrdinalIgnoreCase))
             return Ok(new { success = true, data = new { pharmacyId, status = "SUSPENDED" }, message = "Pharmacy is already suspended." });
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
-            UPDATE dbo.PharmacyPartner SET Status = N'SUSPENDED' WHERE PharmacyPartnerId = {pharmacyId}");
+            UPDATE dbo.PharmacyPartner
+            SET Status = N'SUSPENDED', UpdatedAt = {DateTime.Now}
+            WHERE PharmacyPartnerId = {pharmacyId}");
+        try
+        {
+            await _clinicInbox.NotifyPharmacyLifecycleAsync(
+                pharmacyId,
+                "Pharmacy suspended",
+                $"{row.Name} was suspended by admin and is excluded from seller routing.",
+                "/pharmacy/onboarding");
+        }
+        catch { /* status saved */ }
         return Ok(new { success = true, data = new { pharmacyId, status = "SUSPENDED" } });
+    }
+
+    public async Task<S4ActionResult> RequestPharmacyCloseAsync(int pharmacyId, string? reason, S4Caller caller)
+    {
+        if (!caller.IsAdmin && !caller.IsPharmacy)
+            return Fail(403, "FORBIDDEN", "Close request is for the pharmacy partner or admin.");
+        await EnsurePharmacyOnboardingSchemaAsync();
+        var row = await LoadPartnerRowAsync(pharmacyId);
+        if (row == null) return Fail(404, "NOT_FOUND", "Pharmacy not found.");
+        if (!caller.IsAdmin && row.UserId != caller.UserId)
+            return Fail(403, "FORBIDDEN", "You can only close your own pharmacy.");
+        if (!string.Equals(row.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(row.Status, "SUSPENDED", StringComparison.OrdinalIgnoreCase))
+            return Fail(409, "CONFLICT", "Only active or suspended pharmacies can request close.");
+        var note = TrimOrNull(reason, 500) ?? "Close requested by pharmacy.";
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.PharmacyPartner
+            SET Status = N'CLOSE_REQUESTED', DecisionReason = {note}, UpdatedAt = {DateTime.Now}
+            WHERE PharmacyPartnerId = {pharmacyId}");
+        try
+        {
+            await _clinicInbox.NotifyAdminUsersAsync(
+                "Pharmacy close requested",
+                $"{row.Name} requested close. Reason: {note}",
+                $"/admin/pharmacy-partners?id={pharmacyId}");
+            await _clinicInbox.NotifyPharmacyLifecycleAsync(
+                pharmacyId,
+                "Close request submitted",
+                "Admin will verify and approve closing this pharmacy.",
+                "/pharmacy/onboarding");
+        }
+        catch { /* status saved */ }
+        return Ok(new { success = true, data = new { pharmacyId, status = "CLOSE_REQUESTED", reason = note } });
+    }
+
+    public async Task<S4ActionResult> ApprovePharmacyCloseAsync(int pharmacyId, string? reason, S4Caller caller)
+    {
+        if (!caller.IsAdmin) return Fail(403, "FORBIDDEN", "Only admin can approve pharmacy close.");
+        await EnsurePharmacyOnboardingSchemaAsync();
+        var row = await LoadPartnerRowAsync(pharmacyId);
+        if (row == null) return Fail(404, "NOT_FOUND", "Pharmacy not found.");
+        if (!string.Equals(row.Status, "CLOSE_REQUESTED", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(row.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(row.Status, "SUSPENDED", StringComparison.OrdinalIgnoreCase))
+            return Fail(409, "CONFLICT", "Pharmacy is not eligible for close approval.");
+        var note = TrimOrNull(reason, 500) ?? row.DecisionReason ?? "Closed by admin.";
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE dbo.PharmacyPartner
+            SET Status = N'CLOSED', DecisionReason = {note}, DecidedAt = {DateTime.Now}, UpdatedAt = {DateTime.Now}
+            WHERE PharmacyPartnerId = {pharmacyId}");
+        try
+        {
+            await _clinicInbox.NotifyPharmacyLifecycleAsync(
+                pharmacyId,
+                "Pharmacy closed",
+                $"{row.Name} is closed and will no longer receive medicine orders.",
+                "/pharmacy/onboarding");
+        }
+        catch { /* status saved */ }
+        return Ok(new { success = true, data = new { pharmacyId, status = "CLOSED", reason = note } });
+    }
+
+    public async Task<S4ActionResult> WithdrawPharmacyAsync(int pharmacyId, S4Caller caller)
+    {
+        if (!caller.IsAdmin && !caller.IsPharmacy)
+            return Fail(403, "FORBIDDEN", "Withdraw is for the pharmacy partner or admin.");
+        await EnsurePharmacyOnboardingSchemaAsync();
+        var row = await LoadPartnerRowAsync(pharmacyId);
+        if (row == null) return Fail(404, "NOT_FOUND", "Pharmacy not found.");
+        if (!caller.IsAdmin && row.UserId != caller.UserId)
+            return Fail(403, "FORBIDDEN", "You can only withdraw your own pharmacy.");
+        if (!string.Equals(row.Status, "PENDING", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(row.Status, "REJECTED", StringComparison.OrdinalIgnoreCase))
+            return Fail(409, "CONFLICT", "Only pending or rejected pharmacies can be withdrawn/deleted.");
+
+        var orderCount = await _context.Database.SqlQuery<CountRow>($@"
+            SELECT COUNT(1) AS Value FROM dbo.MedicineOrder WHERE PharmacyPartnerId = {pharmacyId}").FirstAsync();
+        if (orderCount.Value > 0)
+            return Fail(409, "CONFLICT", "This pharmacy has order history. Request close instead of delete.");
+
+        try
+        {
+            await _clinicInbox.NotifyPharmacyLifecycleAsync(
+                pharmacyId,
+                "Pharmacy withdrawn",
+                $"{row.Name} was removed from onboarding.",
+                "/pharmacy/onboarding");
+            await _clinicInbox.NotifyAdminUsersAsync(
+                "Pharmacy withdrawn",
+                $"{row.Name} was withdrawn before activation.",
+                "/admin/pharmacy-partners");
+        }
+        catch { /* best-effort */ }
+
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            DELETE FROM dbo.PharmacyLicenceDocument WHERE PharmacyPartnerId = {pharmacyId}");
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            DELETE FROM dbo.PharmacyLicence WHERE PharmacyPartnerId = {pharmacyId}");
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            DELETE FROM dbo.PharmacyConfig WHERE PharmacyPartnerId = {pharmacyId}");
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            DELETE FROM dbo.SellerRoutingRule WHERE PharmacyPartnerId = {pharmacyId}");
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            DELETE FROM dbo.PharmacyPartner WHERE PharmacyPartnerId = {pharmacyId}");
+
+        return Ok(new { success = true, data = new { pharmacyId, status = "DELETED" } });
+    }
+
+    public async Task<S4ActionResult> SavePharmacyDocumentAsync(
+        int pharmacyId,
+        IFormFile file,
+        S4Caller caller,
+        string? documentType = null,
+        string? description = null)
+    {
+        if (file == null || file.Length <= 0)
+            return Fail(400, "VALIDATION", "A document file is required.");
+        if (file.Length > 10 * 1024 * 1024)
+            return Fail(400, "VALIDATION", "Document must be 10 MB or smaller.");
+        await EnsurePharmacyOnboardingSchemaAsync();
+        var row = await LoadPartnerRowAsync(pharmacyId);
+        if (row == null) return Fail(404, "NOT_FOUND", "Pharmacy not found.");
+        if (!caller.IsAdmin && !(caller.IsPharmacy && row.UserId == caller.UserId))
+            return Fail(403, "FORBIDDEN", "You cannot upload documents for this pharmacy.");
+
+        var type = string.IsNullOrWhiteSpace(documentType) ? "Licence" : documentType.Trim();
+        if (type.Length > 40) type = type[..40];
+        var note = TrimOrNull(description, 500);
+
+        await using var stream = file.OpenReadStream();
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory);
+        var bytes = memory.ToArray();
+        (string Path, long DocumentId, DateTime CreatedAt) stored;
+        try
+        {
+            stored = await StorePdfAsync(
+                bytes,
+                Path.GetFileName(file.FileName),
+                "Pharmacy",
+                pharmacyId,
+                caller.UserId,
+                file.ContentType,
+                type,
+                note);
+        }
+        catch (InvalidOperationException)
+        {
+            return Fail(502, "STORAGE", "File storage is unavailable.");
+        }
+
+        var licenceId = await _context.Database.SqlQuery<CountRow>($@"
+            SELECT TOP 1 PharmacyLicenceId AS Value
+            FROM dbo.PharmacyLicence
+            WHERE PharmacyPartnerId = {pharmacyId}
+            ORDER BY PharmacyLicenceId DESC").FirstOrDefaultAsync();
+
+        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO dbo.PharmacyLicenceDocument
+                (PharmacyPartnerId, PharmacyLicenceId, SecureDocumentId, DocumentType, CreatedAt, CreatedBy)
+            VALUES ({pharmacyId}, {(licenceId?.Value > 0 ? licenceId.Value : (int?)null)}, {stored.DocumentId}, {type}, {DateTime.Now}, {caller.UserId})");
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                pharmacyPartnerId = pharmacyId,
+                documentId = stored.DocumentId,
+                documentType = type,
+                fileName = Path.GetFileName(file.FileName),
+                uploadedAt = stored.CreatedAt
+            }
+        });
+    }
+
+    public async Task<S4ActionResult> ListPharmacyDocumentsAsync(int pharmacyId, S4Caller caller)
+    {
+        await EnsurePharmacyOnboardingSchemaAsync();
+        var row = await LoadPartnerRowAsync(pharmacyId);
+        if (row == null) return Fail(404, "NOT_FOUND", "Pharmacy not found.");
+        if (!caller.IsAdmin && !(caller.IsPharmacy && row.UserId == caller.UserId))
+            return Fail(403, "FORBIDDEN", "You cannot list documents for this pharmacy.");
+
+        var docs = await _context.Database.SqlQuery<PharmacyDocRow>($@"
+            SELECT d.PharmacyLicenceDocumentId, d.PharmacyPartnerId, d.PharmacyLicenceId, d.SecureDocumentId,
+                   d.DocumentType, d.CreatedAt, s.FileName, s.Mime
+            FROM dbo.PharmacyLicenceDocument d
+            LEFT JOIN dbo.SecureDocument s ON s.SecureDocumentId = d.SecureDocumentId
+            WHERE d.PharmacyPartnerId = {pharmacyId}
+            ORDER BY d.PharmacyLicenceDocumentId DESC").ToListAsync();
+
+        return Ok(new
+        {
+            success = true,
+            data = docs.Select(d => new
+            {
+                pharmacyLicenceDocumentId = d.PharmacyLicenceDocumentId,
+                pharmacyPartnerId = d.PharmacyPartnerId,
+                pharmacyLicenceId = d.PharmacyLicenceId,
+                documentId = d.SecureDocumentId,
+                documentType = d.DocumentType,
+                fileName = d.FileName,
+                mime = d.Mime,
+                uploadedAt = d.CreatedAt
+            })
+        });
     }
 
     public async Task<S4ActionResult> SweepLicencesAsync(S4Caller caller)
@@ -1074,54 +1395,302 @@ public partial class S4Week4Service
 
     public async Task<S4ActionResult> ListSellersAsync(string? area)
     {
-        var filter = (area ?? "").Trim();
-        var rows = await _context.Database.SqlQuery<SellerRow>($@"
-            SELECT p.PharmacyPartnerId, p.Name, p.Area, p.Status
-            FROM dbo.PharmacyPartner p
-            WHERE p.Status = N'ACTIVE'
-              AND EXISTS (
-                    SELECT 1 FROM dbo.PharmacyLicence l
-                    WHERE l.PharmacyPartnerId = p.PharmacyPartnerId AND l.Status = N'ACTIVE' AND l.ExpiryDate >= CONVERT(date, GETDATE()))
-              AND ({filter} = N'' OR p.Area = {filter})
-              AND NOT EXISTS (
-                    SELECT 1 FROM dbo.SellerRoutingRule r
-                    WHERE r.PharmacyPartnerId = p.PharmacyPartnerId
-                      AND r.OpenTime IS NOT NULL AND r.CloseTime IS NOT NULL
-                      AND (CONVERT(time, GETDATE()) < r.OpenTime OR CONVERT(time, GETDATE()) > r.CloseTime))").ToListAsync();
+        var catalog = await LoadSellerCatalogAsync(area);
         return Ok(new
         {
             success = true,
-            data = rows.Select(r => new
+            data = catalog.Select(r => new
             {
                 r.PharmacyPartnerId,
                 r.Name,
-                r.Area,
+                area = r.PrimaryArea,
                 r.Status,
+                areas = r.Areas,
+                openTime = r.OpenTimeLabel,
+                closeTime = r.CloseTimeLabel,
+                workingDays = r.WorkingDays,
+                openNow = r.OpenNow,
+                deliveryFee = r.DeliveryFee,
+                freeDeliveryAbove = r.FreeDeliveryAbove,
+                capacity = r.Capacity,
+                configured = r.Configured,
+                serviceable = r.Serviceable,
+                closedReason = r.ClosedReason,
                 priceTotal = (decimal?)null,
-                deliveryFee = (decimal?)null,
                 etaMinutes = (int?)null,
                 fulfilPercent = (decimal?)null,
-                distanceKm = (decimal?)null,
-                serviceable = (bool?)null
+                distanceKm = (decimal?)null
             })
         });
     }
+
+    /// <summary>
+    /// Patient-facing pharmacy catalog: ACTIVE + licensed, with hours/days/areas/fees from
+    /// <c>PharmacyConfig</c> + <c>SellerRoutingRule</c> (admin/pharmacy Config write path).
+    /// </summary>
+    private async Task<List<SellerCatalogItem>> LoadSellerCatalogAsync(string? areaFilter)
+    {
+        var partners = await _context.Database.SqlQuery<SellerCatalogRow>($@"
+            SELECT p.PharmacyPartnerId, p.Name, p.Area, p.Status,
+                   c.OpenTime AS ConfigOpenTime, c.CloseTime AS ConfigCloseTime,
+                   c.WorkingDays, c.DeliveryCharge, c.FreeDeliveryAbove, c.Capacity
+            FROM dbo.PharmacyPartner p
+            LEFT JOIN dbo.PharmacyConfig c ON c.PharmacyPartnerId = p.PharmacyPartnerId
+            WHERE p.Status = N'ACTIVE'
+              AND EXISTS (
+                    SELECT 1 FROM dbo.PharmacyLicence l
+                    WHERE l.PharmacyPartnerId = p.PharmacyPartnerId
+                      AND l.Status = N'ACTIVE'
+                      AND l.ExpiryDate >= CONVERT(date, GETDATE()))
+            ORDER BY p.Name").ToListAsync();
+
+        var rules = partners.Count == 0
+            ? new List<SellerRuleRow>()
+            : await _context.Database.SqlQuery<SellerRuleRow>($@"
+                SELECT PharmacyPartnerId, Area, OpenTime, CloseTime, Capacity
+                FROM dbo.SellerRoutingRule").ToListAsync();
+        var rulesByPartner = rules.ToLookup(r => r.PharmacyPartnerId);
+
+        var now = DateTime.Now;
+        var today = now.ToString("ddd", CultureInfo.InvariantCulture); // Mon..Sun — matches PharmacyConfig.WorkingDays
+        var clock = now.TimeOfDay;
+        var filter = NormalizeServiceArea(areaFilter);
+
+        var catalog = new List<SellerCatalogItem>(partners.Count);
+        foreach (var p in partners)
+        {
+            var partnerRules = rulesByPartner[p.PharmacyPartnerId].ToList();
+            // Expand comma/pipe-separated rule values into distinct display tokens.
+            var areas = ExpandServiceAreas(
+                    partnerRules.Select(r => r.Area)
+                        .Concat(string.IsNullOrWhiteSpace(p.Area) ? Array.Empty<string?>() : new string?[] { p.Area }))
+                .ToList();
+            if (areas.Count == 0 && !string.IsNullOrWhiteSpace(p.Area))
+                areas.Add(p.Area.Trim());
+
+            var open = p.ConfigOpenTime
+                ?? partnerRules.Where(r => r.OpenTime.HasValue).Select(r => r.OpenTime).FirstOrDefault();
+            var close = p.ConfigCloseTime
+                ?? partnerRules.Where(r => r.CloseTime.HasValue).Select(r => r.CloseTime).FirstOrDefault();
+            var days = SplitWorkingDays(p.WorkingDays);
+            var configured = p.ConfigOpenTime.HasValue || partnerRules.Count > 0;
+
+            var daysConfigured = days.Length > 0;
+            var hoursConfigured = open.HasValue && close.HasValue;
+            var worksToday = !daysConfigured
+                || days.Any(d => string.Equals(d, today, StringComparison.OrdinalIgnoreCase));
+            var withinHours = !hoursConfigured
+                || (clock >= open!.Value && clock < close!.Value);
+            var openNow = worksToday && withinHours;
+
+            // Match if patient city equals ANY configured area token (multi-area pharmacies).
+            var areaOk = string.IsNullOrEmpty(filter)
+                || areas.Any(a => ServiceAreasMatch(a, filter))
+                || ServiceAreasMatch(p.Area, filter);
+
+            string? closedReason = null;
+            if (!areaOk)
+                closedReason = "Outside service area";
+            else if (!openNow)
+            {
+                if (daysConfigured && !worksToday)
+                    closedReason = "Closed today";
+                else if (hoursConfigured)
+                    closedReason = "Outside operating hours";
+                else
+                    closedReason = "Unavailable";
+            }
+
+            catalog.Add(new SellerCatalogItem
+            {
+                PharmacyPartnerId = p.PharmacyPartnerId,
+                Name = p.Name,
+                PrimaryArea = areas.FirstOrDefault() ?? p.Area,
+                Status = p.Status,
+                Areas = areas,
+                OpenTime = open,
+                CloseTime = close,
+                WorkingDays = days,
+                OpenNow = openNow,
+                DeliveryFee = p.DeliveryCharge,
+                FreeDeliveryAbove = p.FreeDeliveryAbove,
+                Capacity = p.Capacity
+                    ?? partnerRules.Where(r => r.Capacity > 0).Select(r => (int?)r.Capacity).FirstOrDefault(),
+                Configured = configured,
+                Serviceable = openNow && areaOk,
+                ClosedReason = closedReason
+            });
+        }
+
+        return catalog
+            .OrderByDescending(s => s.Serviceable)
+            .ThenByDescending(s => s.OpenNow)
+            .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private async Task<string?> ResolveDeliveryAreaHintAsync(int patientId, int? addressId)
+    {
+        static string? PickHint(DeliveryAreaHintRow? row)
+        {
+            if (row == null) return null;
+            foreach (var candidate in new[] { row.City, row.Area, row.Line1 })
+            {
+                var text = (candidate ?? "").Trim();
+                if (text.Length > 0) return text;
+            }
+            return null;
+        }
+
+        if (addressId is > 0)
+        {
+            var row = await _context.Database.SqlQuery<DeliveryAreaHintRow>($@"
+                SELECT TOP 1 City, Line1, CAST(NULL AS nvarchar(120)) AS Area
+                FROM dbo.PatientDeliveryAddress
+                WHERE DeliveryAddressId = {addressId.Value} AND PatientId = {patientId}").FirstOrDefaultAsync();
+            var hint = PickHint(row);
+            if (!string.IsNullOrWhiteSpace(hint)) return hint;
+        }
+
+        var fallback = await _context.Database.SqlQuery<DeliveryAreaHintRow>($@"
+            SELECT TOP 1 City, Line1, CAST(NULL AS nvarchar(120)) AS Area
+            FROM dbo.PatientDeliveryAddress
+            WHERE PatientId = {patientId}
+            ORDER BY CASE WHEN IsDefault = 1 THEN 0 ELSE 1 END, DeliveryAddressId").FirstOrDefaultAsync();
+        return PickHint(fallback);
+    }
+
+    /// <summary>FUTURE: Auto-route (nearest / stock). Kept for later; not used while patients must pick a pharmacy.</summary>
+    private async Task<int?> ResolveAutoRoutePharmacyAsync(string? areaHint)
+    {
+        // Deferred — re-enable when Auto-route ships.
+        await Task.CompletedTask;
+        _ = areaHint;
+        return null;
+        /*
+        var catalog = await LoadSellerCatalogAsync(areaHint);
+        var pick = catalog.FirstOrDefault(s => s.Serviceable)
+            ?? catalog.FirstOrDefault(s => s.OpenNow);
+        return pick?.PharmacyPartnerId;
+        */
+    }
+
+    private static string NormalizeServiceArea(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        var chars = value.Trim().ToLowerInvariant().ToCharArray();
+        var sb = new System.Text.StringBuilder(chars.Length);
+        var prevSpace = false;
+        foreach (var ch in chars)
+        {
+            if (char.IsWhiteSpace(ch))
+            {
+                if (!prevSpace && sb.Length > 0)
+                {
+                    sb.Append(' ');
+                    prevSpace = true;
+                }
+                continue;
+            }
+            prevSpace = false;
+            sb.Append(ch);
+        }
+        return sb.ToString().Trim();
+    }
+
+    /// <summary>
+    /// Split multi-area strings ("Pune, Kolhapur | Satara") into distinct normalized tokens.
+    /// </summary>
+    private static IEnumerable<string> ExpandServiceAreas(IEnumerable<string?> rawValues)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in rawValues)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            foreach (var part in raw.Split(new[] { ',', ';', '|', '/' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var token = NormalizeServiceArea(part);
+                if (token.Length == 0) continue;
+                if (seen.Add(token))
+                    yield return part.Trim();
+            }
+        }
+    }
+
+    private static bool ServiceAreasMatch(string? left, string? right)
+    {
+        var leftTokens = ExpandServiceAreas(new[] { left }).Select(NormalizeServiceArea).Where(t => t.Length > 0).ToList();
+        var rightTokens = ExpandServiceAreas(new[] { right }).Select(NormalizeServiceArea).Where(t => t.Length > 0).ToList();
+        if (leftTokens.Count == 0 || rightTokens.Count == 0) return false;
+
+        foreach (var a in leftTokens)
+        {
+            foreach (var b in rightTokens)
+            {
+                if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
+                    return true;
+                // Allow "Kolhapur City" ↔ "Kolhapur" without matching unrelated substrings like "Pu" in "Pune".
+                if (a.Length >= 3 && b.Length >= 3
+                    && (a.Contains(b, StringComparison.OrdinalIgnoreCase)
+                        || b.Contains(a, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private static string[] SplitWorkingDays(string? value) =>
+        (value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     public async Task<S4ActionResult> ListPharmacyPartnersAsync(S4Caller caller)
     {
         if (!caller.IsAdmin && !caller.IsPharmacy)
             return Fail(403, "FORBIDDEN", "Pharmacy partner list is for admin or the pharmacy login.");
+        await EnsurePharmacyOnboardingSchemaAsync();
         var rows = caller.IsAdmin
-            ? await _context.Database.SqlQuery<SellerRow>($@"
-                SELECT p.PharmacyPartnerId, p.Name, p.Area, p.Status
+            ? await _context.Database.SqlQuery<PharmacyPartnerListRow>($@"
+                SELECT p.PharmacyPartnerId, p.UserId, p.Name, p.OwnerName, p.Mobile, p.Area, p.Status,
+                       p.CountryId, p.StateId, p.DistrictId, p.CityId, p.PinCodeId,
+                       p.AddressLine1, p.AddressLine2, p.Landmark, p.PostalCode,
+                       p.DecisionReason, p.CreatedAt,
+                       (SELECT COUNT(1) FROM dbo.PharmacyLicenceDocument d WHERE d.PharmacyPartnerId = p.PharmacyPartnerId) AS DocumentCount
                 FROM dbo.PharmacyPartner p
                 ORDER BY p.PharmacyPartnerId DESC").ToListAsync()
-            : await _context.Database.SqlQuery<SellerRow>($@"
-                SELECT p.PharmacyPartnerId, p.Name, p.Area, p.Status
+            : await _context.Database.SqlQuery<PharmacyPartnerListRow>($@"
+                SELECT p.PharmacyPartnerId, p.UserId, p.Name, p.OwnerName, p.Mobile, p.Area, p.Status,
+                       p.CountryId, p.StateId, p.DistrictId, p.CityId, p.PinCodeId,
+                       p.AddressLine1, p.AddressLine2, p.Landmark, p.PostalCode,
+                       p.DecisionReason, p.CreatedAt,
+                       (SELECT COUNT(1) FROM dbo.PharmacyLicenceDocument d WHERE d.PharmacyPartnerId = p.PharmacyPartnerId) AS DocumentCount
                 FROM dbo.PharmacyPartner p
                 WHERE p.UserId = {caller.UserId}
                 ORDER BY p.PharmacyPartnerId DESC").ToListAsync();
-        return Ok(new { success = true, data = rows });
+        return Ok(new
+        {
+            success = true,
+            data = rows.Select(r => new
+            {
+                pharmacyPartnerId = r.PharmacyPartnerId,
+                userId = r.UserId,
+                name = r.Name,
+                ownerName = r.OwnerName,
+                mobile = r.Mobile,
+                area = r.Area,
+                status = r.Status,
+                countryId = r.CountryId,
+                stateId = r.StateId,
+                districtId = r.DistrictId,
+                cityId = r.CityId,
+                pinCodeId = r.PinCodeId,
+                addressLine1 = r.AddressLine1,
+                addressLine2 = r.AddressLine2,
+                landmark = r.Landmark,
+                postalCode = r.PostalCode,
+                decisionReason = r.DecisionReason,
+                createdAt = r.CreatedAt,
+                documentCount = r.DocumentCount
+            })
+        });
     }
 
     public async Task<S4ActionResult> PharmacyQueueAsync(S4Caller caller)
@@ -1129,9 +1698,13 @@ public partial class S4Week4Service
         if (!caller.IsAdmin && (await CallerPharmacyIdAsync(caller)) is null)
             return Fail(403, "FORBIDDEN", "This login is not an active pharmacy partner.");
         var isAdmin = caller.IsAdmin ? 1 : 0;
+        await EnsureMedicineOrderDeliveryColumnsAsync();
         var rows = await _context.Database.SqlQuery<PharmacyQueueRow>($@"
             SELECT TOP 300 o.MedicineOrderId, o.ErxSnapshotId, o.PatientId, o.PharmacyPartnerId, ph.Name AS PharmacyName,
-                   o.Status, o.ConsentGranted, o.QuoteAmount, o.PayMode, o.CreatedAt,
+                   o.Status, o.ConsentGranted, o.QuoteAmount, o.DeliveryFee, o.PayMode, o.CreatedAt,
+                   o.DeliveryCity, o.DeliveryAddressId,
+                   COALESCE(NULLIF(LTRIM(RTRIM(o.DeliveryCity)), N''), NULLIF(LTRIM(RTRIM(addr.City)), N'')) AS ResolvedDeliveryCity,
+                   pay.Amount AS PaymentAmount, pay.Status AS PaymentStatus,
                    (SELECT COUNT(1) FROM dbo.MedicineOrderItem i WHERE i.MedicineOrderId = o.MedicineOrderId) AS ItemCount,
                    (SELECT MAX(e.At) FROM dbo.MedicineOrderEvent e WHERE e.MedicineOrderId = o.MedicineOrderId) AS LastEventAt,
                    CASE WHEN {isAdmin} = 1 OR o.Status NOT IN (N'OFFERED', N'REJECTED') THEN p.PatientName END AS PatientName,
@@ -1140,11 +1713,41 @@ public partial class S4Week4Service
             FROM dbo.MedicineOrder o
             LEFT JOIN dbo.PharmacyPartner ph ON ph.PharmacyPartnerId = o.PharmacyPartnerId
             LEFT JOIN dbo.Patient p ON p.PatientId = o.PatientId
+            LEFT JOIN dbo.PatientDeliveryAddress addr ON addr.DeliveryAddressId = o.DeliveryAddressId
+            OUTER APPLY (SELECT TOP 1 po.Amount, po.Status
+                         FROM dbo.PaymentOrder po
+                         WHERE po.MedicineOrderId = o.MedicineOrderId AND po.Stream = N'MEDICINE'
+                         ORDER BY po.PaymentOrderId DESC) pay
             WHERE {isAdmin} = 1
                OR o.PharmacyPartnerId IN (SELECT PharmacyPartnerId FROM dbo.PharmacyPartner
                                           WHERE UserId = {caller.UserId} AND Status = N'ACTIVE')
             ORDER BY o.MedicineOrderId DESC").ToListAsync();
-        return Ok(new { success = true, data = rows });
+        return Ok(new
+        {
+            success = true,
+            data = rows.Select(r => new
+            {
+                medicineOrderId = r.MedicineOrderId,
+                erxSnapshotId = r.ErxSnapshotId,
+                patientId = r.PatientId,
+                pharmacyPartnerId = r.PharmacyPartnerId,
+                pharmacyName = r.PharmacyName,
+                status = r.Status,
+                consentGranted = r.ConsentGranted,
+                quoteAmount = r.QuoteAmount,
+                deliveryFee = r.DeliveryFee,
+                totalPaid = ResolveMedicineTotalPaid(r.QuoteAmount, r.PaymentAmount, r.PaymentStatus, r.PayMode, r.Status),
+                payMode = r.PayMode,
+                createdAt = r.CreatedAt,
+                itemCount = r.ItemCount,
+                lastEventAt = r.LastEventAt,
+                patientName = r.PatientName,
+                patientMobile = r.PatientMobile,
+                patientAddress = r.PatientAddress,
+                deliveryAddressId = r.DeliveryAddressId,
+                deliveryCity = r.ResolvedDeliveryCity ?? r.DeliveryCity
+            })
+        });
     }
 
     public async Task<S4ActionResult> CreateMedicineOrderAsync(MedicineOrderCreateRequest request, S4Caller caller)
@@ -1158,13 +1761,10 @@ public partial class S4Week4Service
             return Fail(404, "NOT_FOUND", "Signed prescription not found.");
         if (!await PatientMayActForAsync(caller, snapshot.PatientId))
             return Fail(403, "FORBIDDEN", "This prescription belongs to another patient.");
+        await EnsureMedicineOrderDeliveryColumnsAsync();
         int? addressId = null;
         if (request.AddressId.HasValue && request.AddressId.Value > 0)
         {
-            await _context.Database.ExecuteSqlRawAsync("""
-                IF COL_LENGTH(N'dbo.MedicineOrder', N'DeliveryAddressId') IS NULL
-                    ALTER TABLE dbo.MedicineOrder ADD DeliveryAddressId int NULL;
-                """);
             var owned = await _context.Database.SqlQuery<IdIntRow>($@"
                 SELECT DeliveryAddressId AS Id FROM dbo.PatientDeliveryAddress
                 WHERE DeliveryAddressId = {request.AddressId.Value} AND PatientId = {caller.PatientId.Value}").FirstOrDefaultAsync();
@@ -1172,19 +1772,32 @@ public partial class S4Week4Service
                 return Fail(400, "VALIDATION", "addressId is not in this patient's address book.");
             addressId = request.AddressId.Value;
         }
+
+        var areaHint = await ResolveDeliveryAreaHintAsync(caller.PatientId.Value, addressId);
+        // Auto-route (nearest / stock) deferred to future scope — patient must pick a pharmacy.
+        if (request.PharmacyPartnerId is null or <= 0)
+            return Fail(400, "VALIDATION", "Select a pharmacy to place this order.");
+        var pharmacyId = request.PharmacyPartnerId;
+        // FUTURE: pharmacyId = await ResolveAutoRoutePharmacyAsync(areaHint);
+        {
+            var catalog = await LoadSellerCatalogAsync(areaHint);
+            var selected = catalog.FirstOrDefault(s => s.PharmacyPartnerId == pharmacyId.Value);
+            if (selected == null)
+                return Fail(400, "VALIDATION", "That pharmacy is not available for ordering.");
+            if (!selected.Serviceable && !string.IsNullOrWhiteSpace(selected.ClosedReason))
+                return Fail(409, "PHARMACY_UNAVAILABLE",
+                    selected.ClosedReason + ". Choose another pharmacy or try again later.");
+        }
+
         var id = (int)await InsertAsync(
             @"INSERT INTO dbo.MedicineOrder (ErxSnapshotId, PatientId, PharmacyPartnerId, Status, ConsentGranted, CreatedAt)
               VALUES (@Erx, @Patient, @Pharmacy, N'OFFERED', 0, @At);
               SELECT CAST(SCOPE_IDENTITY() AS bigint);",
             P("@Erx", snapshot.ErxSnapshotId),
             P("@Patient", snapshot.PatientId),
-            P("@Pharmacy", request.PharmacyPartnerId),
+            P("@Pharmacy", pharmacyId.Value),
             P("@At", DateTime.Now));
-        if (addressId.HasValue)
-        {
-            await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                UPDATE dbo.MedicineOrder SET DeliveryAddressId = {addressId.Value} WHERE MedicineOrderId = {id}");
-        }
+        await ApplyMedicineOrderDeliverySnapshotAsync(id, addressId, areaHint);
         var items = await LoadSnapshotItemsAsync(snapshot.ErxSnapshotId, revealNames: true);
         foreach (var item in items)
         {
@@ -1193,7 +1806,18 @@ public partial class S4Week4Service
                 VALUES ({id}, {item.RemedyCode}, {item.RemedyName})");
         }
         await AddMedicineEventAsync(id, "OFFERED", "Order created from signed prescription");
-        return Ok(new { success = true, data = new { medicineOrderId = id, status = "OFFERED", namesRevealed = false, addressId } });
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                medicineOrderId = id,
+                status = "OFFERED",
+                namesRevealed = true,
+                addressId,
+                pharmacyPartnerId = pharmacyId.Value
+            }
+        });
     }
 
     public async Task<S4ActionResult> GrantMedicineConsentAsync(int orderId, S4Caller caller)
@@ -1282,7 +1906,7 @@ public partial class S4Week4Service
         await SetMedicineStatusAsync(order.MedicineOrderId, "ACCEPTED", "Accepted with OTP");
         var items = await _context.Database.SqlQuery<OrderItemRow>($@"
             SELECT RemedyCode, RemedyName FROM dbo.MedicineOrderItem WHERE MedicineOrderId = {order.MedicineOrderId}").ToListAsync();
-        return Ok(new { success = true, message = "Names are revealed after OTP accept.", data = items });
+        return Ok(new { success = true, message = "Order accepted.", data = items });
     }
 
     public async Task<S4ActionResult> RejectMedicineOrderAsync(int orderId, MedicineRejectRequest request, S4Caller caller)
@@ -1307,34 +1931,55 @@ public partial class S4Week4Service
     {
         if (!caller.IsPharmacy && !caller.IsAdmin)
             return Fail(403, "FORBIDDEN", "Only the pharmacy can quote.");
-        if (request == null || request.Amount <= 0 || request.Amount > 1000000)
-            return Fail(400, "VALIDATION", "Quote amount must be greater than 0 and at most 1000000.");
+        if (request == null)
+            return Fail(400, "VALIDATION", "Body is required.");
+
         decimal? deliveryFee = request.DeliveryFee;
-        if (deliveryFee.HasValue)
+        if (deliveryFee.HasValue && (deliveryFee.Value < 0 || deliveryFee.Value > 1000000))
+            return Fail(400, "VALIDATION", "deliveryFee must be between 0 and 1000000.");
+
+        decimal totalAmount;
+        decimal medicinesAmount;
+        if (request.MedicinesAmount.HasValue)
         {
-            if (deliveryFee.Value < 0 || deliveryFee.Value > 1000000)
-                return Fail(400, "VALIDATION", "deliveryFee must be between 0 and 1000000.");
-            if (deliveryFee.Value > request.Amount)
-                return Fail(400, "VALIDATION", "deliveryFee cannot exceed amount.");
+            medicinesAmount = request.MedicinesAmount.Value;
+            if (medicinesAmount <= 0 || medicinesAmount > 1000000)
+                return Fail(400, "VALIDATION", "Medicines amount must be greater than 0.");
+            var fee = deliveryFee ?? 0m;
+            totalAmount = medicinesAmount + fee;
+            deliveryFee ??= 0m;
         }
+        else
+        {
+            // Legacy: Amount = total payable.
+            if (request.Amount <= 0 || request.Amount > 1000000)
+                return Fail(400, "VALIDATION", "Quote amount must be greater than 0 and at most 1000000.");
+            totalAmount = request.Amount;
+            if (deliveryFee.HasValue && deliveryFee.Value > totalAmount)
+                return Fail(400, "VALIDATION", "deliveryFee cannot exceed amount.");
+            medicinesAmount = deliveryFee.HasValue ? totalAmount - deliveryFee.Value : totalAmount;
+            if (medicinesAmount <= 0)
+                return Fail(400, "VALIDATION", "Medicines amount must be greater than 0. Enter medicines total separately from delivery.");
+        }
+
+        if (totalAmount <= 0 || totalAmount > 1000000)
+            return Fail(400, "VALIDATION", "Quoted total must be greater than 0 and at most 1000000.");
+
         var order = await LoadMedicineAsync(orderId);
         if (order == null) return Fail(404, "NOT_FOUND", "Medicine order not found.");
         var denied = await EnsurePharmacyOwnsOrderAsync(order, caller);
         if (denied != null) return denied;
         if (!string.Equals(order.Status, "ACCEPTED", StringComparison.OrdinalIgnoreCase))
             return Fail(409, "CONFLICT", "Quote is allowed only after accept.");
-        // amount = total payable; deliveryFee optional (NULL = unknown).
+
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dbo.MedicineQuote (MedicineOrderId, Amount, DeliveryFee, Note, Status, At)
-            VALUES ({orderId}, {request.Amount}, {deliveryFee}, {request.Note}, N'OPEN', {DateTime.Now})");
+            VALUES ({orderId}, {totalAmount}, {deliveryFee}, {request.Note}, N'OPEN', {DateTime.Now})");
         await _context.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE dbo.MedicineOrder
-            SET QuoteAmount = {request.Amount}, DeliveryFee = {deliveryFee}, Status = N'QUOTED'
+            SET QuoteAmount = {totalAmount}, DeliveryFee = {deliveryFee}, Status = N'QUOTED'
             WHERE MedicineOrderId = {orderId}");
-        await AddMedicineEventAsync(orderId, "QUOTED", request.Amount.ToString("0.00"));
-        decimal? subtotalMedicines = deliveryFee.HasValue
-            ? request.Amount - deliveryFee.Value
-            : (decimal?)null;
+        await AddMedicineEventAsync(orderId, "QUOTED", totalAmount.ToString("0.00"));
         return Ok(new
         {
             success = true,
@@ -1342,9 +1987,10 @@ public partial class S4Week4Service
             {
                 orderId,
                 status = "QUOTED",
-                amount = request.Amount,
+                amount = totalAmount,
+                medicinesAmount,
                 deliveryFee,
-                subtotalMedicines
+                subtotalMedicines = medicinesAmount
             }
         });
     }
@@ -1381,11 +2027,13 @@ public partial class S4Week4Service
         }
         else if (!caller.IsAdmin && !await PatientMayActForAsync(caller, order.PatientId))
             return Fail(403, "FORBIDDEN", "You cannot track this order.");
-        var reveal = !string.Equals(order.Status, "OFFERED", StringComparison.OrdinalIgnoreCase);
+        // Always return remedy names (name-lock deferred).
+        const bool reveal = true;
         var items = await _context.Database.SqlQuery<OrderItemRow>($@"
             SELECT RemedyCode, RemedyName FROM dbo.MedicineOrderItem WHERE MedicineOrderId = {orderId}").ToListAsync();
         var events = await _context.Database.SqlQuery<MedicineEventRow>($@"
             SELECT Status, Detail, At FROM dbo.MedicineOrderEvent WHERE MedicineOrderId = {orderId} ORDER BY At").ToListAsync();
+        await EnsureMedicineOrderDeliveryColumnsAsync();
         var enrich = await _context.Database.SqlQuery<MedicineOrderEnrichRow>($@"
             SELECT o.MedicineOrderId, o.ErxSnapshotId, o.QuoteAmount, o.DeliveryFee AS OrderDeliveryFee, o.PayMode, o.PharmacyPartnerId, o.Status,
                    q.DeliveryFee AS QuoteDeliveryFee,
@@ -1397,11 +2045,14 @@ public partial class S4Week4Service
                    e.Status AS ErxStatus,
                    pay.PaymentOrderId, pay.Method AS PaymentMethod, pay.Status AS PaymentStatus,
                    pay.Amount AS PaymentAmount, pay.GatewayPaymentId,
-                   inv.InvoiceId, inv.Number AS InvoiceNumber, inv.PdfPath, inv.SecureDocumentId
+                   inv.InvoiceId, inv.Number AS InvoiceNumber, inv.PdfPath, inv.SecureDocumentId,
+                   o.DeliveryAddressId,
+                   COALESCE(NULLIF(LTRIM(RTRIM(o.DeliveryCity)), N''), NULLIF(LTRIM(RTRIM(addr.City)), N'')) AS DeliveryCity
             FROM dbo.MedicineOrder o
             LEFT JOIN dbo.PharmacyPartner pp ON pp.PharmacyPartnerId = o.PharmacyPartnerId
             LEFT JOIN dbo.ErxSnapshot e ON e.ErxSnapshotId = o.ErxSnapshotId
             LEFT JOIN dbo.Doctor d ON d.DoctorID = e.DoctorId
+            LEFT JOIN dbo.PatientDeliveryAddress addr ON addr.DeliveryAddressId = o.DeliveryAddressId
             OUTER APPLY (SELECT TOP 1 mq.DeliveryFee FROM dbo.MedicineQuote mq
                          WHERE mq.MedicineOrderId = o.MedicineOrderId ORDER BY mq.At DESC) q
             OUTER APPLY (SELECT TOP 1 ev.At FROM dbo.MedicineOrderEvent ev
@@ -1478,6 +2129,8 @@ public partial class S4Week4Service
                 pharmacyLicenceNumber = string.IsNullOrWhiteSpace(enrich?.PharmacyLicenceNumber) ? null : enrich!.PharmacyLicenceNumber,
                 pharmacyLicensed = enrich?.PharmacyLicensed == true,
                 pharmacyContactMasked = MaskPharmacyContact(enrich?.PharmacyMobile),
+                deliveryAddressId = enrich?.DeliveryAddressId,
+                deliveryCity = string.IsNullOrWhiteSpace(enrich?.DeliveryCity) ? null : enrich!.DeliveryCity,
                 invoiceId = enrich?.InvoiceId,
                 invoiceNumber = string.IsNullOrWhiteSpace(enrich?.InvoiceNumber) ? null : enrich!.InvoiceNumber,
                 invoicePdfAvailable = enrich != null
@@ -1588,7 +2241,7 @@ public partial class S4Week4Service
                     medicineOrderId = orderId,
                     status = "OFFERED",
                     refillStatus = "ORDERED",
-                    namesRevealed = false
+                    namesRevealed = true
                 }
             });
         }
@@ -3086,11 +3739,9 @@ public partial class S4Week4Service
         var rows = await _context.Database.SqlQuery<SnapshotItemRow>($@"
             SELECT RemedyCode, RemedyName, PotencyCode, Dose, Frequency, Duration, Instructions
             FROM dbo.ErxSnapshotItem WHERE ErxSnapshotId = {id}").ToListAsync();
-        if (!revealNames)
-        {
-            foreach (var row in rows)
-                row.RemedyName = "";
-        }
+        // FUTURE name-lock: when enabled, blank RemedyName when !revealNames.
+        // As of now always display remedy names to patient, doctor, pharmacy, and others.
+        _ = revealNames;
         return rows;
     }
 
@@ -3174,6 +3825,108 @@ public partial class S4Week4Service
 
     private static string Digits(string? value)
         => new string((value ?? "").Where(char.IsDigit).ToArray());
+
+    private static int _pharmacyOnboardingSchemaReady;
+
+    private static int _medicineOrderDeliveryColumnsReady;
+
+    private async Task EnsureMedicineOrderDeliveryColumnsAsync()
+    {
+        if (Volatile.Read(ref _medicineOrderDeliveryColumnsReady) == 1)
+            return;
+        await _context.Database.ExecuteSqlRawAsync("""
+            IF COL_LENGTH(N'dbo.MedicineOrder', N'DeliveryAddressId') IS NULL
+                ALTER TABLE dbo.MedicineOrder ADD DeliveryAddressId INT NULL;
+            IF COL_LENGTH(N'dbo.MedicineOrder', N'DeliveryCity') IS NULL
+                ALTER TABLE dbo.MedicineOrder ADD DeliveryCity NVARCHAR(120) NULL;
+            """);
+        Interlocked.Exchange(ref _medicineOrderDeliveryColumnsReady, 1);
+    }
+
+    private async Task ApplyMedicineOrderDeliverySnapshotAsync(int orderId, int? addressId, string? areaHint)
+    {
+        await EnsureMedicineOrderDeliveryColumnsAsync();
+        var city = TrimOrNull(areaHint, 120);
+        if (addressId is > 0)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.MedicineOrder
+                SET DeliveryAddressId = {addressId.Value},
+                    DeliveryCity = COALESCE({city}, DeliveryCity)
+                WHERE MedicineOrderId = {orderId}");
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE dbo.MedicineOrder
+                SET DeliveryCity = {city}
+                WHERE MedicineOrderId = {orderId}");
+        }
+    }
+
+    private async Task EnsurePharmacyOnboardingSchemaAsync()
+    {
+        if (Volatile.Read(ref _pharmacyOnboardingSchemaReady) == 1)
+            return;
+
+        await _context.Database.ExecuteSqlRawAsync("""
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'OwnerName') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD OwnerName NVARCHAR(200) NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'CountryId') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD CountryId INT NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'StateId') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD StateId INT NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'DistrictId') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD DistrictId INT NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'CityId') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD CityId INT NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'PinCodeId') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD PinCodeId INT NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'AddressLine1') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD AddressLine1 NVARCHAR(250) NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'AddressLine2') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD AddressLine2 NVARCHAR(250) NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'Landmark') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD Landmark NVARCHAR(200) NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'PostalCode') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD PostalCode NVARCHAR(20) NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'DecisionReason') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD DecisionReason NVARCHAR(500) NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'DecidedAt') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD DecidedAt DATETIME NULL;
+            IF COL_LENGTH(N'dbo.PharmacyPartner', N'UpdatedAt') IS NULL
+                ALTER TABLE dbo.PharmacyPartner ADD UpdatedAt DATETIME NULL;
+            IF OBJECT_ID(N'dbo.PharmacyLicenceDocument', N'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.PharmacyLicenceDocument
+                (
+                    PharmacyLicenceDocumentId INT IDENTITY(1,1) NOT NULL
+                        CONSTRAINT PK_PharmacyLicenceDocument PRIMARY KEY,
+                    PharmacyPartnerId INT NOT NULL,
+                    PharmacyLicenceId INT NULL,
+                    SecureDocumentId BIGINT NOT NULL,
+                    DocumentType NVARCHAR(40) NOT NULL
+                        CONSTRAINT DF_PharmacyLicenceDocument_Type DEFAULT (N'Licence'),
+                    CreatedAt DATETIME NOT NULL
+                        CONSTRAINT DF_PharmacyLicenceDocument_CreatedAt DEFAULT (GETDATE()),
+                    CreatedBy BIGINT NULL
+                );
+                CREATE INDEX IX_PharmacyLicenceDocument_Partner
+                    ON dbo.PharmacyLicenceDocument (PharmacyPartnerId, CreatedAt DESC);
+            END
+            """);
+        Interlocked.Exchange(ref _pharmacyOnboardingSchemaReady, 1);
+    }
+
+    private async Task<PharmacyPartnerLoadRow?> LoadPartnerRowAsync(int pharmacyId)
+    {
+        await EnsurePharmacyOnboardingSchemaAsync();
+        return await _context.Database.SqlQuery<PharmacyPartnerLoadRow>($@"
+            SELECT PharmacyPartnerId, UserId, Name, Status, DecisionReason
+            FROM dbo.PharmacyPartner
+            WHERE PharmacyPartnerId = {pharmacyId}").FirstOrDefaultAsync();
+    }
 
     private static TimeSpan? ParseTime(string? value)
         => TimeSpan.TryParse(value, out var time) ? time : null;
@@ -3344,6 +4097,102 @@ public partial class S4Week4Service
         public string Status { get; set; } = "";
     }
 
+    private sealed class PharmacyPartnerListRow
+    {
+        public int PharmacyPartnerId { get; set; }
+        public long? UserId { get; set; }
+        public string Name { get; set; } = "";
+        public string? OwnerName { get; set; }
+        public string? Mobile { get; set; }
+        public string? Area { get; set; }
+        public string Status { get; set; } = "";
+        public int? CountryId { get; set; }
+        public int? StateId { get; set; }
+        public int? DistrictId { get; set; }
+        public int? CityId { get; set; }
+        public int? PinCodeId { get; set; }
+        public string? AddressLine1 { get; set; }
+        public string? AddressLine2 { get; set; }
+        public string? Landmark { get; set; }
+        public string? PostalCode { get; set; }
+        public string? DecisionReason { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public int DocumentCount { get; set; }
+    }
+
+    private sealed class PharmacyPartnerLoadRow
+    {
+        public int PharmacyPartnerId { get; set; }
+        public long? UserId { get; set; }
+        public string Name { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string? DecisionReason { get; set; }
+    }
+
+    private sealed class PharmacyDocRow
+    {
+        public int PharmacyLicenceDocumentId { get; set; }
+        public int PharmacyPartnerId { get; set; }
+        public int? PharmacyLicenceId { get; set; }
+        public long SecureDocumentId { get; set; }
+        public string DocumentType { get; set; } = "";
+        public DateTime CreatedAt { get; set; }
+        public string? FileName { get; set; }
+        public string? Mime { get; set; }
+    }
+
+    private sealed class SellerCatalogRow
+    {
+        public int PharmacyPartnerId { get; set; }
+        public string Name { get; set; } = "";
+        public string? Area { get; set; }
+        public string Status { get; set; } = "";
+        public TimeSpan? ConfigOpenTime { get; set; }
+        public TimeSpan? ConfigCloseTime { get; set; }
+        public string? WorkingDays { get; set; }
+        public decimal? DeliveryCharge { get; set; }
+        public decimal? FreeDeliveryAbove { get; set; }
+        public int? Capacity { get; set; }
+    }
+
+    private sealed class SellerRuleRow
+    {
+        public int PharmacyPartnerId { get; set; }
+        public string? Area { get; set; }
+        public TimeSpan? OpenTime { get; set; }
+        public TimeSpan? CloseTime { get; set; }
+        public int Capacity { get; set; }
+    }
+
+    private sealed class DeliveryAreaHintRow
+    {
+        public string? City { get; set; }
+        public string? Line1 { get; set; }
+        public string? Area { get; set; }
+    }
+
+    private sealed class SellerCatalogItem
+    {
+        public int PharmacyPartnerId { get; set; }
+        public string Name { get; set; } = "";
+        public string? PrimaryArea { get; set; }
+        public string Status { get; set; } = "";
+        public List<string> Areas { get; set; } = new();
+        public TimeSpan? OpenTime { get; set; }
+        public TimeSpan? CloseTime { get; set; }
+        public string[] WorkingDays { get; set; } = Array.Empty<string>();
+        public bool OpenNow { get; set; }
+        public decimal? DeliveryFee { get; set; }
+        public decimal? FreeDeliveryAbove { get; set; }
+        public int? Capacity { get; set; }
+        public bool Configured { get; set; }
+        public bool Serviceable { get; set; }
+        public string? ClosedReason { get; set; }
+
+        public string? OpenTimeLabel => OpenTime?.ToString(@"hh\:mm");
+        public string? CloseTimeLabel => CloseTime?.ToString(@"hh\:mm");
+    }
+
     private sealed class OrderItemRow
     {
         public string RemedyCode { get; set; } = "";
@@ -3384,6 +4233,8 @@ public partial class S4Week4Service
         public string? InvoiceNumber { get; set; }
         public string? PdfPath { get; set; }
         public long? SecureDocumentId { get; set; }
+        public int? DeliveryAddressId { get; set; }
+        public string? DeliveryCity { get; set; }
     }
 
     private sealed class PatientMedicineListRow

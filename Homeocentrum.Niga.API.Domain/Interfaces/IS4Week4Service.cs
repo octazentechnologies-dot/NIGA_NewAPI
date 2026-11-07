@@ -82,7 +82,13 @@ public interface IS4Week4Service
 
     Task<S4ActionResult> OnboardPharmacyAsync(PharmacyOnboardRequest request, S4Caller caller);
     Task<S4ActionResult> ActivatePharmacyAsync(int pharmacyId, S4Caller caller);
+    Task<S4ActionResult> RejectPharmacyAsync(int pharmacyId, string? reason, S4Caller caller);
     Task<S4ActionResult> SuspendPharmacyAsync(int pharmacyId, S4Caller caller);
+    Task<S4ActionResult> RequestPharmacyCloseAsync(int pharmacyId, string? reason, S4Caller caller);
+    Task<S4ActionResult> ApprovePharmacyCloseAsync(int pharmacyId, string? reason, S4Caller caller);
+    Task<S4ActionResult> WithdrawPharmacyAsync(int pharmacyId, S4Caller caller);
+    Task<S4ActionResult> SavePharmacyDocumentAsync(int pharmacyId, IFormFile file, S4Caller caller, string? documentType = null, string? description = null);
+    Task<S4ActionResult> ListPharmacyDocumentsAsync(int pharmacyId, S4Caller caller);
     Task<S4ActionResult> SweepLicencesAsync(S4Caller caller);
     Task<S4ActionResult> ListSellersAsync(string? area);
     Task<S4ActionResult> ListPharmacyPartnersAsync(S4Caller caller);

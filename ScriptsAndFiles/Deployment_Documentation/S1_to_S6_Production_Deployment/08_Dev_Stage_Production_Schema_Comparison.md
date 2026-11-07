@@ -1,6 +1,6 @@
 # 08 — Dev / Stage / Production Schema Comparison
 
-**Last verified:** 2026-11-05
+**Last verified:** 2026-11-05 (afternoon re-sync)
 
 | Kind | Dev | Stage | Production |
 |------|----:|------:|-----------:|
@@ -9,7 +9,8 @@
 | Named indexes (excl. system `PK__%`) | 205 | 205 | 205 |
 
 Missing-in-Stage vs Dev: **none** (0 column / 0 table diffs)  
-Missing-in-Production vs Dev: **none** (0 column / 0 table diffs)
+Missing-in-Production vs Dev: **none** (0 column / 0 table diffs)  
+No Production pre-sync backup this pass — no DDL gaps; only idempotent `14` re-run (0 new rows).
 
 ### Recent markers (all OK on Dev / Stage / Production)
 

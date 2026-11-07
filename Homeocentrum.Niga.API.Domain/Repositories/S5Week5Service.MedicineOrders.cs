@@ -1,6 +1,7 @@
 using System.Linq;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Homeocentrum.Niga.API.Domain.Helpers;
 using Homeocentrum.Niga.API.Domain.Interfaces;
 using Homeocentrum.Niga.API.Domain.Security;
 
@@ -14,8 +15,12 @@ public partial class S5Week5Service
         if (caller.PatientId is null || caller.UserId <= 0)
             return S4ActionResult.Fail(403, "FORBIDDEN", "A patient profile is required.");
         var patientId = caller.PatientId.Value;
-        var householdIds = await HouseholdPatientIdsAsync(caller.UserId, patientId);
-        var idList = string.Join(",", householdIds);
+        var householdIds = SqlIntIdList.Normalize(await HouseholdPatientIdsAsync(caller.UserId, patientId));
+        if (householdIds.Count == 0)
+            return S4ActionResult.Ok(new { success = true, data = Array.Empty<object>() });
+
+        // Parameterized OPENJSON — safe for multi-id households (CSV-in-SqlQuery breaks; see SqlIntIdList).
+        var idsJson = SqlIntIdList.ToJsonArray(householdIds);
         var orders = await _context.Database.SqlQuery<PatientOrderRow>($@"
             SELECT o.MedicineOrderId, o.ErxSnapshotId, o.Status, o.QuoteAmount, o.DeliveryFee AS OrderDeliveryFee,
                    COALESCE(NULLIF(o.PayMode, N''), pay.Method) AS PayMode, o.CreatedAt,
@@ -46,19 +51,19 @@ public partial class S5Week5Service
                          ORDER BY po.PaymentOrderId DESC) pay
             OUTER APPLY (SELECT TOP 1 i.InvoiceId, i.Number, i.PdfPath, i.SecureDocumentId
                          FROM dbo.Invoice i WHERE i.PaymentOrderId = pay.PaymentOrderId) inv
-            WHERE o.PatientId IN ({idList})
+            WHERE o.PatientId IN (SELECT CAST([value] AS int) FROM OPENJSON({idsJson}))
             ORDER BY o.MedicineOrderId DESC").ToListAsync();
         var items = await _context.Database.SqlQuery<PatientOrderItemRow>($@"
             SELECT i.MedicineOrderId, i.RemedyCode, i.RemedyName
             FROM dbo.MedicineOrderItem i
             JOIN dbo.MedicineOrder o ON o.MedicineOrderId = i.MedicineOrderId
-            WHERE o.PatientId IN ({idList})
+            WHERE o.PatientId IN (SELECT CAST([value] AS int) FROM OPENJSON({idsJson}))
             ORDER BY i.MedicineOrderItemId").ToListAsync();
         var events = await _context.Database.SqlQuery<PatientOrderEventRow>($@"
             SELECT ev.MedicineOrderId, ev.Status, ev.Detail, ev.At
             FROM dbo.MedicineOrderEvent ev
             JOIN dbo.MedicineOrder o ON o.MedicineOrderId = ev.MedicineOrderId
-            WHERE o.PatientId IN ({idList})
+            WHERE o.PatientId IN (SELECT CAST([value] AS int) FROM OPENJSON({idsJson}))
             ORDER BY ev.At").ToListAsync();
         var reviews = await OrderReviewsAsync(householdIds);
 
@@ -185,14 +190,14 @@ public partial class S5Week5Service
     {
         try
         {
-            if (patientIds == null || patientIds.Count == 0)
+            var normalized = SqlIntIdList.Normalize(patientIds);
+            if (normalized.Count == 0)
                 return new Dictionary<int, PatientOrderReviewRow>();
-            var idList = string.Join(",", patientIds.Where(id => id > 0).Distinct());
-            if (string.IsNullOrEmpty(idList))
-                return new Dictionary<int, PatientOrderReviewRow>();
+            var idsJson = SqlIntIdList.ToJsonArray(normalized);
             var rows = await _context.Database.SqlQuery<PatientOrderReviewRow>($@"
                 SELECT MedicineOrderId, CAST(Rating AS int) AS Rating, Comment, CreatedAt
-                FROM dbo.MedicineOrderReview WHERE PatientId IN ({idList})").ToListAsync();
+                FROM dbo.MedicineOrderReview
+                WHERE PatientId IN (SELECT CAST([value] AS int) FROM OPENJSON({idsJson}))").ToListAsync();
             return rows.GroupBy(r => r.MedicineOrderId).ToDictionary(g => g.Key, g => g.First());
         }
         catch (SqlException ex) when (ex.Number == 208)

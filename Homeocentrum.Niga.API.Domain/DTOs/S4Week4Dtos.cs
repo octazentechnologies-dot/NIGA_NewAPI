@@ -320,6 +320,11 @@ public class PharmacyOnboardRequest
     [StringLength(200, MinimumLength = 2)]
     public string Name { get; set; } = "";
 
+    /// <summary>Proprietor / pharmacy owner display name.</summary>
+    [Required]
+    [StringLength(200, MinimumLength = 2)]
+    public string OwnerName { get; set; } = "";
+
     [Required]
     [StringLength(20, MinimumLength = 8)]
     public string Mobile { get; set; } = "";
@@ -333,6 +338,33 @@ public class PharmacyOnboardRequest
 
     [StringLength(120)]
     public string? Area { get; set; }
+
+    public int? CountryId { get; set; }
+    public int? StateId { get; set; }
+    public int? DistrictId { get; set; }
+    public int? CityId { get; set; }
+    public int? PinCodeId { get; set; }
+
+    [StringLength(250)]
+    public string? AddressLine1 { get; set; }
+
+    [StringLength(250)]
+    public string? AddressLine2 { get; set; }
+
+    [StringLength(200)]
+    public string? Landmark { get; set; }
+
+    [StringLength(20)]
+    public string? PostalCode { get; set; }
+
+    /// <summary>Optional SecureDocument ids already uploaded for this session (linked after insert).</summary>
+    public List<long>? DocumentIds { get; set; }
+}
+
+public class PharmacyDecisionRequest
+{
+    [StringLength(500)]
+    public string? Reason { get; set; }
 }
 
 public class MedicineOrderCreateRequest
@@ -353,7 +385,7 @@ public class MedicineOrderCreateRequest
 /// </summary>
 public class MedicineRefillOrderRequest
 {
-    /// <summary>Omit for auto-route (nearest pharmacy with stock).</summary>
+    /// <summary>Required for now. Auto-route (nearest / stock) is future scope.</summary>
     public int? PharmacyPartnerId { get; set; }
 
     /// <summary>Optional delivery address from GET /api/Patient/Addresses.</summary>
@@ -369,14 +401,21 @@ public class MedicineRejectRequest
 public class MedicineQuoteRequest
 {
     /// <summary>
-    /// Total payable (medicines + delivery). Existing clients keep this meaning.
+    /// Total payable (medicines + delivery). Used when <see cref="MedicinesAmount"/> is omitted (legacy clients).
+    /// When MedicinesAmount is set, server recomputes Amount = MedicinesAmount + DeliveryFee.
     /// </summary>
-    [Range(0.01, 1000000)]
+    [Range(0, 1000000)]
     public decimal Amount { get; set; }
 
     /// <summary>
-    /// Optional delivery portion. When set: subtotalMedicines = Amount - DeliveryFee.
-    /// Omit or null = unknown (stored NULL; FE must not invent 0).
+    /// Preferred: medicines-only amount. When set, Amount becomes medicines + delivery.
+    /// </summary>
+    [Range(0.01, 1000000)]
+    public decimal? MedicinesAmount { get; set; }
+
+    /// <summary>
+    /// Delivery portion. When set with Amount: subtotalMedicines = Amount - DeliveryFee.
+    /// Prefer pairing with MedicinesAmount from pharmacy UI.
     /// </summary>
     [Range(0, 1000000)]
     public decimal? DeliveryFee { get; set; }

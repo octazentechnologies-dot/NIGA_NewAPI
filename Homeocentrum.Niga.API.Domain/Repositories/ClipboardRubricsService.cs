@@ -553,8 +553,9 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                     .GroupBy(x => x.RemedyId)
                     .Select(x => x.FirstOrDefault())
                     .ToList();
+                // Null CommonOrUncommon must not drop remedies — treat as uncommon.
                 clipboardRemedyModel.UnCommonRemedyList = clipboardRubricsModelList
-                    .Where(x => x.CommonUncommon == false)
+                    .Where(x => x.CommonUncommon != true)
                     .GroupBy(x => x.RemedyId)
                     .Select(x => x.FirstOrDefault())
                     .ToList();
@@ -782,7 +783,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 .Select(x => x.FirstOrDefault())
                 .ToList();
             clipboardRemedyModel.UnCommonRemedyList = clipboardRubricsModelList
-                .Where(x => x.CommonUncommon == false)
+                .Where(x => x.CommonUncommon != true)
                 .GroupBy(x => x.RemedyId)
                 .Select(x => x.FirstOrDefault())
                 .ToList();
@@ -962,7 +963,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                     .OrderByDescending(x => x.scoreCount)
                     .ToList();
                 clipboardRemedyModel.UnCommonRemedyList = sortedRemedyList
-                    .Where(x => x.CommonUncommon == false)
+                    .Where(x => x.CommonUncommon != true)
                     .GroupBy(x => x.RemedyId)
                     .Select(x => x.FirstOrDefault())
                     .OrderByDescending(x => x.scoreCount)
@@ -1158,7 +1159,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
             //                         select sortedList).ToList();
 
             //clipboardRemedyModel.CommonRemedyList = sortedRemedyBYELIList.Where(x => x.CommonUncommon == true).GroupBy(x => x.RemedyId).Select(x => x.FirstOrDefault()).OrderBy(x => x.MaxIndex).ToList();
-            //clipboardRemedyModel.UnCommonRemedyList = sortedRemedyBYELIList.Where(x => x.CommonUncommon == false).GroupBy(x => x.RemedyId).Select(x => x.FirstOrDefault()).OrderBy(x => x.MaxIndex).ToList();
+            //clipboardRemedyModel.UnCommonRemedyList = sortedRemedyBYELIList.Where(x => x.CommonUncommon != true).GroupBy(x => x.RemedyId).Select(x => x.FirstOrDefault()).OrderBy(x => x.MaxIndex).ToList();
             return null;
         }
 
@@ -1351,7 +1352,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 .OrderByDescending(x => x.scoreCount)
                 .ToList();
             clipboardRemedyModel.UnCommonRemedyList = sortedRemedyList
-                .Where(x => x.CommonUncommon == false)
+                .Where(x => x.CommonUncommon != true)
                 .GroupBy(x => x.RemedyId)
                 .Select(x => x.FirstOrDefault())
                 .OrderByDescending(x => x.scoreCount)
@@ -1580,7 +1581,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
 
                 //ClipboardRemedyModel clipboardRemedyModel = new ClipboardRemedyModel();
                 //clipboardRemedyModel.CommonRemedyList = clipboardRubricsModelList.Where(x => x.CommonUncommon == true).GroupBy(x => x.RemedyId).Select(x => x.FirstOrDefault()).ToList();
-                //clipboardRemedyModel.UnCommonRemedyList = clipboardRubricsModelList.Where(x => x.CommonUncommon == false).GroupBy(x => x.RemedyId).Select(x => x.FirstOrDefault()).ToList();
+                //clipboardRemedyModel.UnCommonRemedyList = clipboardRubricsModelList.Where(x => x.CommonUncommon != true).GroupBy(x => x.RemedyId).Select(x => x.FirstOrDefault()).ToList();
 
                 return null;
             }
@@ -1727,7 +1728,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
         //    ClipboardRemedyNewModel clipboardRemedyModel = new ClipboardRemedyNewModel
         //    {
         //        CommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon == true).ToList(),
-        //        UnCommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon == false).ToList()
+        //        UnCommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon != true).ToList()
         //    };
 
         //    return clipboardRemedyModel;
@@ -1773,9 +1774,10 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 })
                 .ToList();
 
+            // Distinct remedies per subsection (aligned with GetRemedyCounts) for small-rubric ordering.
             var remedyCounts = rows
                 .GroupBy(x => x.SubSectionId)
-                .ToDictionary(g => g.Key, g => g.Count());
+                .ToDictionary(g => g.Key, g => g.Select(r => r.RemedyId).Distinct().Count());
 
             var inputs = lstIntensity
                 .Select(item =>
@@ -1928,10 +1930,11 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 .Select(x => x.First())
                 .ToList();
 
+            // Null CommonOrUncommon must not drop remedies — treat as uncommon.
             return new ClipboardRemedyNewModel
             {
                 CommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon == true).ToList(),
-                UnCommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon == false).ToList()
+                UnCommonRemedyList = rawOrderGroupBy.Where(x => x.CommonUncommon != true).ToList()
             };
         }
 
@@ -2174,7 +2177,7 @@ namespace Homeocentrum.Niga.API.Domain.Business.Implementation
                 .Where(x => x.CommonUncommon == true)
                 .ToList();
             clipboardRemedyModel.UnCommonRemedyList = sortedRemedyBYELIList
-                .Where(x => x.CommonUncommon == false)
+                .Where(x => x.CommonUncommon != true)
                 .ToList();
             return clipboardRemedyModel;
         }

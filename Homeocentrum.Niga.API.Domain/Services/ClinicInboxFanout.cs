@@ -113,6 +113,76 @@ public sealed class ClinicInboxFanout : IClinicInboxFanout
         }
     }
 
+    public async Task NotifyPharmacyLifecycleAsync(
+        int? pharmacyPartnerId,
+        string title,
+        string body,
+        string? deepLink = "/pharmacy/onboarding",
+        CancellationToken cancellationToken = default)
+    {
+        if (pharmacyPartnerId is null or <= 0)
+            return;
+
+        try
+        {
+            var userId = await _context.Database.SqlQuery<IdRow>($@"
+                SELECT TOP 1 CAST(UserId AS bigint) AS Id FROM dbo.PharmacyPartner
+                WHERE PharmacyPartnerId = {pharmacyPartnerId.Value}
+                  AND UserId IS NOT NULL").FirstOrDefaultAsync(cancellationToken);
+            if (userId == null || userId.Id <= 0)
+                return;
+
+            var link = string.IsNullOrWhiteSpace(deepLink) ? "/pharmacy/onboarding" : deepLink.Trim();
+            await SendAsync(
+                userId.Id,
+                title,
+                body,
+                "pharmacy_lifecycle",
+                "PHARMACY",
+                link,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Pharmacy lifecycle inbox failed for PharmacyPartnerId={Id}", pharmacyPartnerId);
+        }
+    }
+
+    public async Task NotifyAdminUsersAsync(
+        string title,
+        string body,
+        string? deepLink = "/admin/pharmacy-partners",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var admins = await _context.Database.SqlQuery<IdRow>($@"
+                SELECT DISTINCT CAST(u.UserId AS bigint) AS Id
+                FROM dbo.UserMaster u
+                INNER JOIN dbo.RoleMaster r ON r.RoleId = u.RoleId
+                WHERE ISNULL(u.DeleteStatus, 0) = 0
+                  AND ISNULL(u.UserStatus, 0) = 1
+                  AND r.RoleName IN (N'Admin', N'Management', N'AdminPortal')").ToListAsync(cancellationToken);
+
+            var link = string.IsNullOrWhiteSpace(deepLink) ? "/admin/pharmacy-partners" : deepLink.Trim();
+            foreach (var admin in admins.Where(a => a.Id > 0).DistinctBy(a => a.Id))
+            {
+                await SendAsync(
+                    admin.Id,
+                    title,
+                    body,
+                    "pharmacy_admin",
+                    "PHARMACY",
+                    link,
+                    cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Admin pharmacy inbox fan-out failed");
+        }
+    }
+
     public async Task NotifyDoctorUserAsync(
         int doctorId,
         string title,

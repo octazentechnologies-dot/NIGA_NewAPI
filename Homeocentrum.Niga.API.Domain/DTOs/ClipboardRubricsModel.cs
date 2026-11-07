@@ -92,6 +92,11 @@ namespace Homeocentrum.Niga.API.Domain.DTOs
         public string FontName { get; set; } = string.Empty;
         public string FontColor { get; set; } = string.Empty;
         public string FontStyle { get; set; } = string.Empty;
+        /// <summary>
+        /// Distinct active remedies in this subsection (same rule as GetRemedyCounts).
+        /// Populated on accordion pages so the UI can badge without a second round-trip.
+        /// </summary>
+        public int RemedyCount { get; set; } = 0;
 
 
 

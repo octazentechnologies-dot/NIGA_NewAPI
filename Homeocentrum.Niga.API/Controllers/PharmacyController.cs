@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Homeocentrum.Niga.API.Domain.Data;
 using Homeocentrum.Niga.API.Domain.DTOs;
@@ -34,8 +35,31 @@ public class PharmacyController : ControllerBase
     [HttpPost("/api/Pharmacy/{id:int}/Activate")]
     public Task<IActionResult> Activate(int id) => Done(_s4.ActivatePharmacyAsync(id, Caller()));
 
+    [HttpPost("/api/Pharmacy/{id:int}/Reject")]
+    public Task<IActionResult> Reject(int id, [FromBody] PharmacyDecisionRequest? body)
+        => Done(_s4.RejectPharmacyAsync(id, body?.Reason, Caller()));
+
     [HttpPost("/api/Pharmacy/{id:int}/Suspend")]
     public Task<IActionResult> Suspend(int id) => Done(_s4.SuspendPharmacyAsync(id, Caller()));
+
+    [HttpPost("/api/Pharmacy/{id:int}/Close")]
+    public Task<IActionResult> RequestClose(int id, [FromBody] PharmacyDecisionRequest? body)
+        => Done(_s4.RequestPharmacyCloseAsync(id, body?.Reason, Caller()));
+
+    [HttpPost("/api/Pharmacy/{id:int}/ApproveClose")]
+    public Task<IActionResult> ApproveClose(int id, [FromBody] PharmacyDecisionRequest? body)
+        => Done(_s4.ApprovePharmacyCloseAsync(id, body?.Reason, Caller()));
+
+    [HttpPost("/api/Pharmacy/{id:int}/Withdraw")]
+    public Task<IActionResult> Withdraw(int id) => Done(_s4.WithdrawPharmacyAsync(id, Caller()));
+
+    [HttpPost("/api/Pharmacy/{id:int}/Documents")]
+    [RequestSizeLimit(12 * 1024 * 1024)]
+    public Task<IActionResult> UploadDocument(int id, IFormFile file, [FromForm] string? documentType = null, [FromForm] string? description = null)
+        => Done(_s4.SavePharmacyDocumentAsync(id, file, Caller(), documentType, description));
+
+    [HttpGet("/api/Pharmacy/{id:int}/Documents")]
+    public Task<IActionResult> ListDocuments(int id) => Done(_s4.ListPharmacyDocumentsAsync(id, Caller()));
 
     [HttpPost("/api/Pharmacy/Licences/Sweep")]
     public Task<IActionResult> Sweep() => Done(_s4.SweepLicencesAsync(Caller()));

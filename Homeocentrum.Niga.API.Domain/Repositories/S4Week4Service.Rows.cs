@@ -213,6 +213,9 @@ public partial class S4Week4Service
         public string Status { get; set; } = "";
         public bool ConsentGranted { get; set; }
         public decimal? QuoteAmount { get; set; }
+        public decimal? DeliveryFee { get; set; }
+        public decimal? PaymentAmount { get; set; }
+        public string? PaymentStatus { get; set; }
         public string? PayMode { get; set; }
         public DateTime? CreatedAt { get; set; }
         public int ItemCount { get; set; }
@@ -220,6 +223,9 @@ public partial class S4Week4Service
         public string? PatientName { get; set; }
         public string? PatientMobile { get; set; }
         public string? PatientAddress { get; set; }
+        public int? DeliveryAddressId { get; set; }
+        public string? DeliveryCity { get; set; }
+        public string? ResolvedDeliveryCity { get; set; }
     }
 
     private sealed class OpenLedgerRow
